@@ -1,10 +1,10 @@
-use quickgen::rgd::*;
 use libc;
+use quickgen::rgd::*;
 use quickgen::union_to_ast::*;
 use quickgen::union_table::*;
+use quickgen::util::*;
 
 fn main() {
-  println!("Hello, world!");
   let id = unsafe {
     libc::shmget(
         0x1234,
@@ -22,9 +22,5 @@ fn main() {
   union_to_ast(42,&mut req, table);
 
   cmd.mut_expr().push(req);
-  println!("req name is {:?}",cmd.get_expr()[0].get_name());
-  println!("req name is {:?}",cmd.get_expr()[0].get_children()[0].get_name());
-  println!("req name is {:?}",cmd.get_expr()[0].get_children()[1].get_name());
-
-
+  printReq(&cmd.get_expr()[0]);
 }

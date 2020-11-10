@@ -9,6 +9,8 @@ edition = "2018"
 [dependencies]
 libc = "0.2"
 protobuf = "2"
+num-traits = "0.2"
+num-derive = "0.2"
 
 [build-dependencies]
 protoc-rust = "2.0"
