@@ -1,5 +1,5 @@
 //pub mod rgd;
-pub mod protos;
+pub mod rgd;
 pub mod union_to_ast;
 pub mod union_table;
 
