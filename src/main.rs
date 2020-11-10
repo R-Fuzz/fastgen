@@ -1,5 +1,7 @@
+use quickgen::protos::rgd::*;
 use libc;
 use protoc_rust::Customize;
+use quickgen::union_to_ast::*;
 #[repr(C,align(8))] 
 pub struct dfsan_label_info {
   l1: u32,
@@ -30,4 +32,14 @@ fn main() {
     let loc = unsafe {&mut *ptr };
     let loc1 = &loc[42];
     println!("l1 is {:?}", loc1.l1);
+    protoc_rust::Codegen::new()
+        .out_dir("src/protos")
+        .inputs(&["protos/rgd.proto"])
+        .include("protos")
+        .run()
+        .expect("protoc");
+    let mut cmd = JitCmdv2::new();
+    let mut req = JitRequest::new();
+    union_to_ast(0,&mut req);
+    println!("req name is {:?}",req.get_name());
 }
