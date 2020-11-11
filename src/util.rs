@@ -13,7 +13,7 @@ pub fn do_print(req: &JitRequest) {
     Some(RGD::Memcmp) => print!("{},",req.get_value()),
     Some(RGD::Read) => print!("{},",req.get_index()),
     Some(RGD::Extract) => print!("{},",req.get_index()),
-    None => (),
+    _ => (),
   }
   for c in req.get_children() {
     do_print(c);
