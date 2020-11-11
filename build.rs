@@ -1,4 +1,4 @@
-use protoc_rust::Customize;
+//use protoc_rust::Customize;
 
 fn main() {
   protoc_rust::Codegen::new()

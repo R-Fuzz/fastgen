@@ -22,5 +22,5 @@ fn main() {
   union_to_ast(42,&mut req, table);
 
   cmd.mut_expr().push(req);
-  printReq(&cmd.get_expr()[0]);
+  print_req(&cmd.get_expr()[0]);
 }

@@ -1,6 +1,5 @@
 use crate::rgd::*;
 use crate::op_def::RGD;
-use num_derive::FromPrimitive;    
 use num_traits::FromPrimitive;
 
 pub fn do_print(req: &JitRequest) {
@@ -22,7 +21,7 @@ pub fn do_print(req: &JitRequest) {
   print!(")");
 }
 
-pub fn printReq(req: &JitRequest) {
+pub fn print_req(req: &JitRequest) {
   do_print(req);
   println!("");
 }

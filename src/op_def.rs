@@ -1,5 +1,4 @@
 use num_derive::FromPrimitive;    
-use num_traits::FromPrimitive;
 
 #[derive(FromPrimitive)]
 pub enum RGD {
@@ -55,36 +54,38 @@ pub enum RGD {
 
 //Derived from llvm-6.0/llvm/IR/Instruction.def 
 //and dfsan.h
-pub const DFSAN_Read: u32 = 0;
-pub const DFSAN_Not: u32 = 1;
-pub const DFSAN_Neg: u32 = 2;
-pub const DFSAN_Add: u32 = 11;
-pub const DFSAN_Sub: u32 = 13;
-pub const DFSAN_Mul: u32 = 15;
-pub const DFSAN_UDiv: u32 = 17;
-pub const DFSAN_SDiv: u32 = 18;
-pub const DFSAN_URem: u32 = 20;
-pub const DFSAN_SRem: u32 = 21;
-pub const DFSAN_Shl: u32 = 23;
-pub const DFSAN_LShr: u32 = 24;
-pub const DFSAN_AShr: u32 = 25;
-pub const DFSAN_And: u32 = 26;
-pub const DFSAN_Or: u32 = 27;
-pub const DFSAN_Xor: u32 = 28;
-pub const DFSAN_Trunc: u32 = 36;
-pub const DFSAN_ZExt: u32 = 37;
-pub const DFSAN_SExt: u32 = 38;
-pub const DFSAN_Load: u32 = 67;
-pub const DFSAN_Extract: u32 = 68;
-pub const DFSAN_Concat: u32 = 69;
+pub const CONST_OFFSET: u32 = 1;
+pub const DFSAN_READ: u32 = 0;
+pub const DFSAN_NOT: u32 = 1;
+pub const DFSAN_NEG: u32 = 2;
+pub const DFSAN_ADD: u32 = 11;
+pub const DFSAN_SUB: u32 = 13;
+pub const DFSAN_MUL: u32 = 15;
+pub const DFSAN_UDIV: u32 = 17;
+pub const DFSAN_SDIV: u32 = 18;
+pub const DFSAN_UREM: u32 = 20;
+pub const DFSAN_SREM: u32 = 21;
+pub const DFSAN_SHL: u32 = 23;
+pub const DFSAN_LSHR: u32 = 24;
+pub const DFSAN_ASHR: u32 = 25;
+pub const DFSAN_AND: u32 = 26;
+pub const DFSAN_OR: u32 = 27;
+pub const DFSAN_XOR: u32 = 28;
+pub const DFSAN_TRUNC: u32 = 36;
+pub const DFSAN_ZEXT: u32 = 37;
+pub const DFSAN_SEXT: u32 = 38;
+pub const DFSAN_LOAD: u32 = 67;
+pub const DFSAN_EXTRACT: u32 = 68;
+pub const DFSAN_CONCAT: u32 = 69;
 //relational
-pub const DFSAN_bveq: u32 = 32;
-pub const DFSAN_bvneq: u32 = 33;
-pub const DFSAN_bvugt: u32 = 34;
-pub const DFSAN_bvuge: u32 = 35;
-pub const DFSAN_bvult: u32 = 36;
-pub const DFSAN_bvule: u32 = 37;
-pub const DFSAN_bvsgt: u32 = 38;
-pub const DFSAN_bvsge: u32 = 39;
-pub const DFSAN_bvslt: u32 = 40;
-pub const DFSAN_bvsle: u32 = 41;
+pub const DFSAN_BVEQ: u32 = 32;
+pub const DFSAN_BVNEQ: u32 = 33;
+pub const DFSAN_BVUGT: u32 = 34;
+pub const DFSAN_BVUGE: u32 = 35;
+pub const DFSAN_BVULT: u32 = 36;
+pub const DFSAN_BVULE: u32 = 37;
+pub const DFSAN_BVSGT: u32 = 38;
+pub const DFSAN_BVSGE: u32 = 39;
+pub const DFSAN_BVSLT: u32 = 40;
+pub const DFSAN_BVSLE: u32 = 41;
+
