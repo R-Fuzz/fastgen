@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.5.1)
 
 project(rgd C CXX)
 # Proto file
-get_filename_component(rgd_proto "rgd.proto" ABSOLUTE)
+get_filename_component(rgd_proto "../protos/rgd.proto" ABSOLUTE)
 get_filename_component(rgd_proto_path "${rgd_proto}" PATH)
 
 # Generated sources
