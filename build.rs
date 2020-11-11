@@ -7,4 +7,6 @@ fn main() {
     .include("protos")
     .run()
     .expect("protoc");
+
+  println!(r"cargo:rustc-link-search=core/build");
 }

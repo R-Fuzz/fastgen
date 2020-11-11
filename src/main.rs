@@ -3,6 +3,13 @@ use quickgen::rgd::*;
 use quickgen::union_to_ast::*;
 use quickgen::union_table::*;
 use quickgen::util::*;
+use protobuf::Message;
+
+
+#[link(name = "gd")]
+extern {
+    fn print_buffer(input: *const u8, input_length: u32);
+}
 
 fn main() {
   let id = unsafe {
@@ -23,4 +30,9 @@ fn main() {
 
   cmd.mut_expr().push(req);
   print_req(&cmd.get_expr()[0]);
+
+  let ast_node = cmd.write_to_bytes().unwrap();
+  let astr = &ast_node;
+  println!("{:?}",ast_node);
+  unsafe { print_buffer(astr.as_ptr(), astr.len() as u32); }
 }
