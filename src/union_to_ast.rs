@@ -35,7 +35,7 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
     DFSAN_ZEXT => {
                     ret.set_kind(RGD::ZExt as u32);
                     ret.set_bits(size as u32);
-                    ret.set_name("read".to_string());
+                    ret.set_name("zext".to_string());
                     let mut c = RealAstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
@@ -46,7 +46,7 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
     DFSAN_SEXT => {
                     ret.set_kind(RGD::SExt as u32);
                     ret.set_bits(size as u32);
-                    ret.set_name("read".to_string());
+                    ret.set_name("sext".to_string());
                     let mut c = RealAstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
