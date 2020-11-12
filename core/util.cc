@@ -67,30 +67,30 @@ static std::string get_name(uint32_t kind) {
 		case rgd::Memcmp: return "memcmp";
 	}
 }
-static void do_print(const JitRequest* req) {
-	std::cerr << get_name(req->kind()) << "(";
+static void do_print(const RealAstNode* node) {
+	std::cerr << get_name(node->kind()) << "(";
 	//std::cerr << req->name() << "(";
-	std::cerr << "width=" << req->bits() << ",";
+	std::cerr << "width=" << node->bits() << ",";
 	//std::cerr << " hash=" << req->hash() << ",";
-	std::cerr << " label=" << req->label() << ",";
+	std::cerr << " label=" << node->label() << ",";
 	//std::cerr << " hash=" << req->hash() << ",";
-	if (req->kind() == rgd::Bool) {
-		std::cerr << req->value();
+	if (node->kind() == rgd::Bool) {
+		std::cerr << node->value();
 	}
-	if (req->kind() == rgd::Constant) {
-		std::cerr << req->value() << ", ";
+	if (node->kind() == rgd::Constant) {
+		std::cerr << node->value() << ", ";
 	//	std::cerr << req->index();
 	}
-	if (req->kind() == rgd::Memcmp) {
-		std::cerr << req->value() << ", ";
+	if (node->kind() == rgd::Memcmp) {
+		std::cerr << node->value() << ", ";
 	//	std::cerr << req->index();
 	}
-	if (req->kind() == rgd::Read || req->kind() == rgd::Extract) {
-		std::cerr << req->index() << ", ";
+	if (node->kind() == rgd::Read || node->kind() == rgd::Extract) {
+		std::cerr << node->index() << ", ";
 	}
-	for(int i = 0; i < req->children_size(); i++) {
-		do_print(&req->children(i));
-		if (i != req->children_size() - 1)
+	for(int i = 0; i < node->children_size(); i++) {
+		do_print(&node->children(i));
+		if (i != node->children_size() - 1)
 			std::cerr << ", ";
 	}
 	std::cerr << ")";
@@ -99,10 +99,19 @@ static void do_print(const JitRequest* req) {
 
 
 
-void printExpression(const JitRequest* req) {
-	do_print(req);
+void printNode(const RealAstNode* node) {
+	do_print(node);
 	std::cerr << std::endl;
 }
+
+void printNode(const AstNode* node) {
+  if (node->virt()) 
+    std::cerr << node->label();
+  else 
+	  do_print(&node->payload());
+	std::cerr << std::endl;
+}
+
 
 
 static bool writeDelimitedTo(

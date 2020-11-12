@@ -3,14 +3,13 @@ use crate::op_def::*;
 use crate::union_table::*;
 use std::collections::HashSet;
 
-fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut HashSet<u32>)  {
+fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut HashSet<u32>)  {
   let info = &table[label as usize];
   let mut size = info.size;
   if size==0 { 
     size = 1;
   }
   if cache.contains(&label) {
-    ret.set_hash(info.hash);
     ret.set_label(label);
     ret.set_bits(size as u32);
     return;
@@ -22,7 +21,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_bits(8 as u32);
                     ret.set_index(info.op1 as u32);
                     ret.set_name("read".to_string());
-                    ret.set_hash(info.hash);
                     ret.set_label(0);
                     return;
                   },
@@ -31,7 +29,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_bits(info.l2 * 8);
                     ret.set_index(table[info.l1 as usize].op1 as u32);
                     ret.set_name("read".to_string());
-                    ret.set_hash(info.hash);
                     ret.set_label(0);
                     return;
                   },
@@ -39,10 +36,9 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::ZExt as u32);
                     ret.set_bits(size as u32);
                     ret.set_name("read".to_string());
-                    let mut c = JitRequest::new();
+                    let mut c = RealAstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -51,10 +47,9 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::SExt as u32);
                     ret.set_bits(size as u32);
                     ret.set_name("read".to_string());
-                    let mut c = JitRequest::new();
+                    let mut c = RealAstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -64,10 +59,9 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_bits(size as u32);
                     ret.set_name("extract".to_string());
                     ret.set_index(0 as u32);
-                    let mut c = JitRequest::new();
+                    let mut c = RealAstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -77,10 +71,9 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_bits(size as u32);
                     ret.set_name("extract".to_string());
                     ret.set_index(info.op2 as u32);
-                    let mut c = JitRequest::new();
+                    let mut c = RealAstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -90,10 +83,9 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_bits(size as u32);
                     ret.set_name("not".to_string());
                     ret.set_index(info.op2 as u32);
-                    let mut c = JitRequest::new();
+                    let mut c = RealAstNode::new();
                     do_uta(info.l2, &mut c, table, cache); 
                     ret.mut_children().push(c);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -103,18 +95,17 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_bits(size as u32);
                     ret.set_name("neg".to_string());
                     ret.set_index(info.op2 as u32);
-                    let mut c = JitRequest::new();
+                    let mut c = RealAstNode::new();
                     do_uta(info.l2, &mut c, table, cache); 
                     ret.mut_children().push(c);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
                   },
     _ => (),
   }
-  let mut left = JitRequest::new();
-  let mut right = JitRequest::new();
+  let mut left = RealAstNode::new();
+  let mut right = RealAstNode::new();
   let mut size1: u32 = info.size as u32;
   if info.l1 >= CONST_OFFSET {
     do_uta(info.l1, &mut left, table, cache);
@@ -127,7 +118,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
     left.set_bits(size1);
     left.set_value(info.op1.to_string());
     left.set_label(0);
-    left.set_hash(0);
   }
   if info.l2 >= CONST_OFFSET {
     do_uta(info.l2, &mut right, table, cache);
@@ -140,7 +130,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
     right.set_bits(size1);
     right.set_value(info.op2.to_string());
     right.set_label(0);
-    right.set_hash(0);
   }
   ret.mut_children().push(left);
   ret.mut_children().push(right);
@@ -155,7 +144,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                       ret.set_name("land".to_string());
                     } 
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -169,7 +157,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                       ret.set_name("lor".to_string());
                     } 
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -178,7 +165,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Xor as u32);
                     ret.set_name("xor".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -187,7 +173,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Shl as u32);
                     ret.set_name("shl".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -196,7 +181,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::LShr as u32);
                     ret.set_name("lshr".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -205,7 +189,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::AShr as u32);
                     ret.set_name("ashr".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -214,7 +197,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Add as u32);
                     ret.set_name("add".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -223,7 +205,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Sub as u32);
                     ret.set_name("sub".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -232,7 +213,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Mul as u32);
                     ret.set_name("mul".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -241,7 +221,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::UDiv as u32);
                     ret.set_name("udiv".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -250,7 +229,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::SDiv as u32);
                     ret.set_name("sdiv".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -259,7 +237,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::URem as u32);
                     ret.set_name("urem".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -268,7 +245,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::SRem as u32);
                     ret.set_name("srem".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -277,7 +253,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Concat as u32);
                     ret.set_name("concat".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -290,7 +265,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Equal as u32);
                     ret.set_name("equal".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -299,7 +273,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Distinct as u32);
                     ret.set_name("distinct".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -308,7 +281,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Ult as u32);
                     ret.set_name("ult".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -318,7 +290,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Ule as u32);
                     ret.set_name("ule".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -327,7 +298,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Ugt as u32);
                     ret.set_name("ugt".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -336,7 +306,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Uge as u32);
                     ret.set_name("uge".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -345,7 +314,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Slt as u32);
                     ret.set_name("slt".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -354,7 +322,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Sle as u32);
                     ret.set_name("sle".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -363,7 +330,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Sgt as u32);
                     ret.set_name("sgt".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -372,7 +338,6 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
                     ret.set_kind(RGD::Sge as u32);
                     ret.set_name("sge".to_string());
                     ret.set_bits(size as u32);
-                    ret.set_hash(info.hash);
                     ret.set_label(label);
                     cache.insert(label);
                     return;
@@ -383,22 +348,8 @@ fn do_uta(label: u32, ret: &mut JitRequest, table: &UnionTable, cache: &mut Hash
 
 }
 
-pub fn union_to_ast(label: u32, ret: &mut JitRequest, table: &UnionTable)  {
+pub fn union_to_ast(label: u32, ret: &mut RealAstNode, table: &UnionTable)  {
   let mut cache = HashSet::new();
   do_uta(label,ret,table,&mut cache);
-/*
-  ret.set_name("add".to_string());
-  ret.set_kind(7);
-  let mut left = JitRequest::new();
-  let mut right = JitRequest::new();
-  left.set_kind(1);
-  left.set_name("constant".to_string());
-  left.set_value("1".to_string());
-  right.set_kind(1);
-  right.set_name("constant".to_string());
-  right.set_value("2".to_string());
-  ret.mut_children().push(left);
-  ret.mut_children().push(right);
-*/
 }
 

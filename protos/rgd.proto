@@ -2,34 +2,45 @@ syntax = "proto3";
 
 package rgd;
 
-message JitCmdv2 {
-  uint32 cmd = 1; //reset;solve;expression
-  int32 test_value = 2; //this the value output by Z3
-  repeated bytes expr_string = 3; //
-  //	repeated JitRequest expr = 3; //
-  string file_name = 4;
-  uint64 bhash = 5;
-  uint64 shash = 6;
-  bool direction = 7;
-  repeated JitRequest expr = 8;
+// interface between Fastgen and core search module
+
+//search task
+message SearchTask {
+  repeated SubConstraint constraints = 1;
 }
 
-message ResetCmd {
-  string file_name = 1;
+//comparison could be one of the 10:
+//Equal, Distinct, Ugt, Uge, Ult, Ule, Sgt, Sge, Slt, Sle
+message SubConstraint {
+  uint32 comparison = 1;
+  AstNode left = 2;
+  AstNode right = 3;
 }
 
-// The request message containing the user's name.
-message JitRequest {
-  uint32 kind = 1;
+message RealAstNode {
+  uint32 kind = 1; //operator 
   uint32 boolvalue = 2;  //used by bool expr
-  uint32 bits = 3;
-  string value = 4;  //used by constant expr
-  repeated JitRequest children = 5;
-  string name = 6;  //used for debugging
-  uint32 index = 7;  //used by read expr for index and extract expr
-  uint32 label = 8;  //for expression dedup
-  uint32 hash = 9;  //for request dedup
-  uint32 direction = 10;
-  uint32 sessionid = 11;
-  uint32 full = 12;
+  uint32 bits = 3; //width
+  string value = 4;  //used by constant expr and read expr for iv
+  string name = 5;  //used for debugging
+  uint32 index = 6;  //used by read expr for index and extract expr
+  uint32 label = 7;  //for expression dedup
+  uint32 sessionid = 8; //label combined label is the ID for the AstNode
+  repeated RealAstNode children = 9;
+}
+
+
+message AstNode {
+  bool virt = 1; //if true, then the payload will not filled
+  uint32 label = 2;  //for expression dedup
+  uint32 sessionid = 3; //label combined label is the ID for the AstNode
+  RealAstNode payload = 4;
+}
+
+
+message PersistSerachTask {
+  SearchTask task = 1;
+  uint64 addr = 2;
+  uint64 ctx = 3;
+  string taint_file = 4;
 }
