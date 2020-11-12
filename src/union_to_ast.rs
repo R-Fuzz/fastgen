@@ -2,7 +2,6 @@ use crate::rgd::*;
 use crate::op_def::*;
 use crate::union_table::*;
 use std::collections::HashSet;
-use protobuf::Message;
 
 fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut HashSet<u32>)  {
   if label==0 {

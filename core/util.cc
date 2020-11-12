@@ -114,6 +114,7 @@ void printNode(const AstNode* node) {
 
 void printTask(const SearchTask* task) {
   for(auto cons : task->constraints())  {
+    std::cerr << get_name(cons.comparison()) << std::endl;
     printNode(&cons.left());
     printNode(&cons.right());
   }

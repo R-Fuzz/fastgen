@@ -1,6 +1,14 @@
 use crate::rgd::*;
-use crate::op_def::RGD;
+use crate::op_def::*;
 use num_traits::FromPrimitive;
+
+pub fn to_rgd_op(op: u32) -> u32 {
+  match op {
+    DFSAN_BVEQ => RGD::Equal as u32,
+    DFSAN_BVSGT => RGD::Sgt as u32,
+    _ => 0,
+  }
+}
 
 pub fn do_print(node: &RealAstNode) {
   print!("{}(",node.get_name());
