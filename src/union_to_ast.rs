@@ -2,8 +2,12 @@ use crate::rgd::*;
 use crate::op_def::*;
 use crate::union_table::*;
 use std::collections::HashSet;
+use protobuf::Message;
 
 fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut HashSet<u32>)  {
+  if label==0 {
+    return;
+  }
   let info = &table[label as usize];
   let mut size = info.size;
   if size==0 { 
@@ -35,7 +39,7 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
     DFSAN_ZEXT => {
                     ret.set_kind(RGD::ZExt as u32);
                     ret.set_bits(size as u32);
-                    ret.set_name("read".to_string());
+                    ret.set_name("zext".to_string());
                     let mut c = RealAstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
@@ -46,7 +50,7 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
     DFSAN_SEXT => {
                     ret.set_kind(RGD::SExt as u32);
                     ret.set_bits(size as u32);
-                    ret.set_name("read".to_string());
+                    ret.set_name("sext".to_string());
                     let mut c = RealAstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
@@ -348,8 +352,32 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
 
 }
 
-pub fn union_to_ast(label: u32, ret: &mut RealAstNode, table: &UnionTable)  {
+pub fn get_one_constraint(label: u32, left: &mut RealAstNode, right: &mut RealAstNode, table: &UnionTable) -> u32  {
+  let info = &table[label as usize];
+  let op = (info.op >> 8) as u32;
   let mut cache = HashSet::new();
-  do_uta(label,ret,table,&mut cache);
+  assert!(op == DFSAN_BVEQ || op == DFSAN_BVNEQ ||
+          op == DFSAN_BVULT || op == DFSAN_BVULE ||
+          op == DFSAN_BVUGT || op == DFSAN_BVUGE ||
+          op == DFSAN_BVSLT || op == DFSAN_BVSLE ||
+          op == DFSAN_BVSGT || op == DFSAN_BVSGE, "the operator is not relational {}", info.op);
+  do_uta(info.l1, left, table, &mut cache);
+  cache.clear();
+  do_uta(info.l2, right, table, &mut cache);
+  if info.l1 == 0 {
+    left.set_kind(RGD::Constant as u32);
+    left.set_name("constant".to_string());
+    left.set_bits(info.size as u32);
+    left.set_value(info.op1.to_string());
+    left.set_label(0);
+  }
+  if info.l2 == 0 {
+    right.set_kind(RGD::Constant as u32);
+    right.set_name("constant".to_string());
+    right.set_bits(info.size as u32);
+    right.set_value(info.op2.to_string());
+    right.set_label(0);
+  }
+  op as u32
 }
 

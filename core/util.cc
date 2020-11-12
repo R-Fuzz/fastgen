@@ -112,6 +112,13 @@ void printNode(const AstNode* node) {
 	std::cerr << std::endl;
 }
 
+void printTask(const SearchTask* task) {
+  for(auto cons : task->constraints())  {
+    printNode(&cons.left());
+    printNode(&cons.right());
+  }
+}
+
 
 
 static bool writeDelimitedTo(

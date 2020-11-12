@@ -1,8 +1,7 @@
 use libc;
-use quickgen::rgd::*;
-use quickgen::union_to_ast::*;
+//use quickgen::rgd::*;
 use quickgen::union_table::*;
-use quickgen::util::*;
+use quickgen::track_cons::*;
 use protobuf::Message;
 
 
@@ -23,17 +22,12 @@ fn main() {
   };
   let ptr = unsafe { libc::shmat(id, std::ptr::null(), 0) as *mut UnionTable};
   let table = unsafe { & *ptr };
-  let loc1 = &table[42];
-  println!("l1 is {:?}", loc1.l1);
-  let mut node = RealAstNode::new();
 
-  union_to_ast(42,&mut node, table);
-
-  //cmd.mut_expr().push(req);
-  print_node(&node);
-
-  let ast_node = node.write_to_bytes().unwrap();
-  let astr = &ast_node;
-  println!("{:?}",ast_node);
-  unsafe { print_buffer(astr.as_ptr(), astr.len() as u32); }
+  let mut tasks = Vec::new();
+  scan_tasks(&mut tasks, table); 
+  for task in tasks {
+    let task_ser = task.write_to_bytes().unwrap();
+    unsafe { print_buffer(task_ser.as_ptr(), task_ser.len() as u32); }
+  }
+  
 }

@@ -9,9 +9,9 @@ using namespace google::protobuf::io;
 void parse_bytes(const unsigned char* input, unsigned int input_length) {
   CodedInputStream s(input,input_length);
   s.SetRecursionLimit(10000);
-  RealAstNode node;
-  node.ParseFromCodedStream(&s);
-  printNode(&node);
+  SearchTask task;
+  task.ParseFromCodedStream(&s);
+  printTask(&task);
 }
 
 extern "C" {

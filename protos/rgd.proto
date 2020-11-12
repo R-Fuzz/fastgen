@@ -6,12 +6,12 @@ package rgd;
 
 //search task
 message SearchTask {
-  repeated SubConstraint constraints = 1;
+  repeated Constraint constraints = 1;
 }
 
 //comparison could be one of the 10:
 //Equal, Distinct, Ugt, Uge, Ult, Ule, Sgt, Sge, Slt, Sle
-message SubConstraint {
+message Constraint {
   uint32 comparison = 1;
   AstNode left = 2;
   AstNode right = 3;
@@ -38,7 +38,7 @@ message AstNode {
 }
 
 
-message PersistSerachTask {
+message PSearchTask {
   SearchTask task = 1;
   uint64 addr = 2;
   uint64 ctx = 3;
