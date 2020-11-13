@@ -2,13 +2,17 @@ syntax = "proto3";
 
 package rgd;
 
-// interface between Fastgen and core search module
+//----------------------------------------------- 
+//interface between Fastgen and core search module
+//-----------------------------------------------
 
 //search task
 message SearchTask {
   repeated Constraint constraints = 1;
 }
 
+//the constraint will be sent to c++ JIT/search engine
+//INVARIANT: (JIT engine can't handle logical and, logical or and logical not, so we handle the complexity before sending)
 //comparison could be one of the 10:
 //Equal, Distinct, Ugt, Uge, Ult, Ule, Sgt, Sge, Slt, Sle
 message Constraint {
@@ -37,4 +41,10 @@ message AstNode {
   string name = 8;  
   uint32 label = 9;
 }
+
+//-------------------------------------------------------
+//private for the Rust component, 
+//for handling complexities of logical operators
+//and remapping the arguments
+//------------------------------------------------------
 

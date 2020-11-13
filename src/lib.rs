@@ -7,3 +7,4 @@ pub mod op_def;
 pub mod track_cons;
 pub mod fifo;
 pub mod cpp_interface;
+pub mod analyzer;
