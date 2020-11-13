@@ -2,6 +2,7 @@ use crate::rgd::*;
 use crate::union_table::*;
 use crate::union_to_ast::*;
 use crate::util::*;
+use crate::fifo::*;
 
 pub fn scan_tasks(labels: &Vec<u32>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
   for &label in labels {
@@ -41,7 +42,7 @@ mod tests {
     let table = unsafe { & *ptr };
 
     let mut tasks = Vec::new();
-    let labels = vec![43,44];
+    let labels = read_pipe();
     scan_tasks(&labels, &mut tasks, table); 
     for task in tasks {
       let task_ser = task.write_to_bytes().unwrap();
