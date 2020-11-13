@@ -2,18 +2,13 @@ use crate::rgd::*;
 use crate::union_table::*;
 use crate::union_to_ast::*;
 use crate::util::*;
-use crate::fifo::*;
 
 pub fn scan_tasks(labels: &Vec<u32>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
   for &label in labels {
-    let mut real_left = RealAstNode::new();
-    let mut real_right = RealAstNode::new();
-    let mut cons = Constraint::new();
-    let op = get_one_constraint(label, &mut real_left, &mut real_right, table);
     let mut left = AstNode::new();
     let mut right = AstNode::new();
-    left.set_payload(real_left);
-    right.set_payload(real_right);
+    let mut cons = Constraint::new();
+    let op = get_one_constraint(label, &mut left, &mut right, table);
     cons.set_left(left);
     cons.set_right(right);
     cons.set_comparison(to_rgd_op(op));
@@ -28,6 +23,7 @@ mod tests {
   use super::*;
   use crate::cpp_interface::*;
   use protobuf::Message;
+  use crate::fifo::*;
 
 #[test]
   fn test_scan() {

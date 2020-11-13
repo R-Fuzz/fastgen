@@ -67,7 +67,7 @@ static std::string get_name(uint32_t kind) {
 		case rgd::Memcmp: return "memcmp";
 	}
 }
-static void do_print(const RealAstNode* node) {
+static void do_print(const AstNode* node) {
 	std::cerr << get_name(node->kind()) << "(";
 	//std::cerr << req->name() << "(";
 	std::cerr << "width=" << node->bits() << ",";
@@ -99,18 +99,11 @@ static void do_print(const RealAstNode* node) {
 
 
 
-void printNode(const RealAstNode* node) {
+void printNode(const AstNode* node) {
 	do_print(node);
 	std::cerr << std::endl;
 }
 
-void printNode(const AstNode* node) {
-  if (node->virt()) 
-    std::cerr << node->label();
-  else 
-	  do_print(&node->payload());
-	std::cerr << std::endl;
-}
 
 void printTask(const SearchTask* task) {
   for(auto cons : task->constraints())  {

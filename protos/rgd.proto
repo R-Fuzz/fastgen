@@ -17,30 +17,24 @@ message Constraint {
   AstNode right = 3;
 }
 
-message RealAstNode {
-  uint32 kind = 1; //operator 
-  uint32 boolvalue = 2;  //used by bool expr
-  uint32 bits = 3; //width
-  string value = 4;  //used by constant expr and read expr for iv
-  string name = 5;  //used for debugging
-  uint32 index = 6;  //used by read expr for index and extract expr
-  uint32 label = 7;  //for expression dedup
-  uint32 sessionid = 8; //label combined label is the ID for the AstNode
-  repeated RealAstNode children = 9;
-}
-
-
 message AstNode {
-  bool virt = 1; //if true, then the payload will not filled
-  uint32 label = 2;  //for expression dedup
-  uint32 sessionid = 3; //label combined label is the ID for the AstNode
-  RealAstNode payload = 4;
+  // operator
+  uint32 kind = 1; 
+  // used by bool expr
+  uint32 boolvalue = 2; 
+  // width of bitvector
+  uint32 bits = 3; 
+  //for constant, it is value, for read, it is iv
+  string value = 4;
+  //for read, it is offset in the raw inputs
+  //for constant, it is offset in arg
+  //for extract, it is extract start offset 
+  uint32 index = 5;
+  //hash caculated after arggument mapping
+  uint32 hash = 6;
+  repeated AstNode children = 7;
+  //for debug
+  string name = 8;  
+  uint32 label = 9;
 }
 
-
-message PSearchTask {
-  SearchTask task = 1;
-  uint64 addr = 2;
-  uint64 ctx = 3;
-  string taint_file = 4;
-}

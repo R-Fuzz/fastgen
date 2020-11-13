@@ -3,7 +3,7 @@ use crate::op_def::*;
 use crate::union_table::*;
 use std::collections::HashSet;
 
-fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut HashSet<u32>)  {
+fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet<u32>)  {
   if label==0 {
     return;
   }
@@ -39,7 +39,7 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
                     ret.set_kind(RGD::ZExt as u32);
                     ret.set_bits(size as u32);
                     ret.set_name("zext".to_string());
-                    let mut c = RealAstNode::new();
+                    let mut c = AstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
@@ -50,7 +50,7 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
                     ret.set_kind(RGD::SExt as u32);
                     ret.set_bits(size as u32);
                     ret.set_name("sext".to_string());
-                    let mut c = RealAstNode::new();
+                    let mut c = AstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
@@ -62,7 +62,7 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
                     ret.set_bits(size as u32);
                     ret.set_name("extract".to_string());
                     ret.set_index(0 as u32);
-                    let mut c = RealAstNode::new();
+                    let mut c = AstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
@@ -74,7 +74,7 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
                     ret.set_bits(size as u32);
                     ret.set_name("extract".to_string());
                     ret.set_index(info.op2 as u32);
-                    let mut c = RealAstNode::new();
+                    let mut c = AstNode::new();
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
@@ -86,7 +86,7 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
                     ret.set_bits(size as u32);
                     ret.set_name("not".to_string());
                     ret.set_index(info.op2 as u32);
-                    let mut c = RealAstNode::new();
+                    let mut c = AstNode::new();
                     do_uta(info.l2, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
@@ -98,7 +98,7 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
                     ret.set_bits(size as u32);
                     ret.set_name("neg".to_string());
                     ret.set_index(info.op2 as u32);
-                    let mut c = RealAstNode::new();
+                    let mut c = AstNode::new();
                     do_uta(info.l2, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
@@ -107,8 +107,8 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
                   },
     _ => (),
   }
-  let mut left = RealAstNode::new();
-  let mut right = RealAstNode::new();
+  let mut left = AstNode::new();
+  let mut right = AstNode::new();
   let mut size1: u32 = info.size as u32;
   if info.l1 >= CONST_OFFSET {
     do_uta(info.l1, &mut left, table, cache);
@@ -351,7 +351,7 @@ fn do_uta(label: u32, ret: &mut RealAstNode, table: &UnionTable, cache: &mut Has
 
 }
 
-pub fn get_one_constraint(label: u32, left: &mut RealAstNode, right: &mut RealAstNode, table: &UnionTable) -> u32  {
+pub fn get_one_constraint(label: u32, left: &mut AstNode, right: &mut AstNode, table: &UnionTable) -> u32  {
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
   let mut cache = HashSet::new();

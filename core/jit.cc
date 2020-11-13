@@ -29,7 +29,7 @@ using namespace rgd;
 //Builder: LLVM IR builder
 //localmap:  for each Constant/Read node (leaf node), find its position in the argument
 llvm::Value* codegen(llvm::IRBuilder<> &Builder,
-		const RealAstNode* node,
+		const AstNode* node,
 		std::unordered_map<uint32_t,uint32_t> &local_map, llvm::Value* arg,
 		std::unordered_map<uint32_t, llvm::Value*> &value_cache) {
 
@@ -77,8 +77,8 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 			break;
 		}
 		case rgd::Concat: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			uint32_t bits =  rc1->bits() + rc2->bits(); 
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
@@ -90,7 +90,7 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 			break;
 		}
 		case rgd::Extract: {
-			const RealAstNode* rc = &node->children(0);
+			const AstNode* rc = &node->children(0);
 			llvm::Value* c = codegen(Builder,rc, local_map, arg, value_cache);
 			ret = Builder.CreateTrunc(
 					Builder.CreateLShr(c, node->index()),
@@ -98,44 +98,44 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 			break;
 		}
 		case rgd::ZExt: {
-			const RealAstNode* rc = &node->children(0);
+			const AstNode* rc = &node->children(0);
 			llvm::Value* c = codegen(Builder,rc, local_map, arg, value_cache);
 			ret = Builder.CreateZExtOrTrunc(c, llvm::Type::getIntNTy(Builder.getContext(), node->bits()));
 			break;
 		}
 		case rgd::SExt: {
-			const RealAstNode* rc = &node->children(0);
+			const AstNode* rc = &node->children(0);
 			llvm::Value* c = codegen(Builder,rc,local_map, arg, value_cache);
 			ret = Builder.CreateSExt(c, llvm::Type::getIntNTy(Builder.getContext(), node->bits()));
 			break;
 		}
 		case rgd::Add: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			ret = Builder.CreateAdd(c1, c2);
 			break;
 		}
 		case rgd::Sub: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			ret = Builder.CreateSub(c1, c2);
 			break;
 		}
 		case rgd::Mul: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			ret = Builder.CreateMul(c1, c2);
 			break;
 		}
 		case rgd::UDiv: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			llvm::Value* VA0 = llvm::ConstantInt::get(llvm::Type::getIntNTy(Builder.getContext(), node->bits()), 0);
@@ -146,8 +146,8 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 			break;
 		}
 		case rgd::SDiv: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			llvm::Value* VA0 = llvm::ConstantInt::get(llvm::Type::getIntNTy(Builder.getContext(), node->bits()), 0);
@@ -158,8 +158,8 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 			break;
 		}
 		case rgd::URem: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			llvm::Value* VA0 = llvm::ConstantInt::get(llvm::Type::getIntNTy(Builder.getContext(), node->bits()), 0);
@@ -170,8 +170,8 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 			break;
 		}
 		case rgd::SRem: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			llvm::Value* VA0 = llvm::ConstantInt::get(llvm::Type::getIntNTy(Builder.getContext(), node->bits()), 0);
@@ -182,60 +182,60 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 			break;
 		}
 		case rgd::Neg: {
-			const RealAstNode* rc = &node->children(0);
+			const AstNode* rc = &node->children(0);
 			llvm::Value* c = codegen(Builder,rc, local_map, arg, value_cache);
 			ret = Builder.CreateNeg(c);
 			break;
 		}
 		case rgd::Not: {
-			const RealAstNode* rc = &node->children(0);
+			const AstNode* rc = &node->children(0);
 			llvm::Value* c = codegen(Builder,rc, local_map, arg, value_cache);
 			ret = Builder.CreateNot(c);
 			break;
 		}
 		case rgd::And: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			ret = Builder.CreateAnd(c1, c2);
 			break;
 		}
 		case rgd::Or: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			ret = Builder.CreateOr(c1, c2);
 			break;
 		}
 		case rgd::Xor: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			ret = Builder.CreateXor(c1, c2);
 			break;
 		}
 		case rgd::Shl: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			ret = Builder.CreateShl(c1, c2);
 			break;
 		}
 		case rgd::LShr: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			ret = Builder.CreateLShr(c1, c2);
 			break;
 		}
 		case rgd::AShr: {
-			const RealAstNode* rc1 = &node->children(0);
-			const RealAstNode* rc2 = &node->children(1);
+			const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
 			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
 			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
 			ret = Builder.CreateAShr(c1, c2);
@@ -304,9 +304,9 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 			std::cerr << "ITE expr codegen" << std::endl;
 #endif
 #if 0
-			const RealAstNode* rcond = &node->children(0);
-			const RealAstNode* rtv = &node->children(1);
-			const RealAstNode* rfv = &node->children(2);
+			const AstNode* rcond = &node->children(0);
+			const AstNode* rtv = &node->children(1);
+			const AstNode* rfv = &node->children(2);
 			llvm::Value* cond = codegen(rcond, local_map, arg, value_cache);
 			llvm::Value* tv = codegen(rtv, local_map, arg, value_cache);
 			llvm::Value* fv = codegen(rfv, local_map, arg, value_cache);
