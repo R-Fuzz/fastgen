@@ -23,17 +23,43 @@ pub fn scan_tasks(labels: &Vec<u32>, tasks: &mut Vec<SearchTask>, table: &UnionT
   }
 }
 
+fn append_meta(node: &mut AstNode, 
+              local_map: &HashMap<u32,u32>, 
+              input_args: &Vec<(bool,u64)>,
+              inputs: &Vec<(u32,u8)>,
+              const_num: u32) {
+  let mut meta = NodeMeta::new();
+  for (&k,&v) in local_map.iter() {
+    let mut amap = Mapping::new();
+    amap.set_k(k);
+    amap.set_v(v);
+    meta.mut_map().push(amap);
+  }
+  for arg in input_args {
+    let mut aarg = Arg::new();
+    aarg.set_isinput(arg.0);
+    aarg.set_v(arg.1);
+    meta.mut_args().push(aarg);
+  }
+  for input in inputs {
+    let mut ainput = Input::new();
+    ainput.set_offset(input.0);
+    ainput.set_iv(input.1 as u32);
+    meta.mut_inputs().push(ainput);
+  }
+  meta.set_const_num(const_num);
+  node.set_meta(meta);
+}
+
+
 fn analyze_meta_one(node: &mut AstNode) {
-  print_node(node);
   let mut local_map = HashMap::new();
   let mut input_args = Vec::new();
   let mut inputs = Vec::new();
   let mut visited = HashSet::new();
   let mut const_num = 0;
   map_args(node, &mut local_map, &mut input_args, &mut inputs, &mut visited, &mut const_num);
-  println!("local map {:?}", local_map);
-  println!("inputs {:?}", inputs);
-  println!("input args {:?}", input_args);
+  append_meta(node, &local_map, &input_args, &inputs, const_num);
 }
 
 fn analyze_meta(cons: &mut Constraint) {
@@ -64,7 +90,7 @@ mod tests {
     let labels = read_pipe();
     scan_tasks(&labels, &mut tasks, table); 
     for task in tasks {
-      print_task(&task);
+      //print_task(&task);
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { print_buffer(task_ser.as_ptr(), task_ser.len() as u32); }
     }

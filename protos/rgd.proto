@@ -25,6 +25,7 @@ message NodeMeta {
   repeated Mapping map = 1;
   repeated Arg args = 2;
   repeated Input inputs = 3;
+  uint32 const_num = 4;
 }
 
 message Mapping {

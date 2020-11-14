@@ -102,6 +102,16 @@ static void do_print(const AstNode* node) {
 void printNode(const AstNode* node) {
 	do_print(node);
 	std::cerr << std::endl;
+  for (auto amap : node->meta().map()) {
+    printf("k is %u, v is %u\n", amap.k(), amap.v());
+  }
+  for (auto aarg : node->meta().args()) {
+    printf("isinput is %u, v is %u\n", aarg.isinput(), aarg.v());
+  }
+  for (auto ainput : node->meta().inputs()) {
+    printf("offset is %u, iv is %u\n", ainput.offset(), ainput.iv());
+  }
+  printf("num_const is %u\n", node->meta().const_num());
 }
 
 

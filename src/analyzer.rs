@@ -52,7 +52,6 @@ pub fn map_args(node: &mut AstNode,
         let arg_index;
         if !local_map.contains_key(&offset) {
           arg_index = input_args.len();
-          println!("insert offset and arg_index");
           local_map.insert(offset,arg_index as u32);
           input_args.push((true,0));
           inputs.push((offset, iv as u8 & 0xff));

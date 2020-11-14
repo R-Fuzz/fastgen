@@ -24,6 +24,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_bits(8 as u32);
                     ret.set_index(info.op1 as u32);
                     ret.set_name("read".to_string());
+                    //TODO set value field of read for iv
                     ret.set_label(0);
                     return;
                   },

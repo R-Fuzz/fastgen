@@ -44,7 +44,6 @@ pub fn print_node(node: &AstNode) {
 
 pub fn print_task(task: &SearchTask) {
   for cons in task.get_constraints() {
-    println!("Op is {}", cons.get_comparison());
     print_node(cons.get_left());
     print_node(cons.get_right());
   }
