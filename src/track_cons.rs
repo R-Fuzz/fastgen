@@ -1,7 +1,7 @@
 use crate::rgd::*;
 use crate::union_table::*;
 use crate::union_to_ast::*;
-use crate::util::*;
+//use crate::util::*;
 use crate::analyzer::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -9,13 +9,10 @@ use std::collections::HashSet;
 
 pub fn scan_tasks(labels: &Vec<u32>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
   for &label in labels {
-    let mut left = AstNode::new();
-    let mut right = AstNode::new();
+    let mut node = AstNode::new();
     let mut cons = Constraint::new();
-    let op = get_one_constraint(label, &mut left, &mut right, table);
-    cons.set_left(left);
-    cons.set_right(right);
-    cons.set_comparison(to_rgd_op(op));
+    get_one_constraint(label, &mut node, table);
+    cons.set_node(node);
     analyze_meta(&mut cons);
     let mut task = SearchTask::new();
     task.mut_constraints().push(cons);
@@ -23,7 +20,7 @@ pub fn scan_tasks(labels: &Vec<u32>, tasks: &mut Vec<SearchTask>, table: &UnionT
   }
 }
 
-fn append_meta(node: &mut AstNode, 
+fn append_meta(cons: &mut Constraint, 
               local_map: &HashMap<u32,u32>, 
               input_args: &Vec<(bool,u64)>,
               inputs: &Vec<(u32,u8)>,
@@ -48,24 +45,20 @@ fn append_meta(node: &mut AstNode,
     meta.mut_inputs().push(ainput);
   }
   meta.set_const_num(const_num);
-  node.set_meta(meta);
+  cons.set_meta(meta);
 }
 
 
-fn analyze_meta_one(node: &mut AstNode) {
+fn analyze_meta(cons: &mut Constraint) {
   let mut local_map = HashMap::new();
   let mut input_args = Vec::new();
   let mut inputs = Vec::new();
   let mut visited = HashSet::new();
   let mut const_num = 0;
-  map_args(node, &mut local_map, &mut input_args, &mut inputs, &mut visited, &mut const_num);
-  append_meta(node, &local_map, &input_args, &inputs, const_num);
+  map_args(cons.mut_node(), &mut local_map, &mut input_args, &mut inputs, &mut visited, &mut const_num);
+  append_meta(cons, &local_map, &input_args, &inputs, const_num);
 }
 
-fn analyze_meta(cons: &mut Constraint) {
-  analyze_meta_one(cons.mut_left());
-  analyze_meta_one(cons.mut_right());
-}
 
 #[cfg(test)]
 mod tests {
@@ -73,6 +66,7 @@ mod tests {
   use crate::cpp_interface::*;
   use protobuf::Message;
   use crate::fifo::*;
+  use crate::util::*;
 
 #[test]
   fn test_scan() {
@@ -90,7 +84,7 @@ mod tests {
     let labels = read_pipe();
     scan_tasks(&labels, &mut tasks, table); 
     for task in tasks {
-      //print_task(&task);
+      print_task(&task);
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { print_buffer(task_ser.as_ptr(), task_ser.len() as u32); }
     }

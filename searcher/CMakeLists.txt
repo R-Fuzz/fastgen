@@ -13,6 +13,10 @@ if (LLVM_FOUND)
 else()
   message(FATAL_ERROR "You haven't install LLVM !")
 endif()
+
+include_directories(${LLVM_INCLUDE_DIRS})
+add_definitions(${LLVM_DEFINITIONS})
+
 # Proto file
 get_filename_component(rgd_proto "../protos/rgd.proto" ABSOLUTE)
 get_filename_component(rgd_proto_path "${rgd_proto}" PATH)
@@ -39,6 +43,9 @@ add_library(gd
   parser.cc
   ${rgd_proto_srcs}
 )
+
+target_link_libraries(gd
+  LLVM)
 
 set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test) 
 set(CMAKE_TEST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}) 

@@ -1,4 +1,4 @@
-cd core
+cd searcher
 mkdir -p build
 cd build
 cmake .. && make -j

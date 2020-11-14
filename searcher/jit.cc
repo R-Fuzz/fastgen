@@ -18,11 +18,14 @@
 #include "rgd.pb.h"
 #include "rgd_op.h"
 #include "util.h"
+#include "rgdJit.h"
 #include <iostream>
 #include <unordered_map>
 
 using namespace llvm;
 using namespace rgd;
+
+extern std::unique_ptr<GradJit> JIT;// = make_unique<GradJit>();
 
 //Generate code for a AST node.
 //There should be no relational (Equal, Distinct, Ult, Ule, Ugt, Uge, Sle, Sle, Sgt, Sge) operators in the node
@@ -324,5 +327,48 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 	}
 
 	return ret; 
+}
+
+int addFunction(const AstNode* request,
+		std::unordered_map<uint32_t,uint32_t> &local_map,
+    uint64_t id ) {
+
+	// Open a new module.
+	std::string moduleName = "rgdjit_m" + std::to_string(id);
+  std::string funcName = "rgdjit" + std::to_string(id);
+
+
+	auto TheCtx = llvm::make_unique<llvm::LLVMContext>();
+	auto TheModule = llvm::make_unique<Module>(moduleName, *TheCtx);
+	TheModule->setDataLayout(JIT->getDataLayout());
+	llvm::IRBuilder<> Builder(*TheCtx);
+
+
+	std::vector<llvm::Type*> input_type(1,
+			llvm::PointerType::getUnqual(Builder.getInt64Ty()));
+	llvm::FunctionType *funcType;
+	funcType = llvm::FunctionType::get(Builder.getInt64Ty(), input_type, false);
+	auto *fooFunc = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage,
+			funcName, TheModule.get());
+	auto *po = llvm::BasicBlock::Create(Builder.getContext(), "entry", fooFunc);
+	Builder.SetInsertPoint(po);
+	uint32_t idx = 0;
+
+	auto args = fooFunc->arg_begin();
+	llvm::Value* var = &(*args);
+	std::unordered_map<uint32_t, llvm::Value*> value_cache;
+	auto *body = codegen(Builder, request, local_map, var, value_cache);
+	Builder.CreateRet(body);
+
+
+	llvm::raw_ostream *stream = &llvm::outs();
+	llvm::verifyFunction(*fooFunc, stream);
+#if 1
+	//	TheModule->print(llvm::errs(),nullptr);
+#endif
+
+	JIT->addModule(std::move(TheModule),std::move(TheCtx));
+
+	return 0;
 }
 

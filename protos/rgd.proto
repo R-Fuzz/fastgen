@@ -16,9 +16,8 @@ message SearchTask {
 //comparison could be one of the 10:
 //Equal, Distinct, Ugt, Uge, Ult, Ule, Sgt, Sge, Slt, Sle
 message Constraint {
-  uint32 comparison = 1;
-  AstNode left = 2;
-  AstNode right = 3;
+  AstNode node = 1;
+  NodeMeta meta = 2;
 }
 
 message NodeMeta {
@@ -59,7 +58,6 @@ message AstNode {
   //hash caculated after arggument mapping
   uint32 hash = 6;
   repeated AstNode children = 7;
-  NodeMeta meta = 8;
   //for debug
   string name = 9;  
   uint32 label = 10;

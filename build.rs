@@ -9,4 +9,5 @@ fn main() {
     .expect("protoc");
 
   println!(r"cargo:rustc-link-search=searcher/build");
+  println!(r"cargo:rustc-link-search=/usr/lib/llvm-9/lib");
 }

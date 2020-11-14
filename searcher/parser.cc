@@ -1,29 +1,21 @@
 #include "task.h"
 #include "rgd.pb.h"
 #include "rgd_op.h"
+#include "jit.h"
 using namespace rgd;
 
-static void append_meta(std::shared_ptr<Cons> cons, const AstNode* node, int left_right) {
-  if (left_right) {
-    for (auto amap : node->meta().map()) {
-      cons->local_map_left.insert({amap.k(), amap.v()});
-    }
-    for (auto aarg : node->meta().args()) {
-      cons->input_args_left.push_back({aarg.isinput(), aarg.v()});
-    }
-    for (auto ainput : node->meta().inputs()) {
-      cons->inputs_left.insert({ainput.offset(), ainput.iv()});
-    }
-  } else {
-    for (auto amap : node->meta().map()) {
-      cons->local_map_right.insert({amap.k(), amap.v()});
-    }
-    for (auto aarg : node->meta().args()) {
-      cons->input_args_right.push_back({aarg.isinput(), aarg.v()});
-    }
-    for (auto ainput : node->meta().inputs()) {
-      cons->inputs_right.insert({ainput.offset(), ainput.iv()});
-    }
+static std::atomic_uint64_t uuid;
+
+
+static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
+  for (auto amap : c->meta().map()) {
+    cons->local_map.insert({amap.k(), amap.v()});
+  }
+  for (auto aarg : c->meta().args()) {
+    cons->input_args.push_back({aarg.isinput(), aarg.v()});
+  }
+  for (auto ainput : c->meta().inputs()) {
+    cons->inputs.insert({ainput.offset(), ainput.iv()});
   }
 }
 
@@ -35,16 +27,13 @@ FUT* construct_task(SearchTask* task) {
   fut->num_minimal_optima = 0;
   for (auto c : task->constraints()) {
     std::shared_ptr<Cons> cons = std::make_shared<Cons>();
-    if (c.left().kind() != rgd::Constant) {
-      append_meta(cons, &c.left(), 1);
+    if (c.node().kind() != rgd::Constant) {
+      append_meta(cons, &c);
+      uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
+      addFunction(&c.node(), cons->local_map, id);
     } else {
-      cons->is_left_const = true;
-    }
-    if (c.right().kind() != rgd::Constant) {
-      append_meta(cons, &c.right(), 0);
-    } else {
-      cons->is_left_const = true;
+      cons->is_const = true;
     }
   }
-  
+
 }

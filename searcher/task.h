@@ -11,24 +11,17 @@ typedef uint64_t(*test_fn_type)(uint64_t*);
 
 class Cons {
 public:
-	test_fn_type fn_left;
-	test_fn_type fn_right;
+	test_fn_type fn;
 	uint32_t comparison;
 
 	//map the offset to the idx in inputs_args
-	std::unordered_map<uint32_t,uint32_t> local_map_left;
-	std::unordered_map<uint32_t,uint32_t> local_map_right;
+	std::unordered_map<uint32_t,uint32_t> local_map;
 	// if const {false, const value}, if symbolic {true, index in the inputs}
-	std::vector<std::pair<bool, uint64_t>> input_args_right;
-	std::vector<std::pair<bool, uint64_t>> input_args_left;
+	std::vector<std::pair<bool, uint64_t>> input_args;
 	//map the offset to iv
-	std::unordered_map<uint32_t,uint8_t> inputs_left;
-	std::unordered_map<uint32_t,uint8_t> inputs_right;
-	uint32_t const_num_left;
-	uint32_t const_num_right;
-  bool is_left_const;
-  bool is_right_const;
-  uint64_t cons_op;
+	std::unordered_map<uint32_t,uint8_t> inputs;
+	uint32_t const_num;
+  bool is_const;
 };
 
 struct FUT {  
@@ -56,35 +49,24 @@ struct FUT {
 		std::unordered_map<uint32_t,uint32_t> sym_map;
 		uint32_t gidx = 0;
 		for (size_t i =0; i< constraints.size(); i++) {
-			for (auto itr : constraints[i]->local_map_left) {
+			for (auto itr : constraints[i]->local_map) {
 				auto gitr = sym_map.find(itr.first);
 				if (gitr == sym_map.end()) {
 					gidx = inputs.size();
 					sym_map[itr.first] = gidx;
-					inputs.push_back(std::make_pair(itr.first,constraints[i]->inputs_left[itr.first]));
+					inputs.push_back(std::make_pair(itr.first,constraints[i]->inputs[itr.first]));
 				} else {
 					gidx = gitr->second;
 				}
-				constraints[i]->input_args_left[itr.second].second = gidx;  //update input_args
-			}
-      for (auto itr : constraints[i]->local_map_right) {
-				auto gitr = sym_map.find(itr.first);
-				if (gitr == sym_map.end()) {
-					gidx = inputs.size();
-					sym_map[itr.first] = gidx;
-					inputs.push_back(std::make_pair(itr.first,constraints[i]->inputs_right[itr.first]));
-				} else {
-					gidx = gitr->second;
-				}
-				constraints[i]->input_args_right[itr.second].second = gidx;  //update input_args
+				constraints[i]->input_args[itr.second].second = gidx;  //update input_args
 			}
 		}
 
 		for (size_t i=0; i < constraints.size(); i++) {
-			if (max_const_num < constraints[i]->const_num_right)
-				max_const_num = constraints[i]->const_num_left;
-			if (max_const_num < constraints[i]->const_num_left)
-				max_const_num = constraints[i]->const_num_right;
+			if (max_const_num < constraints[i]->const_num)
+				max_const_num = constraints[i]->const_num;
+			if (max_const_num < constraints[i]->const_num)
+				max_const_num = constraints[i]->const_num;
 		}
 
 		scratch_args = (uint64_t*)malloc((inputs.size() + max_const_num) * sizeof(uint64_t));
