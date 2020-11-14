@@ -106,7 +106,7 @@ void printNode(const AstNode* node) {
     printf("k is %u, v is %u\n", amap.k(), amap.v());
   }
   for (auto aarg : node->meta().args()) {
-    printf("isinput is %u, v is %u\n", aarg.isinput(), aarg.v());
+    printf("isinput is %u, v is %lu\n", aarg.isinput(), aarg.v());
   }
   for (auto ainput : node->meta().inputs()) {
     printf("offset is %u, iv is %u\n", ainput.offset(), ainput.iv());

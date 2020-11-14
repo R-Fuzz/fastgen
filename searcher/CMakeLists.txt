@@ -30,8 +30,9 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 add_library(gd
   STATIC
-  lib.cc
+  interface.cc
   jit.cc
   util.cc
+  parser.cc
   ${rgd_proto_srcs}
 )
