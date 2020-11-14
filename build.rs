@@ -8,5 +8,5 @@ fn main() {
     .run()
     .expect("protoc");
 
-  println!(r"cargo:rustc-link-search=core/build");
+  println!(r"cargo:rustc-link-search=searcher/build");
 }

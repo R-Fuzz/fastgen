@@ -12,6 +12,7 @@ void parse_bytes(const unsigned char* input, unsigned int input_length) {
   SearchTask task;
   task.ParseFromCodedStream(&s);
   printTask(&task);
+  saveRequest(task, "test.data");
 }
 
 extern "C" {

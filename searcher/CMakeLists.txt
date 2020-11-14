@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.5.1)
 
 project(rgd C CXX)
 
+## set up test
+enable_testing()
+set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test) 
+add_subdirectory(self_test)
+
 find_package(LLVM 9 REQUIRED CONFIG)
 
 if (LLVM_FOUND)
