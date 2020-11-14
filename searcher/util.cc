@@ -116,6 +116,7 @@ void printNode(const AstNode* node) {
 
 
 void printTask(const SearchTask* task) {
+  printf("print task\n");
   for(auto cons : task->constraints())  {
     std::cerr << get_name(cons.comparison()) << std::endl;
     printNode(&cons.left());
@@ -149,6 +150,36 @@ static bool writeDelimitedTo(
 	return true;
 }
 
+bool readDelimitedFrom(
+		google::protobuf::io::ZeroCopyInputStream* rawInput,
+		google::protobuf::MessageLite* message) {
+	// We create a new coded stream for each message.  Don't worry, this is fast,
+	// and it makes sure the 64MB total size limit is imposed per-message rather
+	// than on the whole stream.  (See the CodedInputStream interface for more
+	// info on this limit.)
+	google::protobuf::io::CodedInputStream input(rawInput);
+
+  input.SetRecursionLimit(10000);
+
+	// Read the size.
+	uint32_t size;
+	if (!input.ReadVarint32(&size)) return false;
+
+	// Tell the stream not to read beyond that size.
+	google::protobuf::io::CodedInputStream::Limit limit =
+		input.PushLimit(size);
+
+	// Parse the message.
+	if (!message->MergeFromCodedStream(&input)) return false;
+	if (!input.ConsumedEntireMessage()) return false;
+
+	// Release the limit.
+	input.PopLimit(limit);
+
+	return true;
+}
+
+
 bool saveRequest(
 			const google::protobuf::MessageLite& message, 
 			const char* path) {
@@ -161,4 +192,5 @@ bool saveRequest(
 		close(fd);
 		return suc;
 }
+
 

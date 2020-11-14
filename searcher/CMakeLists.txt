@@ -3,10 +3,8 @@ cmake_minimum_required(VERSION 3.5.1)
 project(rgd C CXX)
 
 ## set up test
-enable_testing()
-set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test) 
-add_subdirectory(self_test)
 
+enable_testing()
 find_package(LLVM 9 REQUIRED CONFIG)
 
 if (LLVM_FOUND)
@@ -41,3 +39,7 @@ add_library(gd
   parser.cc
   ${rgd_proto_srcs}
 )
+
+set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test) 
+set(CMAKE_TEST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}) 
+add_subdirectory(self_test)
