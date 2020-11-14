@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
-use crate::rgd::*;
-use num_traits::FromPrimitive;
+use crate::rgd::*; use num_traits::FromPrimitive;
 use crate::op_def::*;
 use crate::util::*;
 //Take a AST node as input, traverse the subtree using post-order and
@@ -22,7 +21,7 @@ pub fn map_args(node: &mut AstNode,
                 inputs: &mut Vec<(u32,u8)>,
                 visited: &mut HashSet<u32>,
                 const_num: &mut u32) {
-  for i in 1..node.get_children().len() {
+  for i in 0..node.get_children().len() {
     let c  = &mut node.mut_children()[i];
     let label = c.get_label();
     if label!=0 && visited.contains(&label) {
@@ -51,8 +50,9 @@ pub fn map_args(node: &mut AstNode,
       for i in 0..length {
         let offset = node.get_index() + i;
         let arg_index;
-        if local_map.contains_key(&offset) {
+        if !local_map.contains_key(&offset) {
           arg_index = input_args.len();
+          println!("insert offset and arg_index");
           local_map.insert(offset,arg_index as u32);
           input_args.push((true,0));
           inputs.push((offset, iv as u8 & 0xff));

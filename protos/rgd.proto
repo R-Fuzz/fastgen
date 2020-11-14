@@ -21,6 +21,27 @@ message Constraint {
   AstNode right = 3;
 }
 
+message NodeMeta {
+  repeated Mapping map = 1;
+  repeated Arg args = 2;
+  repeated Input inputs = 3;
+}
+
+message Mapping {
+  uint32 k = 1;
+  uint32 v = 2;
+}
+
+message Arg {
+  bool isinput =  1;
+  uint64 v = 2;
+}
+
+message Input {
+  uint32 offset = 1;
+  uint32 iv = 2; //this should be u8, but protobuf does not support
+}
+
 message AstNode {
   // operator
   uint32 kind = 1; 
@@ -37,9 +58,10 @@ message AstNode {
   //hash caculated after arggument mapping
   uint32 hash = 6;
   repeated AstNode children = 7;
+  NodeMeta meta = 8;
   //for debug
-  string name = 8;  
-  uint32 label = 9;
+  string name = 9;  
+  uint32 label = 10;
 }
 
 //-------------------------------------------------------
