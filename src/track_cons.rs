@@ -86,7 +86,7 @@ mod tests {
     for task in tasks {
       print_task(&task);
       let task_ser = task.write_to_bytes().unwrap();
-      unsafe { print_buffer(task_ser.as_ptr(), task_ser.len() as u32); }
+      unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32); }
     }
   }
 }
