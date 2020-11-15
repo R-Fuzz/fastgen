@@ -24,5 +24,9 @@ int main() {
   readDelimitedFrom(rawInput,&task);
   printTask(&task);
   FUT* fut = construct_task(&task);
+  std::unordered_map<uint32_t, uint8_t> rgd_solution;
+  fut->rgd_solution = &rgd_solution;
   gd_search(fut); 
+  generate_input(rgd_solution, "/home/cju/test/i", "/home/cju/test", 1);
 }
+

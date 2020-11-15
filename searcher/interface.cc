@@ -24,10 +24,10 @@ using namespace rgd;
 using namespace google::protobuf::io;
 
 //global variables
-std::unique_ptr<GradJit> JIT;// = make_unique<GradJit>();
+std::unique_ptr<GradJit> JIT;
 
 
-void parse_bytes(const unsigned char* input, unsigned int input_length) {
+void save_task(const unsigned char* input, unsigned int input_length) {
   CodedInputStream s(input,input_length);
   s.SetRecursionLimit(10000);
   SearchTask task;
@@ -45,8 +45,8 @@ void init_searcher() {
 
 
 extern "C" {
-  void print_buffer(const unsigned char* input, unsigned int input_length) {
-    parse_bytes(input,input_length);
+  void submit_task(const unsigned char* input, unsigned int input_length) {
+    save_task(input,input_length);
   }
 };
 

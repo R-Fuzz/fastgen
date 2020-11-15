@@ -8,7 +8,9 @@ foreach(test_src ${test_srcs})
   get_filename_component(test_name ${test_src} NAME_WE)
 
   # add normal executable
-  add_executable(${test_name} ${test_src} ${rgd_proto_srcs})
+  #add_executable(${test_name} ${test_src} ${rgd_proto_srcs})
+  add_executable(${test_name} ${test_src})
+  #add_dependencies(${test_name} proto)
 
   target_link_libraries(${test_name}
     gd protobuf ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})

@@ -5,6 +5,9 @@ project(rgd C CXX)
 ## set up test
 
 enable_testing()
+set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test) 
+set(CMAKE_TEST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}) 
+
 find_package(LLVM 9 REQUIRED CONFIG)
 
 if (LLVM_FOUND)
@@ -22,6 +25,7 @@ get_filename_component(rgd_proto "../protos/rgd.proto" ABSOLUTE)
 get_filename_component(rgd_proto_path "${rgd_proto}" PATH)
 
 # Generated sources
+add_custom_target(proto ALL DEPENDS ${rgd_proto_srcs} ${rgd_proto_hdrs})
 set(rgd_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/rgd.pb.cc")
 set(rgd_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/rgd.pb.h")
 add_custom_command(
@@ -34,6 +38,7 @@ add_custom_command(
 
 
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
+
 
 add_library(gd
   STATIC
@@ -50,6 +55,4 @@ add_library(gd
 target_link_libraries(gd
   LLVM)
 
-set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test) 
-set(CMAKE_TEST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}) 
 add_subdirectory(self_test)
