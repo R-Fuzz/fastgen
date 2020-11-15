@@ -41,6 +41,9 @@ add_library(gd
   jit.cc
   util.cc
   parser.cc
+  gd.cc
+  input.cc
+  grad.cc
   ${rgd_proto_srcs}
 )
 

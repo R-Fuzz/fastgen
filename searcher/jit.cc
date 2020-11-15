@@ -19,6 +19,7 @@
 #include "rgd_op.h"
 #include "util.h"
 #include "rgdJit.h"
+#include "task.h"
 #include <iostream>
 #include <unordered_map>
 
@@ -26,6 +27,7 @@ using namespace llvm;
 using namespace rgd;
 
 extern std::unique_ptr<GradJit> JIT;// = make_unique<GradJit>();
+const int RET_OFFSET = 2; //the first two slots of the arguments for reseved for the left and right operands
 
 //Generate code for a AST node.
 //There should be no relational (Equal, Distinct, Ult, Ule, Ugt, Uge, Sle, Sle, Sgt, Sge) operators in the node
@@ -58,7 +60,7 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 			uint32_t length = node->bits()/8;
 
 			llvm::Value* idx[1];
-			idx[0] = llvm::ConstantInt::get(Builder.getInt32Ty(),start);
+			idx[0] = llvm::ConstantInt::get(Builder.getInt32Ty(),start+RET_OFFSET);
 			ret = Builder.CreateLoad(Builder.CreateGEP(arg,idx));
 			ret = Builder.CreateTrunc(ret, llvm::Type::getIntNTy(Builder.getContext(),node->bits()));
 			break;
@@ -68,10 +70,10 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 			uint32_t start = local_map[node->index()];
 			size_t length = node->bits()/8;
 			llvm::Value* idx[1];
-			idx[0] = llvm::ConstantInt::get(Builder.getInt32Ty(),start);
+			idx[0] = llvm::ConstantInt::get(Builder.getInt32Ty(),start+RET_OFFSET);
 			ret = Builder.CreateLoad(Builder.CreateGEP(arg,idx));
 			for(uint32_t k = 1; k < length; k++) {
-				idx[0] = llvm::ConstantInt::get(Builder.getInt32Ty(),start+k);
+				idx[0] = llvm::ConstantInt::get(Builder.getInt32Ty(),start+k+RET_OFFSET);
 				llvm::Value* tmp = Builder.CreateLoad(Builder.CreateGEP(arg,idx));
 				tmp = Builder.CreateShl(tmp, 8 * k);
 				ret =Builder.CreateOr(ret,tmp);
@@ -246,44 +248,235 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 		}
 		// all the following ICmp expressions should be top level
 		case rgd::Equal: {
-			assert(false && "Equal expression");
+      const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
+			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
+			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
+			llvm::Value* c1e = Builder.CreateZExt(c1,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* c2e = Builder.CreateZExt(c2,llvm::Type::getIntNTy(Builder.getContext(),64));
+
+			llvm::Value* idx[1];
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),0);
+			Builder.CreateStore(c1e, Builder.CreateGEP(arg,idx));
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),1);
+			Builder.CreateStore(c2e, Builder.CreateGEP(arg,idx));
+			llvm::Value* cond = Builder.CreateICmpUGE(c1e,c2e);
+			//(int64_t) 0
+			llvm::Value* tv = Builder.CreateSub(c1e,c2e,"equal");
+			llvm::Value* fv = Builder.CreateSub(c2e,c1e,"equal");
+			ret = Builder.CreateSelect(cond, tv, fv);
 			break;
 		}
 		case rgd::Distinct: {
-			assert(false && "Distinct expression");
+      const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
+			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
+			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
+			llvm::Value* c1e = Builder.CreateZExt(c1,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* c2e = Builder.CreateZExt(c2,llvm::Type::getIntNTy(Builder.getContext(),64));
+
+			llvm::Value* idx[1];
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),0);
+			Builder.CreateStore(c1e, Builder.CreateGEP(arg,idx));
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),1);
+			Builder.CreateStore(c2e, Builder.CreateGEP(arg,idx));
+
+			llvm::Value* cond = Builder.CreateICmpEQ(c1e,c2e);
+      llvm::APInt value1(64, 1, false);
+      llvm::APInt value0(64, 0, false);
+			//(int64_t) 0
+      llvm::Value* tv = llvm::ConstantInt::get(Builder.getContext(),value1);
+      llvm::Value* fv = llvm::ConstantInt::get(Builder.getContext(),value0);
+			ret = Builder.CreateSelect(cond, tv, fv);
 			break;
 		}
 		//for all relation comparison, we extend to 64-bit
 		case rgd::Ult: {
-			assert(false && "Ult expression");
+      const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
+			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
+			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
+			//assert(rc1->bits() != 64 && "64-bit comparison");
+			//extend to 64bit
+			llvm::Value* c1e = Builder.CreateZExt(c1,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* c2e = Builder.CreateZExt(c2,llvm::Type::getIntNTy(Builder.getContext(),64));
+
+			llvm::Value* idx[1];
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),0);
+			Builder.CreateStore(c1e, Builder.CreateGEP(arg,idx));
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),1);
+			Builder.CreateStore(c2e, Builder.CreateGEP(arg,idx));
+
+			llvm::Value* cond = Builder.CreateICmpULT(c1e,c2e);
+			//(int64_t) 0
+			llvm::APInt value(64, 0, true);
+			llvm::APInt value1(64, 1, true);
+			llvm::Value* tv = llvm::ConstantInt::get(Builder.getContext(), value);
+			llvm::Value* fv = Builder.CreateAdd(Builder.CreateSub(c1e, c2e, "Ult"), 
+					llvm::ConstantInt::get(Builder.getContext(),value1));
+			ret = Builder.CreateSelect(cond, tv, fv);
 			break;
 		}
 		case rgd::Ule: {
-			assert(false && "Ule expression");
+      const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
+			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
+			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
+
+			llvm::Value* c1e = Builder.CreateZExt(c1,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* c2e = Builder.CreateZExt(c2,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* cond = Builder.CreateICmpULE(c1e,c2e);
+
+			llvm::Value* idx[1];
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),0);
+			Builder.CreateStore(c1e, Builder.CreateGEP(arg,idx));
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),1);
+			Builder.CreateStore(c2e, Builder.CreateGEP(arg,idx));
+
+			llvm::APInt value(64, 0, true);
+			llvm::Value* tv = llvm::ConstantInt::get(Builder.getContext(), value);
+			llvm::Value* fv = Builder.CreateSub(c1e, c2e, "Ule");
+			ret = Builder.CreateSelect(cond, tv, fv);
 			break;
 		}
 		case rgd::Ugt: {
-			assert(false && "Ugt expression");
+      const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
+			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
+			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
+
+			llvm::Value* c1e = Builder.CreateZExt(c1,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* c2e = Builder.CreateZExt(c2,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* cond = Builder.CreateICmpUGT(c1e,c2e);
+
+			llvm::Value* idx[1];
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),0);
+			Builder.CreateStore(c1e, Builder.CreateGEP(arg,idx));
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),1);
+			Builder.CreateStore(c2e, Builder.CreateGEP(arg,idx));
+
+			llvm::APInt value(64, 0, true);
+			llvm::APInt value1(64, 1, true);
+			llvm::Value* tv = llvm::ConstantInt::get(Builder.getContext(), value);
+			llvm::Value* fv = Builder.CreateAdd(Builder.CreateSub(c2e, c1e, "Ugt"), 
+					llvm::ConstantInt::get(Builder.getContext(),value1));
+			ret = Builder.CreateSelect(cond, tv, fv);
 			break;
 		}
 		case rgd::Uge: {
-			assert(false && "Uge expression");
+      const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
+			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
+			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
+
+			llvm::Value* c1e = Builder.CreateZExt(c1,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* c2e = Builder.CreateZExt(c2,llvm::Type::getIntNTy(Builder.getContext(),64));
+
+			llvm::Value* idx[1];
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),0);
+			Builder.CreateStore(c1e, Builder.CreateGEP(arg,idx));
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),1);
+			Builder.CreateStore(c2e, Builder.CreateGEP(arg,idx));
+			llvm::Value* cond = Builder.CreateICmpUGE(c1e,c2e);
+
+			llvm::APInt value(64, 0, true);
+			llvm::Value* tv = llvm::ConstantInt::get(Builder.getContext(), value);
+			llvm::Value* fv = Builder.CreateSub(c2e, c1e, "Uge");
+			ret = Builder.CreateSelect(cond, tv, fv);
 			break;
 		}
 		case rgd::Slt: {
-			assert(false && "Slt expression");
+      const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
+			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
+			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
+
+			llvm::Value* c1e = Builder.CreateSExt(c1,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* c2e = Builder.CreateSExt(c2,llvm::Type::getIntNTy(Builder.getContext(),64));
+
+			llvm::Value* idx[1];
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),0);
+			Builder.CreateStore(c1e, Builder.CreateGEP(arg,idx));
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),1);
+			Builder.CreateStore(c2e, Builder.CreateGEP(arg,idx));
+
+			llvm::Value* cond = Builder.CreateICmpSLT(c1e,c2e);
+			//(int64_t) 0
+			llvm::APInt value(64, 0, true);
+			llvm::APInt value1(64, 1, true);
+			llvm::Value* tv = llvm::ConstantInt::get(Builder.getContext(), value);
+			llvm::Value* fv = Builder.CreateAdd(Builder.CreateSub(c1e, c2e, "Slt"), 
+					llvm::ConstantInt::get(Builder.getContext(),value1));
+			ret = Builder.CreateSelect(cond, tv, fv);
 			break;
 		}
 		case rgd::Sle: {
-			assert(false && "Sle expression");
+      const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
+			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
+			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
+			//assert(rc1->bits() != 64 && "64-bit comparison");
+			//extend to 64bit
+			llvm::Value* c1e = Builder.CreateSExt(c1,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* c2e = Builder.CreateSExt(c2,llvm::Type::getIntNTy(Builder.getContext(),64));
+
+			llvm::Value* idx[1];
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),0);
+			Builder.CreateStore(c1e, Builder.CreateGEP(arg,idx));
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),1);
+			Builder.CreateStore(c2e, Builder.CreateGEP(arg,idx));
+
+			llvm::Value* cond = Builder.CreateICmpSLE(c1e,c2e);
+			//(int64_t) 0
+			llvm::APInt value(64, 0, true);
+			llvm::Value* tv = llvm::ConstantInt::get(Builder.getContext(), value);
+			llvm::Value* fv = Builder.CreateSub(c1e, c2e, "Sle");
+			ret = Builder.CreateSelect(cond, tv, fv);
 			break;
 		}
 		case rgd::Sgt: {
-			assert(false && "Sgt expression");
+      const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
+			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
+			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
+
+			llvm::Value* c1e = Builder.CreateSExt(c1,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* c2e = Builder.CreateSExt(c2,llvm::Type::getIntNTy(Builder.getContext(),64));
+
+			llvm::Value* idx[1];
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),0);
+			Builder.CreateStore(c1e, Builder.CreateGEP(arg,idx));
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),1);
+			Builder.CreateStore(c2e, Builder.CreateGEP(arg,idx));
+			llvm::Value* cond = Builder.CreateICmpSGT(c1e,c2e);
+			//(int64_t) 0
+			llvm::APInt value(64, 0, true);
+			llvm::APInt value1(64, 1, true);
+			llvm::Value* tv = llvm::ConstantInt::get(Builder.getContext(), value);
+			llvm::Value* fv = Builder.CreateAdd(Builder.CreateSub(c2e, c1e, "Sgt"), 
+					llvm::ConstantInt::get(Builder.getContext(),value1));
+			ret = Builder.CreateSelect(cond, tv, fv);
 			break;
 		}
 		case rgd::Sge: {
-			assert(false && "Sge expression");
+      const AstNode* rc1 = &node->children(0);
+			const AstNode* rc2 = &node->children(1);
+			llvm::Value* c1 = codegen(Builder,rc1, local_map, arg, value_cache);
+			llvm::Value* c2 = codegen(Builder,rc2, local_map, arg, value_cache);
+			llvm::Value* c1e = Builder.CreateSExt(c1,llvm::Type::getIntNTy(Builder.getContext(),64));
+			llvm::Value* c2e = Builder.CreateSExt(c2,llvm::Type::getIntNTy(Builder.getContext(),64));
+
+			llvm::Value* idx[1];
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),0);
+			Builder.CreateStore(c1e, Builder.CreateGEP(arg,idx));
+			idx[0]= llvm::ConstantInt::get(Builder.getInt32Ty(),1);
+			Builder.CreateStore(c2e, Builder.CreateGEP(arg,idx));
+
+			llvm::Value* cond = Builder.CreateICmpSGE(c1e,c2e);
+			llvm::APInt value(64, 0, true);
+			llvm::Value* tv = llvm::ConstantInt::get(Builder.getContext(), value);
+			llvm::Value* fv = Builder.CreateSub(c2e, c1e, "Sge");
+			ret = Builder.CreateSelect(cond, tv, fv);
 			break;
 		}
 		// this should never happen!
@@ -370,5 +563,13 @@ int addFunction(const AstNode* request,
 	JIT->addModule(std::move(TheModule),std::move(TheCtx));
 
 	return 0;
+}
+
+
+test_fn_type performJit(uint64_t id) {
+  std::string funcName = "rgdjit" + std::to_string(id);
+  auto ExprSymbol = JIT->lookup(funcName).get();
+  auto func = (uint64_t(*)(uint64_t*))ExprSymbol.getAddress();
+  return func;
 }
 

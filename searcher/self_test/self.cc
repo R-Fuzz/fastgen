@@ -7,7 +7,9 @@
 #include "rgd.pb.h"
 #include "util.h"
 #include "parser.h"
+#include "task.h"
 #include "interface.h"
+#include "gd.h"
 
 using namespace google::protobuf::io;
 
@@ -21,5 +23,6 @@ int main() {
   SearchTask task;
   readDelimitedFrom(rawInput,&task);
   printTask(&task);
-  construct_task(&task);
+  FUT* fut = construct_task(&task);
+  gd_search(fut); 
 }

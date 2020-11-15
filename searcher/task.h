@@ -21,7 +21,6 @@ public:
 	//map the offset to iv
 	std::unordered_map<uint32_t,uint8_t> inputs;
 	uint32_t const_num;
-  bool is_const;
 };
 
 struct FUT {  
@@ -65,11 +64,9 @@ struct FUT {
 		for (size_t i=0; i < constraints.size(); i++) {
 			if (max_const_num < constraints[i]->const_num)
 				max_const_num = constraints[i]->const_num;
-			if (max_const_num < constraints[i]->const_num)
-				max_const_num = constraints[i]->const_num;
 		}
 
-		scratch_args = (uint64_t*)malloc((inputs.size() + max_const_num) * sizeof(uint64_t));
+		scratch_args = (uint64_t*)malloc((2 + inputs.size() + max_const_num) * sizeof(uint64_t));
 	}
 
 };

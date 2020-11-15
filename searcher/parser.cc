@@ -17,6 +17,8 @@ static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
   for (auto ainput : c->meta().inputs()) {
     cons->inputs.insert({ainput.offset(), ainput.iv()});
   }
+  cons->comparison = c->node().kind(); 
+  cons->const_num = c->meta().const_num(); 
 }
 
 FUT* construct_task(SearchTask* task) {
@@ -27,13 +29,14 @@ FUT* construct_task(SearchTask* task) {
   fut->num_minimal_optima = 0;
   for (auto c : task->constraints()) {
     std::shared_ptr<Cons> cons = std::make_shared<Cons>();
-    if (c.node().kind() != rgd::Constant) {
-      append_meta(cons, &c);
-      uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
-      addFunction(&c.node(), cons->local_map, id);
-    } else {
-      cons->is_const = true;
-    }
+    assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
+    append_meta(cons, &c);
+    uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
+    addFunction(&c.node(), cons->local_map, id);
+    auto fn = performJit(id);
+    cons->fn = fn;
+    fut->constraints.push_back(cons);
   }
-
+  fut->finalize();
+  return fut;
 }
