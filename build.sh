@@ -1,7 +1,7 @@
-cd searcher
+cd fastgen/searcher
 mkdir -p build
 cd build
 cmake .. && make -j
-cd ../../
+cd ../../..
 cargo build
 cargo run

@@ -1,2 +1,2 @@
 [workspace]
-members = ["fastgen"]
+members = ["fastgen", "runtime_fast", "common"]
