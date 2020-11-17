@@ -1,17 +1,2 @@
-[package]
-name = "quickgen"
-version = "0.1.0"
-authors = ["cju"]
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-libc = "0.2"
-protobuf = "2"
-num-traits = "0.2"
-num-derive = "0.2"
-nix = "0.13"
-
-[build-dependencies]
-protoc-rust = "2.0"
+[workspace]
+members = ["fastgen"]
