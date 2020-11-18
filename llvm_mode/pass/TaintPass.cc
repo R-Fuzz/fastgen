@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-//#include "defs.h"
+#include "defs.h"
 #include "version.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -88,6 +88,8 @@ static const char *const kTaintExternShadowPtrMask = "__dfsan_shadow_ptr_mask";
 // the shadow load to have alignment 16.  This flag is disabled by default as
 // we have unfortunately encountered too much code (including Clang itself;
 // see PR14291) which performs misaligned access.
+static cl::opt<bool> TrackMode("TrackMode", cl::desc("track mode"), cl::Hidden, cl::init(false));
+
 static cl::opt<bool> ClPreserveAlignment(
     "taint-preserve-alignment",
     cl::desc("respect alignment requirements provided by input IR"), cl::Hidden,
@@ -303,6 +305,8 @@ namespace {
       WK_Custom
     };
 
+    bool FastMode = false;
+
     Module *Mod;
     LLVMContext *Ctx;
     IntegerType *ShadowTy;
@@ -349,6 +353,8 @@ namespace {
     Constant *TaintDebugFn;
     //Constant *CallStack;
     GlobalVariable *CallStack;
+    GlobalVariable *AngoraMapPtr;
+    GlobalVariable *AngoraPrevLoc;
     MDNode *ColdCallWeights;
     TaintABIList ABIList;
     DenseMap<Value *, Function *> UnwrappedFnMap;
@@ -381,6 +387,9 @@ namespace {
     bool doInitialization(Module &M) override;
     bool runOnModule(Module &M) override;
     void countEdge(Module &M, BasicBlock &BB);
+    void setValueNonSan(Value *v);
+    void setInsNonSan(Instruction *v);
+    uint32_t getRandomBasicBlockId();
   };
 
   struct TaintFunction {
@@ -787,12 +796,97 @@ Constant *Taint::getOrBuildTrampolineFunction(FunctionType *FT,
   return C;
 }
 
-void Taint::countEdge(Module &M, BasicBlock &BB) {
+void Taint::setValueNonSan(Value *v) {
+  if (Instruction *ins = dyn_cast<Instruction>(v))
+    setInsNonSan(ins);
 }
+
+void Taint::setInsNonSan(Instruction *ins) {
+  if (ins)
+    ins->setMetadata(Mod->getMDKindID("nosanitize"), MDNode::get(*Ctx, None));
+}
+
+uint32_t Taint::getRandomBasicBlockId() { return random() % MAP_SIZE; }
+
+void Taint::countEdge(Module &M, BasicBlock &BB) {
+  if (!FastMode)
+    return;
+  
+  // LLVMContext &C = M.getContext();
+  unsigned int cur_loc = getRandomBasicBlockId();
+  ConstantInt *CurLoc = ConstantInt::get(Int32Ty, cur_loc);
+
+  BasicBlock::iterator IP = BB.getFirstInsertionPt();
+  IRBuilder<> IRB(&(*IP));
+
+  LoadInst *PrevLoc = IRB.CreateLoad(AngoraPrevLoc);
+  setInsNonSan(PrevLoc);
+
+  Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, Int32Ty);
+  setValueNonSan(PrevLocCasted);
+
+  // Get Map[idx]
+  LoadInst *MapPtr = IRB.CreateLoad(AngoraMapPtr);
+  setInsNonSan(MapPtr);
+
+  Value *BrId = IRB.CreateXor(PrevLocCasted, CurLoc);
+  setValueNonSan(BrId);
+  Value *MapPtrIdx = IRB.CreateGEP(MapPtr, BrId);
+  setValueNonSan(MapPtrIdx);
+
+  // Increase 1 : IncRet <- Map[idx] + 1
+  LoadInst *Counter = IRB.CreateLoad(MapPtrIdx);
+  setInsNonSan(Counter);
+
+  // Implementation of saturating counter.
+  // Value *CmpOF = IRB.CreateICmpNE(Counter, ConstantInt::get(Int8Ty, -1));
+  // setValueNonSan(CmpOF);
+  // Value *IncVal = IRB.CreateZExt(CmpOF, Int8Ty);
+  // setValueNonSan(IncVal);
+  // Value *IncRet = IRB.CreateAdd(Counter, IncVal);
+  // setValueNonSan(IncRet);
+
+  // Implementation of Never-zero counter
+  // The idea is from Marc and Heiko in AFLPlusPlus
+  // Reference: : https://github.com/vanhauser-thc/AFLplusplus/blob/master/llvm_mode/README.neverzero and https://github.com/vanhauser-thc/AFLplusplus/issues/10
+    
+  Value *IncRet = IRB.CreateAdd(Counter, ConstantInt::get(Int8Ty, 1));
+  setValueNonSan(IncRet);
+  Value *IsZero = IRB.CreateICmpEQ(IncRet, ConstantInt::get(Int8Ty, 0));
+  setValueNonSan(IsZero);
+  Value *IncVal = IRB.CreateZExt(IsZero, Int8Ty);
+  setValueNonSan(IncVal);
+  IncRet = IRB.CreateAdd(IncRet, IncVal);
+  setValueNonSan(IncRet);
+  // Store Back Map[idx]
+  IRB.CreateStore(IncRet, MapPtrIdx)->setMetadata(Mod->getMDKindID("nosanitize"), MDNode::get(*Ctx, None));
+
+  Value *NewPrevLoc = NULL;
+  //Ctx
+    // Load ctx
+    LoadInst *CtxVal = IRB.CreateLoad(CallStack);
+    setInsNonSan(CtxVal);
+
+    Value *CtxValCasted = IRB.CreateZExt(CtxVal, Int32Ty);
+    setValueNonSan(CtxValCasted);
+    // Udate PrevLoc
+    NewPrevLoc =
+        IRB.CreateXor(CtxValCasted, ConstantInt::get(Int32Ty, cur_loc >> 1));
+  //no ctx
+  //  NewPrevLoc = ConstantInt::get(Int32Ty, cur_loc >> 1);
+  setValueNonSan(NewPrevLoc);
+
+  StoreInst *Store = IRB.CreateStore(NewPrevLoc, AngoraPrevLoc);
+  setInsNonSan(Store);
+};
+
 
 bool Taint::runOnModule(Module &M) {
   if (ABIList.isIn(M, "skip"))
     return false;
+
+  if (!TrackMode)
+    FastMode = true;
 
   if (!GetArgTLSPtr) {
     Type *ArgTLSTy = ArrayType::get(ShadowTy, 64);
@@ -881,6 +975,30 @@ bool Taint::runOnModule(Module &M) {
           nullptr,
           GlobalValue::GeneralDynamicTLSModel);
   }
+
+  AngoraMapPtr = Mod->getGlobalVariable("__angora_area_ptr");
+  if (!AngoraMapPtr) {
+    CallStack =
+      new GlobalVariable(*Mod, PointerType::get(Int32Ty, 0), false,
+          GlobalValue::CommonLinkage,
+          ConstantInt::get(Int32Ty, 0),
+          "__taint_trace_callstack",
+          nullptr,
+          GlobalValue::GeneralDynamicTLSModel);
+  }
+
+  AngoraPrevLoc = Mod->getGlobalVariable("__angora_prev_loc");
+  if (!AngoraPrevLoc) {
+    CallStack =
+      new GlobalVariable(*Mod, PointerType::get(Int32Ty, 0), false,
+          GlobalValue::CommonLinkage,
+          ConstantInt::get(Int32Ty, 0),
+          "__taint_trace_callstack",
+          nullptr,
+          GlobalValue::GeneralDynamicTLSModel);
+  }
+
+
 
   std::vector<Function *> FnsToInstrument;
   SmallPtrSet<Function *, 2> FnsWithNativeABI;
