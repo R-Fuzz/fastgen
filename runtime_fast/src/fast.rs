@@ -11,3 +11,9 @@ fn fast_init() {
         forkcli::start_forkcli();
     });
 }
+
+#[no_mangle]
+pub extern "C" fn __dummy_test(
+) -> i32 {
+  0
+}
