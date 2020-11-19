@@ -1,7 +1,7 @@
 pub mod fast;
 pub mod forkcli;
 
-//mod context;
+mod context;
 mod shm_branches;
 
 #[macro_use]

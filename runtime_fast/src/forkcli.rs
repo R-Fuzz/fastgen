@@ -25,7 +25,7 @@ pub fn start_forkcli() {
                 .expect("Couldn't set write timeout");
 
             let mut sig_buf = [0; 4];
-            //unsafe { super::context::reset_context(); }
+            unsafe { super::context::reset_context(); }
             loop {
                 if socket.read(&mut sig_buf).is_err() {
                     eprintln!("exit forkcli");
@@ -35,7 +35,7 @@ pub fn start_forkcli() {
                 let child_pid = unsafe { libc::fork() };
 
                 if child_pid == 0 {
-             //       unsafe { super::context::reset_context(); }
+                    unsafe { super::context::reset_context(); }
                     return;
                 }
 

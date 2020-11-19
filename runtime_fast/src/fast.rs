@@ -13,7 +13,13 @@ fn fast_init() {
 }
 
 #[no_mangle]
-pub extern "C" fn __dummy_test(
-) -> i32 {
+pub extern "C" fn __angora_trace_cmp(
+) -> u32 {
+  0
+}
+
+#[no_mangle]
+pub extern "C" fn __angora_trace_switch(
+) -> u32 {
   0
 }
