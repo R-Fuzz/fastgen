@@ -7,4 +7,6 @@ pub const MEM_LIMIT: u64 = 200; // MB
 pub const TIME_LIMIT_TRACK: u64 = 12;
 pub const MEM_LIMIT_TRACK: u64 = 0;
 
+pub const MAX_INVARIABLE_NUM: usize = 16;
+
 

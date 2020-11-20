@@ -36,3 +36,5 @@ pub static PERSIST_TRACK_FILES: &str = "ANGORA_DISABLE_TMPFS";
 
 pub const UNREACHABLE: u64 = std::u64::MAX;
 
+pub const SLOW_SPEED: u32 = 888888;
+

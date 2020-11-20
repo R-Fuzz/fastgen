@@ -16,6 +16,10 @@ byteorder = "1.2"
 log = "0.4"
 pretty_env_logger = "0.3"
 fastgen_common = { path = "../common" }
+wait-timeout = "0.2"
+twoway = "0.2.0"
+memmap = "0.7.0"
+rand = "0.7"
 
 [build-dependencies]
 protoc-rust = "2.0"
