@@ -11,6 +11,7 @@
 
 int main(int argc, char **argv) {
 
+  printf("exit!!\n");
   if (argc < 2)
     return 0;
 
@@ -20,6 +21,7 @@ int main(int argc, char **argv) {
 
   fp = fopen(argv[1], "rb");
 
+  printf("exit!!\n");
   if (!fp) {
     printf("st err\n");
     return 0;
@@ -48,5 +50,6 @@ int main(int argc, char **argv) {
     printf("hey, you hit it \n");
     abort();
   }
+  printf("exit!!\n");
   return 7;
 }

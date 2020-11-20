@@ -27,6 +27,7 @@ pub fn start_forkcli() {
             let mut sig_buf = [0; 4];
             unsafe { super::context::reset_context(); }
             loop {
+                eprintln!("etner the loop");
                 if socket.read(&mut sig_buf).is_err() {
                     eprintln!("exit forkcli");
                     process::exit(0);
@@ -62,7 +63,7 @@ pub fn start_forkcli() {
             }
         },
         Err(_) => {
-            // eprintln!("Could not find socket path");
+             eprintln!("Could not find socket path");
         },
     }
 }
