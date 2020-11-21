@@ -12,7 +12,7 @@ pub fn make_pipe() {
   }
 }
 
-pub fn read_pipe() -> Vec<u32> {
+pub fn read_pipe() -> Vec<(u32,u32)> {
   let f = File::open("/tmp/wp").expect("open pipe failed");
   let mut reader = BufReader::new(f);
   let mut ret = Vec::new();
@@ -21,9 +21,10 @@ pub fn read_pipe() -> Vec<u32> {
     let num_bytes = reader.read_line(&mut buffer).expect("read pipe failed");
     //if not EOF
     if num_bytes !=0  {
-      let label = buffer.trim().parse::<u32>().expect("we expect u32 number in each line");
-      info!("push label {}",label);
-      ret.push(label); 
+      let tokens: Vec<&str> = buffer.trim().split(',').collect();
+      let label = tokens[1].trim().parse::<u32>().expect("we expect u32 number in each line");
+      let tid = tokens[0].trim().parse::<u32>().expect("we expect u32 number in each line");
+      ret.push((tid,label)); 
     } else  {
       break;
     }

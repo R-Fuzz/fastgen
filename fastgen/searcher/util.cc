@@ -107,6 +107,7 @@ void printNode(const AstNode* node) {
 
 
 void printTask(const SearchTask* task) {
+  printf("fid is %u\n",task->fid());
   for(auto cons : task->constraints())  {
     printNode(&cons.node());
     for (auto amap : cons.meta().map()) {

@@ -7,15 +7,16 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 
-pub fn scan_tasks(labels: &Vec<u32>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
+pub fn scan_tasks(labels: &Vec<(u32,u32)>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
   for &label in labels {
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
-    get_one_constraint(label, &mut node, table);
+    get_one_constraint(label.1, &mut node, table);
     cons.set_node(node);
     analyze_meta(&mut cons);
     let mut task = SearchTask::new();
     task.mut_constraints().push(cons);
+    task.set_fid(label.0);
     tasks.push(task);
   }
 }

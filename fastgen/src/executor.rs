@@ -103,18 +103,14 @@ impl Executor {
     }
 
     pub fn track(&mut self, id: usize, buf: &Vec<u8>, path: &str) {
-        //self.envs.insert(
-         //   defs::TRACK_OUTPUT_VAR.to_string(),
-          //  self.cmd.track_path.clone(),
-        //);
-
+        let e = format!("taint_file=output/tmp/cur_input_2 tid={}",id); 
         self.envs.insert(
             defs::TAINT_OPTIONS.to_string(),
             //"taint_file=".to_string() + path,
-            "taint_file=output/tmp/cur_input_2".to_string(),
+            //"taint_file=output/tmp/cur_input_2".to_string(),
+            e,
         );
 
-        info!("track {} and {}", defs::TAINT_OPTIONS.to_string(),"taint_file=".to_string() + path);
         self.write_test(buf);
 
         compiler_fence(Ordering::SeqCst);

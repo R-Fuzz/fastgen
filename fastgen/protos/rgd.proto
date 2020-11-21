@@ -9,6 +9,7 @@ package rgd;
 //search task
 message SearchTask {
   repeated Constraint constraints = 1;
+  uint32 fid = 2;
 }
 
 //the constraint will be sent to c++ JIT/search engine

@@ -88,6 +88,7 @@ static u32 __instance_id;
 u32 __session_id;
 static u32 __current_index = 0;
 static u32 __solver_select = 0;
+static u32 __tid = 0;
 static z3::context __z3_context;
 static z3::solver __z3_solver(__z3_context, "QF_BV");
 FILE* mypipe;
@@ -993,7 +994,7 @@ static void printLabel(dfsan_label label) {
 static void __solve_cond(dfsan_label label, z3::expr &result, 
 		void *addr, uint64_t ctx, int order, int skip, dfsan_label label1, dfsan_label label2, u8 r, u32 predicate) {
   printLabel(label);
- fprintf(mypipe, "%u\n", label);
+ fprintf(mypipe, "%u, %u\n", __tid, label);
   fflush(mypipe);
   return;
 	if ((get_label_info(label)->flags & B_FLIPPED)) {
@@ -1523,6 +1524,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
 		__instance_id = flags().instance_id;
 		__session_id = flags().session_id;
 		__solver_select = flags().solver_select;
+		__tid = flags().tid;
 	}
 
 	static void InitializeTaintFile() {
