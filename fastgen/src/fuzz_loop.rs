@@ -25,7 +25,8 @@ pub fn fuzz_loop(
     while running.load(Ordering::Relaxed) {
       if id < depot.get_num_inputs() {
         let buf = depot.get_input_buf(id);
-        executor.track(id, &buf);
+        let path = depot.get_input_path(id).to_str().unwrap().to_owned();
+        executor.track(id, &buf, &path);
         id = id + 1;
       }
       trace!("runninng one epoch and number is {}", depot.get_num_inputs());

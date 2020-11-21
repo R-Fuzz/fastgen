@@ -55,7 +55,7 @@
 #define OPTIMISTIC 1
 #define RESTRICT_CONSTRAINT 1
 #define PATH_PREFIX 0
-#define CTX_FILTER 1
+#define CTX_FILTER 0
 
 struct shmseg {
   int cnt;
@@ -993,8 +993,8 @@ static void printLabel(dfsan_label label) {
 static void __solve_cond(dfsan_label label, z3::expr &result, 
 		void *addr, uint64_t ctx, int order, int skip, dfsan_label label1, dfsan_label label2, u8 r, u32 predicate) {
   printLabel(label);
- // fprintf(mypipe, "%u\n", label);
-  //fflush(mypipe);
+//  fprintf(mypipe, "%u\n", label);
+ // fflush(mypipe);
   return;
 	if ((get_label_info(label)->flags & B_FLIPPED)) {
 	}

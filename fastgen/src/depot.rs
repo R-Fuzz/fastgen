@@ -80,6 +80,10 @@ impl Depot {
         read_from_file(&path)
     }
 
+    pub fn get_input_path(&self, id: usize) -> PathBuf {
+        get_file_name(&self.dirs.inputs_dir, id)
+    }
+
     pub fn get_num_inputs(&self) -> usize {
         self.num_inputs.load(Ordering::Relaxed)
     }

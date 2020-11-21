@@ -38,3 +38,4 @@ pub const UNREACHABLE: u64 = std::u64::MAX;
 
 pub const SLOW_SPEED: u32 = 888888;
 
+pub static TAINT_OPTIONS: &str = "TAINT_OPTIONS";

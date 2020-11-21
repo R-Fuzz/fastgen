@@ -102,12 +102,19 @@ impl Executor {
         self.forksrv = Some(fs);
     }
 
-    pub fn track(&mut self, id: usize, buf: &Vec<u8>) {
+    pub fn track(&mut self, id: usize, buf: &Vec<u8>, path: &str) {
+        //self.envs.insert(
+         //   defs::TRACK_OUTPUT_VAR.to_string(),
+          //  self.cmd.track_path.clone(),
+        //);
+
         self.envs.insert(
-            defs::TRACK_OUTPUT_VAR.to_string(),
-            self.cmd.track_path.clone(),
+            defs::TAINT_OPTIONS.to_string(),
+            //"taint_file=".to_string() + path,
+            "taint_file=output/tmp/cur_input_1".to_string(),
         );
 
+        info!("track {} and {}", defs::TAINT_OPTIONS.to_string(),"taint_file=".to_string() + path);
         self.write_test(buf);
 
         compiler_fence(Ordering::SeqCst);
@@ -212,20 +219,23 @@ impl Executor {
         mem_limit: u64,
         time_limit: u64,
     ) -> StatusType {
+        info!("targe tis {:?}", target);
         let mut cmd = Command::new(&target.0);
         let mut child = cmd
             .args(&target.1)
-            .stdin(Stdio::null())
+          //  .stdin(Stdio::null())
             .env_clear()
             .envs(&self.envs)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+          //  .stdout(Stdio::null())
+          //  .stderr(Stdio::null())
             .mem_limit(mem_limit.clone())
             .setsid()
             .pipe_stdin(self.fd.as_raw_fd(), self.cmd.is_stdin)
             .spawn()
             .expect("Could not run target");
 
+
+        info!("cmd is {:?}", child);
         let timeout = time::Duration::from_secs(time_limit);
         let ret = match child.wait_timeout(timeout).unwrap() {
             Some(status) => {
