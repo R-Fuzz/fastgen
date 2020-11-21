@@ -97,7 +97,7 @@ static void add_runtime() {
   // cc_params[cc_par_cnt++] = "-I/${HOME}/clang+llvm/include/c++/v1";
   //if (1) {
   if (clang_type == CLANG_DFSAN_TYPE) {
-    cc_params[cc_par_cnt++] = alloc_printf("%s/lib/libruntime_fast.a", obj_path);
+    //cc_params[cc_par_cnt++] = alloc_printf("%s/lib/libruntime_fast.a", obj_path);
     cc_params[cc_par_cnt++] = "-Wl,--whole-archive";
     cc_params[cc_par_cnt++] = alloc_printf("%s/lib/libdfsan_rt-x86_64.a", obj_path);
     cc_params[cc_par_cnt++] = "-Wl,--no-whole-archive";

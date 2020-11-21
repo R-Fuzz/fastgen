@@ -29,7 +29,6 @@ pub struct Executor {
     depot: Arc<depot::Depot>,
     fd: PipeFd,
     tmout_cnt: usize,
-    pub last_f: u64,
     pub has_new_path: bool,
 }
 
@@ -81,7 +80,6 @@ impl Executor {
             depot,
             fd,
             tmout_cnt: 0,
-            last_f: defs::UNREACHABLE,
             has_new_path: false,
         }
     }
@@ -105,22 +103,6 @@ impl Executor {
     }
 
 
-
-    pub fn run_with_cond(
-        &mut self,
-        buf: &Vec<u8>,
-    ) -> StatusType {
-        self.run_init();
-        let mut status = self.run_inner(buf);
-
-        self.do_if_has_new(buf, status);
-        status = self.check_timeout(status);
-
-
-        status
-    }
-
-
     fn do_if_has_new(&mut self, buf: &Vec<u8>, status: StatusType) {
         // new edge: one byte in bitmap
         let has_new_path = self.branches.has_new(status);
@@ -138,12 +120,13 @@ impl Executor {
         self.check_timeout(status)
     }
 
-    pub fn run_sync(&mut self, buf: &Vec<u8>) {
+    pub fn run_sync(&mut self, buf: &Vec<u8>)  {
         self.run_init();
         let status = self.run_inner(buf);
         self.do_if_has_new(buf, status);
     }
 
+    
     fn run_init(&mut self) {
         self.has_new_path = false;
     }
@@ -222,7 +205,6 @@ impl Executor {
             Some(status) => {
                 if let Some(status_code) = status.code() {
                     if (self.cmd.uses_asan && status_code == defs::MSAN_ERROR_CODE)
-                        || (self.cmd.mode.is_pin_mode() && status_code > 128)
                     {
                         StatusType::Crash
                     } else {

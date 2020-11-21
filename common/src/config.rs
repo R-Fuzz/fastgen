@@ -8,5 +8,6 @@ pub const TIME_LIMIT_TRACK: u64 = 12;
 pub const MEM_LIMIT_TRACK: u64 = 0;
 
 pub const MAX_INVARIABLE_NUM: usize = 16;
+pub const MAX_INPUT_LEN: usize = 15000;
 
 

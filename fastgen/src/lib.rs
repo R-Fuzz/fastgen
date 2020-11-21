@@ -23,3 +23,6 @@ pub mod tmpfs;
 pub mod depot;
 pub mod depot_dir;
 pub mod file;
+pub mod fuzz_main;
+pub mod sync;
+pub mod fuzz_loop;

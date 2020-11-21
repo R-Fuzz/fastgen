@@ -10,7 +10,6 @@ static TMP_DIR: &str = "tmp";
 static INPUT_FILE: &str = "cur_input";
 static FORKSRV_SOCKET_FILE: &str = "forksrv_socket";
 static TRACK_FILE: &str = "track";
-static PIN_ROOT_VAR: &str = "PIN_ROOT";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InstrumentationMode {
@@ -34,7 +33,6 @@ impl InstrumentationMode {
 
 #[derive(Debug, Clone)]
 pub struct CommandOpt {
-    pub mode: InstrumentationMode,
     pub id: usize,
     pub main: (String, Vec<String>),
     pub track: (String, Vec<String>),
@@ -48,22 +46,16 @@ pub struct CommandOpt {
     pub is_raw: bool,
     pub uses_asan: bool,
     pub ld_library: String,
-    pub enable_afl: bool,
-    pub enable_exploitation: bool,
 }
 
 impl CommandOpt {
     pub fn new(
-        mode: &str,
         track_target: &str,
         pargs: Vec<String>,
         out_dir: &Path,
         mut mem_limit: u64,
         time_limit: u64,
-        enable_afl: bool,
-        enable_exploitation: bool,
     ) -> Self {
-        let mode = InstrumentationMode::from(mode);
         
         let tmp_dir = out_dir.join(TMP_DIR);
         tmpfs::create_tmpfs_dir(&tmp_dir);
@@ -103,32 +95,10 @@ impl CommandOpt {
 
         let track_bin;
         let mut track_args = Vec::<String>::new();
-        if mode.is_pin_mode() {
-            let project_bin_dir = env::var(defs::ANGORA_BIN_DIR).expect("Please set ANGORA_PROJ_DIR");
-            
-            let pin_root =
-                env::var(PIN_ROOT_VAR).expect("You should set the environment of PIN_ROOT!");
-            let pin_bin = format!("{}/{}", pin_root, "pin");
-            track_bin = pin_bin.to_string();
-            let pin_tool = Path::new(&project_bin_dir)
-                .join("lib")
-                .join("pin_track.so")
-                .to_str()
-                .unwrap()
-                .to_owned();
-
-            track_args.push(String::from("-t"));
-            track_args.push(pin_tool);
-            track_args.push(String::from("--"));
-            track_args.push(track_target.to_string());
-            track_args.extend(main_args.clone());
-        } else {
-            track_bin = track_target.to_string();
-            track_args = main_args.clone();
-        }
+        track_bin = track_target.to_string();
+        track_args = main_args.clone();
 
         Self {
-            mode,
             id: 0,
             main: (main_bin, main_args),
             track: (track_bin, track_args),
@@ -142,8 +112,6 @@ impl CommandOpt {
             uses_asan,
             is_raw: true,
             ld_library,
-            enable_afl,
-            enable_exploitation,
         }
     }
 
