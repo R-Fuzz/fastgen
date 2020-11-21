@@ -993,8 +993,8 @@ static void printLabel(dfsan_label label) {
 static void __solve_cond(dfsan_label label, z3::expr &result, 
 		void *addr, uint64_t ctx, int order, int skip, dfsan_label label1, dfsan_label label2, u8 r, u32 predicate) {
   printLabel(label);
-//  fprintf(mypipe, "%u\n", label);
- // fflush(mypipe);
+ fprintf(mypipe, "%u\n", label);
+  fflush(mypipe);
   return;
 	if ((get_label_info(label)->flags & B_FLIPPED)) {
 	}
@@ -1640,7 +1640,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
 			*(reinterpret_cast<u32*>(trace_id)) = __current_index;
 			shmdt(trace_id);
 		}
-    //fclose(mypipe);
+    fclose(mypipe);
 	}
 
 	static void dfsan_init(int argc, char **argv, char **envp) {
@@ -1663,7 +1663,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
         printf("address mappped to shared mem\n");
       }
     }
-    //mypipe = fopen("/tmp/wp","w");
+    mypipe = fopen("/tmp/wp","w");
     //else {
      //   printf("segment containts: \n\%s\n", shmp->buf);
     //}

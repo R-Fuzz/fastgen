@@ -22,6 +22,7 @@ pub fn read_pipe() -> Vec<u32> {
     //if not EOF
     if num_bytes !=0  {
       let label = buffer.trim().parse::<u32>().expect("we expect u32 number in each line");
+      info!("push label {}",label);
       ret.push(label); 
     } else  {
       break;

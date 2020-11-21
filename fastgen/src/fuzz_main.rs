@@ -60,8 +60,16 @@ pub fn fuzz_main(
     if depot.empty() {
       error!("Please ensure that seed directory - {:?} has ang file", depot.dirs.seeds_dir);
     }
+    
+    let handle = thread::spawn(move || {
+        fuzz_loop::fuzz_loop(running.clone(), command_option.specify(1), depot.clone(), global_branches.clone());
+     });
 
-    fuzz_loop::fuzz_loop(running.clone(), command_option.specify(1), depot.clone(), global_branches.clone());
+    thread::spawn(move || {
+        fuzz_loop::dispatcher();
+     });
+    
+    handle.join();
 }
 
 fn initialize_directories(in_dir: &str, out_dir: &str, sync_afl: bool) -> (PathBuf, PathBuf) {
