@@ -20,6 +20,9 @@
 #include "rgd.pb.h"
 #include "util.h"
 #include "rgdJit.h"
+#include "gd.h"
+#include "task.h"
+#include "parser.h"
 using namespace rgd;
 using namespace google::protobuf::io;
 
@@ -36,6 +39,23 @@ void save_task(const unsigned char* input, unsigned int input_length) {
   saveRequest(task, "test.data");
 }
 
+uint64_t fid = 0;
+bool init = false;
+
+void handle_task(const unsigned char* input, unsigned int input_length) {
+  CodedInputStream s(input,input_length);
+  s.SetRecursionLimit(10000);
+  SearchTask task;
+  task.ParseFromCodedStream(&s);
+  FUT* fut = construct_task(&task);
+  std::unordered_map<uint32_t, uint8_t> rgd_solution;
+  fut->rgd_solution = &rgd_solution;
+  gd_search(fut);
+  generate_input(rgd_solution, "/home/cju/test/i", "/home/cju/test", fid++);
+}
+
+
+
 void init_searcher() {
 	llvm::InitializeNativeTarget();
 	llvm::InitializeNativeTargetAsmPrinter();
@@ -46,7 +66,12 @@ void init_searcher() {
 
 extern "C" {
   void submit_task(const unsigned char* input, unsigned int input_length) {
-    save_task(input,input_length);
+    //save_task(input,input_length);
+    if (!init) {
+      init = true;
+      init_searcher();
+    }
+    handle_task(input,input_length);
   }
 };
 
