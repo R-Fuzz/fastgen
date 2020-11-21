@@ -111,7 +111,7 @@ impl Executor {
         self.envs.insert(
             defs::TAINT_OPTIONS.to_string(),
             //"taint_file=".to_string() + path,
-            "taint_file=output/tmp/cur_input_1".to_string(),
+            "taint_file=output/tmp/cur_input_2".to_string(),
         );
 
         info!("track {} and {}", defs::TAINT_OPTIONS.to_string(),"taint_file=".to_string() + path);

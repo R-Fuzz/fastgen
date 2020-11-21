@@ -17,6 +17,34 @@ use crate::util::*;
 use crate::cpp_interface::*;
 use crate::track_cons::*;
 use crate::union_table::*;
+use crate::file::*;
+use std::path::Path;
+
+pub fn grading_loop(
+    running: Arc<AtomicBool>,
+    cmd_opt: CommandOpt,
+    depot: Arc<Depot>,
+    global_branches: Arc<GlobalBranches>,
+    ) {
+  let mut executor = Executor::new(
+      cmd_opt,
+      global_branches,
+      depot.clone(),
+      );
+  
+  let mut fid: u64 = 0;
+  loop {
+      let dirpath = Path::new("/home/cju/test");
+      let file_name = format!("id-{:08}", fid);
+      let fpath = dirpath.join(file_name);
+      if !fpath.exists() {
+        continue;
+      }
+      let buf = read_from_file(&fpath);
+      executor.run_sync(&buf);
+      fid = fid + 1;
+  }
+}
 
 pub fn dispatcher() {
   info!("in dispatcher!!");
