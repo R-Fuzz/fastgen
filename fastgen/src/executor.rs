@@ -102,6 +102,32 @@ impl Executor {
         self.forksrv = Some(fs);
     }
 
+    pub fn track(&mut self, id: usize, buf: &Vec<u8>) {
+        self.envs.insert(
+            defs::TRACK_OUTPUT_VAR.to_string(),
+            self.cmd.track_path.clone(),
+        );
+
+        self.write_test(buf);
+
+        compiler_fence(Ordering::SeqCst);
+        let ret_status = self.run_target(
+            &self.cmd.track,
+            config::MEM_LIMIT_TRACK,
+            //self.cmd.time_limit *
+            config::TIME_LIMIT_TRACK,
+        );
+        compiler_fence(Ordering::SeqCst);
+
+        if ret_status != StatusType::Normal {
+            error!(
+                "Crash or hang while tracking! -- {:?},  id: {}",
+                ret_status, id
+            );
+            return;
+        }
+    }
+
 
     fn do_if_has_new(&mut self, buf: &Vec<u8>, status: StatusType) {
         // new edge: one byte in bitmap

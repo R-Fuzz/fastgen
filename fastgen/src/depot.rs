@@ -80,4 +80,7 @@ impl Depot {
         read_from_file(&path)
     }
 
+    pub fn get_num_inputs(&self) -> usize {
+        self.num_inputs.load(Ordering::Relaxed)
+    }
 }
