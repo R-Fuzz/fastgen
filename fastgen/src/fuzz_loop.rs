@@ -40,6 +40,7 @@ pub fn grading_loop(
       if !fpath.exists() {
         continue;
       }
+      info!("grading {:?}", &fpath);
       let buf = read_from_file(&fpath);
       executor.run_sync(&buf);
       fid = fid + 1;

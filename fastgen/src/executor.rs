@@ -104,12 +104,14 @@ impl Executor {
 
     pub fn track(&mut self, id: usize, buf: &Vec<u8>, path: &str) {
         let e = format!("taint_file=output/tmp/cur_input_2 tid={}",id); 
+        info!("taint {}", &e);
         self.envs.insert(
             defs::TAINT_OPTIONS.to_string(),
             //"taint_file=".to_string() + path,
             //"taint_file=output/tmp/cur_input_2".to_string(),
             e,
         );
+
 
         self.write_test(buf);
 

@@ -6,7 +6,6 @@ use libc;
 use std::{io::prelude::*, os::unix::net::UnixStream, process, time::Duration};
 
 pub fn start_forkcli() {
-    eprintln!("start fork client!!!");
     match env::var(defs::FORKSRV_SOCKET_PATH_VAR) {
         Ok(socket_path) => {
             let mut socket = match UnixStream::connect(socket_path) {
@@ -27,9 +26,7 @@ pub fn start_forkcli() {
             let mut sig_buf = [0; 4];
             unsafe { super::context::reset_context(); }
             loop {
-                eprintln!("etner the loop");
                 if socket.read(&mut sig_buf).is_err() {
-                    eprintln!("exit forkcli");
                     process::exit(0);
                 }
 

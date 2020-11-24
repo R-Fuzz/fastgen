@@ -179,6 +179,7 @@ impl std::fmt::Debug for Branches {
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,3 +212,4 @@ mod tests {
         assert_eq!(br.has_new(StatusType::Normal), (true, true, 3));
     }
 }
+*/

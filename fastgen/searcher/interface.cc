@@ -53,7 +53,9 @@ void handle_task(const unsigned char* input, unsigned int input_length) {
   fut->rgd_solution = &rgd_solution;
   gd_search(fut);
 	std::string old_string = std::to_string(task.fid());
-	std::string input_file = "/home/cju/quickgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+//1	std::string input_file = "/home/cju/quickgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+std::string input_file = "/home/cju/quickgen/test/i";
+ std::cout << "input file is " << input_file << std::endl;
   generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
 }
 
