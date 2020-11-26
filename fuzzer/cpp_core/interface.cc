@@ -24,6 +24,7 @@
 #include "task.h"
 #include "parser.h"
 #include "ctpl.h"
+#include "queue.h"
 using namespace rgd;
 using namespace google::protobuf::io;
 
@@ -34,6 +35,7 @@ std::unique_ptr<GradJit> JIT;
 uint64_t fid = 0;
 bool init = false;
 ctpl::thread_pool* pool;
+moodycamel::ConcurrentQueue<std::pair<uint32_t, std::unordered_map<uint32_t,uint8_t>>> solution_queue;
 
 void save_task(const unsigned char* input, unsigned int input_length) {
   CodedInputStream s(input,input_length);
@@ -54,9 +56,14 @@ void handle_task(int tid, const unsigned char* input, unsigned int input_length)
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
   fut->rgd_solution = &rgd_solution;
   gd_search(fut);
+  solution_queue.enqueue({task.fid(), rgd_solution});
+  if (solution_queue.size_approx() % 1000 == 0)
+    printf("queue item is about %u\n", solution_queue.size_approx());
+
   std::string old_string = std::to_string(task.fid());
   std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
   generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+
 }
 
 void init_searcher() {
