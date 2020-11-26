@@ -26,7 +26,7 @@ int main() {
     SearchTask task;
     suc = readDelimitedFrom(rawInput,&task);
     if (suc) {
-      printTask(&task);
+//      printTask(&task);
       FUT* fut = construct_task(&task);
       std::unordered_map<uint32_t, uint8_t> rgd_solution;
       fut->rgd_solution = &rgd_solution;

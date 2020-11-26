@@ -46,37 +46,40 @@ void handle_task(const unsigned char* input, unsigned int input_length) {
   CodedInputStream s(input,input_length);
   s.SetRecursionLimit(10000);
   SearchTask task;
-//  printTask(&task);
+  //printTask(&task);
+
   task.ParseFromCodedStream(&s);
   FUT* fut = construct_task(&task);
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
   fut->rgd_solution = &rgd_solution;
   gd_search(fut);
-	std::string old_string = std::to_string(task.fid());
-//1	std::string input_file = "/home/cju/quickgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-std::string input_file = "/home/cju/quickgen/test/i";
- std::cout << "input file is " << input_file << std::endl;
+  std::string old_string = std::to_string(task.fid());
+  std::string input_file = "/home/cju/quickgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+  //std::string input_file = "/home/cju/quickgen/test/input/small_exec.elf";
+  //std::cout << "input file is " << input_file << std::endl;
   generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
 }
 
 
 
 void init_searcher() {
-	llvm::InitializeNativeTarget();
-	llvm::InitializeNativeTargetAsmPrinter();
-	llvm::InitializeNativeTargetAsmParser();
-	JIT = std::move(GradJit::Create().get());
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+  llvm::InitializeNativeTargetAsmParser();
+  JIT = std::move(GradJit::Create().get());
 }
 
 
 extern "C" {
   void submit_task(const unsigned char* input, unsigned int input_length) {
-    //save_task(input,input_length);
+    //    save_task(input,input_length);
+
     if (!init) {
       init = true;
       init_searcher();
     }
     handle_task(input,input_length);
+
   }
 };
 

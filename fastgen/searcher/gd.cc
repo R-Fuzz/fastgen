@@ -122,7 +122,7 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
 	if (res==0) {
 		fut->stopped = true;
 		fut->gsol = true;
-		dumpResults(input, fut);
+		//dumpResults(input, fut);
 		//fut->scratch_args[24] = fut->scratch_args[24] & 0x1f;
 		addResults(input, fut);
 	}

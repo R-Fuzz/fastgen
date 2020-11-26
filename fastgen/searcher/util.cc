@@ -220,7 +220,6 @@ void generate_input(std::unordered_map<uint32_t,uint8_t> &sol, std::string taint
 		goto fail1;
 	}	
 
-
 	if ((src = mmap (0, statbuf.st_size, PROT_READ, MAP_SHARED, fdin, 0))
 			== (caddr_t) -1) {
 		fprintf(stderr, "cannot map file %s!\n", strerror(errno));
@@ -234,8 +233,8 @@ void generate_input(std::unordered_map<uint32_t,uint8_t> &sol, std::string taint
 		goto fail2;
 	}
 
-
 	dst = malloc(statbuf.st_size);
+  
 
 	/* this copies the input file to the output file */
 	memcpy (dst, src, statbuf.st_size);
@@ -244,6 +243,7 @@ void generate_input(std::unordered_map<uint32_t,uint8_t> &sol, std::string taint
 		((uint8_t*)dst)[it->first] = it->second;
 		//printf("generate_input index is %u and value is %x and original value is %x\n", it->first,(uint32_t)it->second, ((uint8_t*)src)[it->first]);
 	}
+
 
 	if (write(fdout, dst, statbuf.st_size) < 0) {
 		fprintf(stderr, "write output error: %s!\n", strerror(errno));

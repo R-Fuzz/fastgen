@@ -91,7 +91,7 @@ static u32 __solver_select = 0;
 static u32 __tid = 0;
 static z3::context __z3_context;
 static z3::solver __z3_solver(__z3_context, "QF_BV");
-FILE* mypipe;
+int mypipe;
 
 
 static XXH64_state_t state;
@@ -993,9 +993,11 @@ static void printLabel(dfsan_label label) {
 
 static void __solve_cond(dfsan_label label, z3::expr &result, 
 		void *addr, uint64_t ctx, int order, int skip, dfsan_label label1, dfsan_label label2, u8 r, u32 predicate) {
-  printLabel(label);
- fprintf(mypipe, "%u, %u\n", __tid, label);
-  fflush(mypipe);
+  //printLabel(label);
+  char content[100];
+ sprintf(content, "%u, %u\n", __tid, label);
+  write(mypipe,content,strlen(content));
+  //fflush(mypipe);
   return;
 	if ((get_label_info(label)->flags & B_FLIPPED)) {
 	}
@@ -1642,7 +1644,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
 			*(reinterpret_cast<u32*>(trace_id)) = __current_index;
 			shmdt(trace_id);
 		}
-    fclose(mypipe);
+    close(mypipe);
 	}
 
 	static void dfsan_init(int argc, char **argv, char **envp) {
@@ -1665,7 +1667,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
         printf("address mappped to shared mem\n");
       }
     }
-    mypipe = fopen("/tmp/wp","w");
+    mypipe = open("/tmp/wp", O_WRONLY | O_NONBLOCK);
     //else {
      //   printf("segment containts: \n\%s\n", shmp->buf);
     //}

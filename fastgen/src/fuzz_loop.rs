@@ -40,9 +40,10 @@ pub fn grading_loop(
       if !fpath.exists() {
         continue;
       }
-      info!("grading {:?}", &fpath);
+      trace!("grading {:?}", &fpath);
       let buf = read_from_file(&fpath);
       executor.run_sync(&buf);
+      std::fs::remove_file(fpath);
       fid = fid + 1;
   }
 }
@@ -65,7 +66,7 @@ pub fn dispatcher() {
     let labels = read_pipe();
     scan_tasks(&labels, &mut tasks, table); 
     for task in tasks {
-      print_task(&task);
+      //print_task(&task);
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32); }
     }
