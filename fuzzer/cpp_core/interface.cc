@@ -23,12 +23,17 @@
 #include "gd.h"
 #include "task.h"
 #include "parser.h"
+#include "ctpl.h"
 using namespace rgd;
 using namespace google::protobuf::io;
 
+#define THREAD_POOL_SIZE 4
+
 //global variables
 std::unique_ptr<GradJit> JIT;
-
+uint64_t fid = 0;
+bool init = false;
+ctpl::thread_pool* pool;
 
 void save_task(const unsigned char* input, unsigned int input_length) {
   CodedInputStream s(input,input_length);
@@ -39,8 +44,6 @@ void save_task(const unsigned char* input, unsigned int input_length) {
   saveRequest(task, "test.data");
 }
 
-uint64_t fid = 0;
-bool init = false;
 
 void handle_task(const unsigned char* input, unsigned int input_length) {
   CodedInputStream s(input,input_length);
@@ -61,12 +64,12 @@ void handle_task(const unsigned char* input, unsigned int input_length) {
 }
 
 
-
 void init_searcher() {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   llvm::InitializeNativeTargetAsmParser();
   JIT = std::move(GradJit::Create().get());
+  pool = new ctpl::thread_pool(THREAD_POOL_SIZE,0);
 }
 
 

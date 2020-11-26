@@ -8,6 +8,6 @@ fn main() {
     .run()
     .expect("protoc");
 
-  println!(r"cargo:rustc-link-search=fastgen/searcher/build");
+  println!(r"cargo:rustc-link-search=fuzzer/cpp_core/build");
   println!(r"cargo:rustc-link-search=/usr/lib/llvm-9/lib");
 }

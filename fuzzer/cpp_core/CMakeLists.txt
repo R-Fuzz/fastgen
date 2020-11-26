@@ -53,6 +53,7 @@ add_library(gd
 )
 
 target_link_libraries(gd
-  LLVM)
+  LLVM
+  pthread)
 
 add_subdirectory(self_test)

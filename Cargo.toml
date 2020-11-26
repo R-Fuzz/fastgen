@@ -1,2 +1,2 @@
 [workspace]
-members = ["fastgen", "runtime_fast", "common"]
+members = ["fuzzer", "runtime_fast", "common"]
