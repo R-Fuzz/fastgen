@@ -44,25 +44,20 @@ void save_task(const unsigned char* input, unsigned int input_length) {
   saveRequest(task, "test.data");
 }
 
-
-void handle_task(const unsigned char* input, unsigned int input_length) {
+void handle_task(int tid, const unsigned char* input, unsigned int input_length) {
   CodedInputStream s(input,input_length);
   s.SetRecursionLimit(10000);
   SearchTask task;
   //printTask(&task);
-
   task.ParseFromCodedStream(&s);
   FUT* fut = construct_task(&task);
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
   fut->rgd_solution = &rgd_solution;
   gd_search(fut);
   std::string old_string = std::to_string(task.fid());
-  std::string input_file = "/home/cju/quickgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-  //std::string input_file = "/home/cju/quickgen/test/input/small_exec.elf";
-  //std::cout << "input file is " << input_file << std::endl;
+  std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
   generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
 }
-
 
 void init_searcher() {
   llvm::InitializeNativeTarget();
@@ -72,17 +67,15 @@ void init_searcher() {
   pool = new ctpl::thread_pool(THREAD_POOL_SIZE,0);
 }
 
-
 extern "C" {
   void submit_task(const unsigned char* input, unsigned int input_length) {
     //    save_task(input,input_length);
-
     if (!init) {
       init = true;
       init_searcher();
     }
-    handle_task(input,input_length);
-
+    //handle_task(input,input_length);
+    pool->push(handle_task, input, input_length);
   }
 };
 

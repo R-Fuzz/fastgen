@@ -1,5 +1,5 @@
 [package]
-name = "quickgen"
+name = "fastgen"
 version = "0.1.0"
 authors = ["cju"]
 edition = "2018"
