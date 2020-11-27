@@ -87,12 +87,9 @@ pub fn fuzz_main(
     handlers.push(handle);
   }
 
-  thread::spawn(move || {
-      fuzz_loop::dispatcher();
-      });
   
   for handle in handlers {
-  handle.join();
+    handle.join();
   }
 }
 

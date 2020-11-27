@@ -57,9 +57,7 @@ pub fn grading_loop(
 }
 
 pub fn dispatcher() {
-  info!("in dispatcher!!");
-  loop {
-    info!("read pipe!!");
+  //loop {
     let id = unsafe {
       libc::shmget(
           0x1234,
@@ -74,12 +72,10 @@ pub fn dispatcher() {
     let labels = read_pipe();
     scan_tasks(&labels, &mut tasks, table); 
     for task in tasks {
-      //print_task(&task);
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32); }
     }
-
-  }
+ // }
 }
 
 pub fn fuzz_loop(
@@ -98,7 +94,12 @@ pub fn fuzz_loop(
     if id < depot.get_num_inputs() {
       let buf = depot.get_input_buf(id);
       let path = depot.get_input_path(id).to_str().unwrap().to_owned();
+
+      let handle = thread::spawn(move || {
+        dispatcher();
+      });
       executor.track(id, &buf, &path);
+      handle.join();
       id = id + 1;
     }
     thread::sleep(time::Duration::from_secs(1));

@@ -13,7 +13,9 @@ pub fn make_pipe() {
 }
 
 pub fn read_pipe() -> Vec<(u32,u32)> {
+  info!("open pipe");
   let f = File::open("/tmp/wp").expect("open pipe failed");
+  info!("pipe opened");
   let mut reader = BufReader::new(f);
   let mut ret = Vec::new();
   loop {

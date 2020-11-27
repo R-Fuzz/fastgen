@@ -1667,7 +1667,8 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
         printf("address mappped to shared mem\n");
       }
     }
-    mypipe = open("/tmp/wp", O_WRONLY | O_NONBLOCK);
+    //mypipe = open("/tmp/wp", O_WRONLY | O_NONBLOCK);
+    mypipe = open("/tmp/wp", O_WRONLY);
     //else {
      //   printf("segment containts: \n\%s\n", shmp->buf);
     //}
