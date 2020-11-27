@@ -17,6 +17,7 @@ use ctrlc;
 use libc;
 use pretty_env_logger;
 use crate::fuzz_loop;
+use crate::cpp_interface::*;
 
 pub fn fuzz_main(
     in_dir: &str,
@@ -61,6 +62,8 @@ pub fn fuzz_main(
     error!("Please ensure that seed directory - {:?} has ang file", depot.dirs.seeds_dir);
   }
 
+
+  unsafe { init_core(); }
   let mut handlers = vec![];
   {
     let r = running.clone();

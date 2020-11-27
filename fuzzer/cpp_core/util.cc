@@ -192,6 +192,37 @@ bool saveRequest(
 		return suc;
 }
 
+uint32_t load_input(std::string input_file, unsigned char* input) {
+  int fdin;
+  struct stat statbuf;
+  void *src;
+  if ((fdin = open (input_file.c_str(), O_RDONLY)) < 0)
+  {
+    fprintf(stderr, "cannot open input file %s!\n", strerror(errno));
+    return 0;
+  }
+
+  if (fstat (fdin,&statbuf) < 0)
+  {
+    //assert (false && "fstat error");
+    fprintf(stderr, "cannot stat file %s!\n", strerror(errno));
+    close(fdin);
+    return 0;
+  }
+
+  if ((src = mmap (0, statbuf.st_size, PROT_READ, MAP_SHARED, fdin, 0))
+      == (caddr_t) -1) {
+    fprintf(stderr, "cannot map file %s!\n", strerror(errno));
+    close(fdin);
+    return 0;
+  }
+
+	memcpy (input, src, statbuf.st_size);
+	munmap(src,statbuf.st_size);
+  close(fdin);
+  return statbuf.st_size;
+}
+
 void generate_input(std::unordered_map<uint32_t,uint8_t> &sol, std::string taint_file, std::string outputDir, uint32_t fid) {
 	char path[PATH_MAX];
 	//std::string __output_dir = "/home/cju/e2e_jigsaw/size_src/kirenenko-out-0/queue";

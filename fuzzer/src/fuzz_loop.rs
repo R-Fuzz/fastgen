@@ -7,8 +7,7 @@ use std::sync::{
   atomic::{AtomicBool, Ordering},
     Arc, RwLock,
 };
-use std::time;
-use std::thread;
+use std::time; use std::thread;
 use crate::fifo::*;
 
 use protobuf::Message;
@@ -31,20 +30,29 @@ pub fn grading_loop(
       global_branches,
       depot.clone(),
       );
-  
+
   let mut fid: u64 = 0;
   loop {
-      let dirpath = Path::new("/home/cju/test");
-      let file_name = format!("id-{:08}", fid);
-      let fpath = dirpath.join(file_name);
-      if !fpath.exists() {
-        continue;
-      }
-      trace!("grading {:?}", &fpath);
-      let buf = read_from_file(&fpath);
+    /*
+       let dirpath = Path::new("/home/cju/test");
+       let file_name = format!("id-{:08}", fid);
+       let fpath = dirpath.join(file_name);
+       if !fpath.exists() {
+       continue;
+       }
+       trace!("grading {:?}", &fpath);
+       let buf = read_from_file(&fpath);
+       executor.run_sync(&buf);
+       std::fs::remove_file(fpath);
+       fid = fid + 1;
+     */
+    let mut buf: Vec<u8> = Vec::with_capacity(1000);
+    buf.resize(1000, 0);
+    let len = unsafe { get_next_input(buf.as_mut_ptr()) };
+    if (len != 0) {
+      buf.resize(len as usize, 0);
       executor.run_sync(&buf);
-      std::fs::remove_file(fpath);
-      fid = fid + 1;
+    }
   }
 }
 
@@ -93,7 +101,20 @@ pub fn fuzz_loop(
       executor.track(id, &buf, &path);
       id = id + 1;
     }
-    //trace!("runninng one epoch and number is {}", depot.get_num_inputs());
     thread::sleep(time::Duration::from_secs(1));
+  }
+}
+
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+#[test]
+  fn test_pointer() {
+    let mut buf: Vec<u8> = Vec::with_capacity(10);
+    buf.resize(10, 0);
+    unsafe { get_input_buf(buf.as_mut_ptr()); }
+    println!("{}",buf[0])
   }
 }

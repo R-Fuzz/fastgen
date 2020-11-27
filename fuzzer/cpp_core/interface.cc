@@ -51,14 +51,13 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
   fut->rgd_solution = &rgd_solution;
   gd_search(fut);
-  //   solution_queue.enqueue({task->fid(), rgd_solution});
-  //  if (solution_queue.size_approx() % 1000 == 0)
-  //   printf("queue item is about %u\n", solution_queue.size_approx());
+  solution_queue.enqueue({task->fid(), rgd_solution});
+  if (solution_queue.size_approx() % 1000 == 0)
+     printf("queue item is about %u\n", solution_queue.size_approx());
 
-  std::string old_string = std::to_string(task->fid());
-  std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-  generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
-
+ // std::string old_string = std::to_string(task->fid());
+ // std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+ // generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
 }
 
 void init() {
@@ -67,6 +66,13 @@ void init() {
   llvm::InitializeNativeTargetAsmParser();
   JIT = std::move(GradJit::Create().get());
   pool = new ctpl::thread_pool(THREAD_POOL_SIZE,0);
+}
+
+std::string get_current_dir() {
+   char buff[FILENAME_MAX]; //create string buffer to hold path
+   getcwd( buff, FILENAME_MAX );
+   std::string current_working_dir(buff);
+   return current_working_dir;
 }
 
 extern "C" {
@@ -85,6 +91,27 @@ extern "C" {
     for(auto && r: gresults) {
       finished += (int)r.get();
     } 
+  }
+  
+  void get_input_buf(unsigned char* input) {
+    for(int i=0; i<10;i++) {
+      input[i] = 32 ;
+    }
+  }
+
+  uint32_t get_next_input(unsigned char* input) {
+    std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
+ //   printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
+    if(solution_queue.try_dequeue(item)) {
+      std::string old_string = std::to_string(item.first);
+      std::string input_file = "output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      uint32_t size = load_input(input_file, input);
+      for(auto it = item.second.begin(); it != item.second.end(); ++it)
+        input[it->first] = it->second;
+      return size;
+    } else {
+      return 0; 
+    }
   }
 };
 
