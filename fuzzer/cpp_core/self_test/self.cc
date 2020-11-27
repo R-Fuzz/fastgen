@@ -10,29 +10,31 @@
 #include "task.h"
 #include "interface.h"
 #include "gd.h"
+#include "ctpl.h"
+
 
 using namespace google::protobuf::io;
 
 using namespace rgd;
-
+extern ctpl::thread_pool* pool;
+bool handle_task(int tid, std::shared_ptr<SearchTask> task);
+extern std::vector<std::future<bool>> gresults;
 
 int main() {
-  init_searcher();
+  init();
   int fd = open("../test.data",O_RDONLY);
   ZeroCopyInputStream* rawInput = new google::protobuf::io::FileInputStream(fd);
   bool suc = false;
   int fid = 1;
+  int finished = 0;
   do {
-    SearchTask task;
-    suc = readDelimitedFrom(rawInput,&task);
+    std::shared_ptr<SearchTask>  task = std::make_shared<SearchTask>();
+    suc = readDelimitedFrom(rawInput,task.get());
     if (suc) {
-//      printTask(&task);
-      FUT* fut = construct_task(&task);
-      std::unordered_map<uint32_t, uint8_t> rgd_solution;
-      fut->rgd_solution = &rgd_solution;
-      gd_search(fut); 
-      generate_input(rgd_solution, "/home/cju/test/i", "/home/cju/test", fid++);
+      gresults.emplace_back(pool->push(handle_task, task));
     }
   } while (suc);
+  for(auto && r: gresults)
+    finished += (int)r.get();
 }
 
