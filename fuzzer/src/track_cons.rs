@@ -75,7 +75,7 @@ mod tests {
       libc::shmget(
           0x1234,
           0xc00000000, 
-          0644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+          0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
           )
     };
     let ptr = unsafe { libc::shmat(id, std::ptr::null(), 0) as *mut UnionTable};
@@ -86,7 +86,7 @@ mod tests {
     scan_tasks(&labels, &mut tasks, table); 
     unsafe { init_core(); }
     for task in tasks {
-      //print_task(&task);
+      print_task(&task);
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32); }
     }

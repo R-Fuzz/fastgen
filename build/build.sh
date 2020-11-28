@@ -22,7 +22,9 @@ mkdir -p ${PREFIX2}/lib
 #cp target/release/fuzzer ${PREFIX2}
 cp target/release/*.a ${PREFIX2}/lib
 
+
 cd llvm_mode
+rm -rf build
 mkdir -p build
 cd build
 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX1} -DCMAKE_BUILD_TYPE=Release ..
