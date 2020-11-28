@@ -105,7 +105,7 @@ impl Executor {
     pub fn track(&mut self, id: usize, buf: &Vec<u8>) {
         //FIXME
         let e = format!("taint_file=output/tmp/cur_input_2 tid={}",id); 
-        info!("taint {}", &e);
+        info!("Track {}", &id);
         self.envs.insert(
             defs::TAINT_OPTIONS.to_string(),
             e,
@@ -216,7 +216,6 @@ impl Executor {
         mem_limit: u64,
         time_limit: u64,
     ) -> StatusType {
-        info!("targe tis {:?}", target);
         let mut cmd = Command::new(&target.0);
         let mut child = cmd
             .args(&target.1)
@@ -232,7 +231,6 @@ impl Executor {
             .expect("Could not run target");
 
 
-        info!("cmd is {:?}", child);
         let timeout = time::Duration::from_secs(time_limit);
         let ret = match child.wait_timeout(timeout).unwrap() {
             Some(status) => {

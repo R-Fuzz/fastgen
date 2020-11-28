@@ -92,13 +92,20 @@ pub fn fuzz_loop(
       let handle = thread::spawn(move || {
           dispatcher();
           });
+      let t_start = time::Instant::now();
       executor.track(id, &buf);
+      let used_t = t_start.elapsed();
+      let used_us = (used_t.as_secs() as u32 * 1000_000) + used_t.subsec_nanos() / 1_000;
+      info!("Track time {}", used_us);
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
+      let used_t1 = t_start.elapsed();
+      let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
+      info!("All track time {}", used_us1);
       id = id + 1;
     }
-    thread::sleep(time::Duration::from_secs(1));
+    //thread::sleep(time::Duration::from_secs(1));
   }
 }
 
