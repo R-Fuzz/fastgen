@@ -50,26 +50,14 @@ pub fn grading_loop(
   }
 }
 
-pub fn dispatcher() {
-  //loop {
-  let id = unsafe {
-    libc::shmget(
-        0x1234,
-        0xc00000000, 
-        0644 | libc::IPC_CREAT | libc::SHM_NORESERVE
-        )
-  };
-  let ptr = unsafe { libc::shmat(id, std::ptr::null(), 0) as *mut UnionTable};
-  let table = unsafe { & *ptr };
-
-  let mut tasks = Vec::new();
+pub fn dispatcher(table: &UnionTable) {
   let labels = read_pipe();
+  let mut tasks = Vec::new();
   scan_tasks(&labels, &mut tasks, table); 
   for task in tasks {
     let task_ser = task.write_to_bytes().unwrap();
     unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32); }
   }
-  // }
 }
 
 pub fn fuzz_loop(
@@ -84,32 +72,35 @@ pub fn fuzz_loop(
       depot.clone(),
       );
   let mut id: usize = 0;
+
+  let shmid = unsafe {
+    libc::shmget(
+        0x1234,
+        0xc00000000,
+        0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+        )
+  };
+  let ptr = unsafe { libc::shmat(shmid, std::ptr::null(), 0) as *mut UnionTable};
+  let table = unsafe { & *ptr };
+
   while running.load(Ordering::Relaxed) {
     if id < depot.get_num_inputs() {
       let buf = depot.get_input_buf(id);
       //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
 
       let handle = thread::spawn(move || {
-          dispatcher();
+          dispatcher(table);
           });
       let t_start = time::Instant::now();
       executor.track(id, &buf);
-/*
-      let used_t = t_start.elapsed();
-      let used_us = (used_t.as_secs() as u32 * 1000_000) + used_t.subsec_nanos() / 1_000;
-      info!("Track time {}", used_us);
-*/
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
-/*
       let used_t1 = t_start.elapsed();
       let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
-      info!("All track time {}", used_us1);
-*/
+      trace!("track time {}", used_us1);
       id = id + 1;
     }
-    //thread::sleep(time::Duration::from_secs(1));
   }
 }
 
