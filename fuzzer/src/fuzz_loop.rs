@@ -2,22 +2,17 @@ use crate::{
   branches::GlobalBranches, command::CommandOpt, depot::Depot,
     executor::Executor,
 };
-use rand::prelude::*;
 use std::sync::{
   atomic::{AtomicBool, Ordering},
-    Arc, RwLock,
+    Arc,
 };
 use std::time; use std::thread;
-use crate::fifo::*;
 
 use protobuf::Message;
 use crate::fifo::*;
-use crate::util::*;
 use crate::cpp_interface::*;
 use crate::track_cons::*;
 use crate::union_table::*;
-use crate::file::*;
-use std::path::Path;
 
 pub fn grading_loop(
     running: Arc<AtomicBool>,
@@ -31,8 +26,7 @@ pub fn grading_loop(
       depot.clone(),
       );
 
-  let mut fid: u64 = 0;
-  loop {
+  while running.load(Ordering::Relaxed) {
     /*
        let dirpath = Path::new("/home/cju/test");
        let file_name = format!("id-{:08}", fid);
@@ -49,7 +43,7 @@ pub fn grading_loop(
     let mut buf: Vec<u8> = Vec::with_capacity(1000);
     buf.resize(1000, 0);
     let len = unsafe { get_next_input(buf.as_mut_ptr()) };
-    if (len != 0) {
+    if len != 0 {
       buf.resize(len as usize, 0);
       executor.run_sync(&buf);
     }
@@ -58,24 +52,24 @@ pub fn grading_loop(
 
 pub fn dispatcher() {
   //loop {
-    let id = unsafe {
-      libc::shmget(
-          0x1234,
-          0xc00000000, 
-          0644 | libc::IPC_CREAT | libc::SHM_NORESERVE
-          )
-    };
-    let ptr = unsafe { libc::shmat(id, std::ptr::null(), 0) as *mut UnionTable};
-    let table = unsafe { & *ptr };
+  let id = unsafe {
+    libc::shmget(
+        0x1234,
+        0xc00000000, 
+        0644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+        )
+  };
+  let ptr = unsafe { libc::shmat(id, std::ptr::null(), 0) as *mut UnionTable};
+  let table = unsafe { & *ptr };
 
-    let mut tasks = Vec::new();
-    let labels = read_pipe();
-    scan_tasks(&labels, &mut tasks, table); 
-    for task in tasks {
-      let task_ser = task.write_to_bytes().unwrap();
-      unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32); }
-    }
- // }
+  let mut tasks = Vec::new();
+  let labels = read_pipe();
+  scan_tasks(&labels, &mut tasks, table); 
+  for task in tasks {
+    let task_ser = task.write_to_bytes().unwrap();
+    unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32); }
+  }
+  // }
 }
 
 pub fn fuzz_loop(
@@ -93,13 +87,15 @@ pub fn fuzz_loop(
   while running.load(Ordering::Relaxed) {
     if id < depot.get_num_inputs() {
       let buf = depot.get_input_buf(id);
-      let path = depot.get_input_path(id).to_str().unwrap().to_owned();
+      //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
 
       let handle = thread::spawn(move || {
-        dispatcher();
-      });
-      executor.track(id, &buf, &path);
-      handle.join();
+          dispatcher();
+          });
+      executor.track(id, &buf);
+      if handle.join().is_err() {
+        error!("Error happened in listening thread!");
+      }
       id = id + 1;
     }
     thread::sleep(time::Duration::from_secs(1));

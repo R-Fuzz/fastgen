@@ -1,7 +1,5 @@
 use crate::{check_dep, tmpfs};
-use fastgen_common::defs;
 use std::{
-    env,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -94,9 +92,8 @@ impl CommandOpt {
         }
 
         let track_bin;
-        let mut track_args = Vec::<String>::new();
         track_bin = track_target.to_string();
-        track_args = main_args.clone();
+        let track_args = main_args.clone();
 
         Self {
             id: 0,

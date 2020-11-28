@@ -1,20 +1,17 @@
 use fastgen_common::defs;
 use chrono::prelude::Local;
 use std::{
-  collections::HashMap,
     fs,
-    io::prelude::*,
-    path::{Path, PathBuf},
+    path::{PathBuf},
     sync::{
-      atomic::{AtomicBool, AtomicUsize, Ordering},
-      Arc, RwLock,
+      atomic::{AtomicBool, Ordering},
+      Arc,
     },
-    thread, time,
+    thread,
 };
 
 use crate::{branches, check_dep, command, depot, sync, executor};
 use ctrlc;
-use libc;
 use pretty_env_logger;
 use crate::fuzz_loop;
 use crate::cpp_interface::*;
@@ -24,7 +21,8 @@ pub fn fuzz_main(
     out_dir: &str,
     track_target: &str,
     pargs: Vec<String>,
-    num_jobs: usize,
+    //TODO jobs
+    _num_jobs: usize,
     mem_limit: u64,
     time_limit: u64,
     sync_afl: bool,
@@ -89,7 +87,9 @@ pub fn fuzz_main(
 
   
   for handle in handlers {
-    handle.join();
+    if handle.join().is_err() {
+        error!("Error happened in fuzzing thread!");
+    }
   }
 }
 

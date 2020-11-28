@@ -102,13 +102,12 @@ impl Executor {
         self.forksrv = Some(fs);
     }
 
-    pub fn track(&mut self, id: usize, buf: &Vec<u8>, path: &str) {
+    pub fn track(&mut self, id: usize, buf: &Vec<u8>) {
+        //FIXME
         let e = format!("taint_file=output/tmp/cur_input_2 tid={}",id); 
         info!("taint {}", &e);
         self.envs.insert(
             defs::TAINT_OPTIONS.to_string(),
-            //"taint_file=".to_string() + path,
-            //"taint_file=output/tmp/cur_input_2".to_string(),
             e,
         );
 
@@ -238,7 +237,7 @@ impl Executor {
         let ret = match child.wait_timeout(timeout).unwrap() {
             Some(status) => {
                 if let Some(status_code) = status.code() {
-                    if (self.cmd.uses_asan && status_code == defs::MSAN_ERROR_CODE)
+                    if self.cmd.uses_asan && status_code == defs::MSAN_ERROR_CODE
                     {
                         StatusType::Crash
                     } else {
