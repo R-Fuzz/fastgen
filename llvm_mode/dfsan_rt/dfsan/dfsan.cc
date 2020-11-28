@@ -92,6 +92,7 @@ static u32 __tid = 0;
 static z3::context __z3_context;
 static z3::solver __z3_solver(__z3_context, "QF_BV");
 int mypipe;
+void* shmp;
 
 
 static XXH64_state_t state;
@@ -1645,6 +1646,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
 			shmdt(trace_id);
 		}
     close(mypipe);
+    shmdt(shmp);
 	}
 
 	static void dfsan_init(int argc, char **argv, char **envp) {
@@ -1660,8 +1662,8 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
     if (shmid == -1) {
       perror("Shared mmoery");
     } else {
-      void* ret = shmat(shmid, (void *)UnionTableAddr(), 0); 
-      if (ret == (void*) -1) {
+      shmp = shmat(shmid, (void *)UnionTableAddr(), 0);
+      if (shmp == (void*) -1) {
         perror("error shared memory attach");
       }  else {
         printf("address mappped to shared mem\n");
