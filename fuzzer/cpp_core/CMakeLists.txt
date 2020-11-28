@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.5.1)
 project(rgd C CXX)
 
 ## set up test
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 -std=c++14 -mcx16 -march=native")
 
 enable_testing()
 set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test) 
@@ -54,6 +56,7 @@ add_library(gd
 
 target_link_libraries(gd
   LLVM
+  tcmalloc
   pthread)
 
 add_subdirectory(self_test)

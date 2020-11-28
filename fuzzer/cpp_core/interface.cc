@@ -55,6 +55,7 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   if (solution_queue.size_approx() % 1000 == 0)
      printf("queue item is about %u\n", solution_queue.size_approx());
 
+  delete fut;
  // std::string old_string = std::to_string(task->fid());
  // std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
  // generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
