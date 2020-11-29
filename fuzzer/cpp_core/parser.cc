@@ -119,7 +119,6 @@ FUT* construct_task(SearchTask* task) {
         delete res;
         res = nullptr;
       }
-
       cons->fn = fn; // fn could be duplicated, but that's fine
     } else {
       ++hit;

@@ -15,6 +15,7 @@ use ctrlc;
 use pretty_env_logger;
 use crate::fuzz_loop;
 use crate::cpp_interface::*;
+use fastgen_common::config;
 
 pub fn fuzz_main(
     in_dir: &str,
@@ -61,7 +62,7 @@ pub fn fuzz_main(
   }
 
 
-  unsafe { init_core(); }
+  unsafe { init_core(config::SAVING_WHOLE); }
   let mut handlers = vec![];
   {
     let r = running.clone();

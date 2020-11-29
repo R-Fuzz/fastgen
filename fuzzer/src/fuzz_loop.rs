@@ -29,6 +29,7 @@ pub fn grading_loop(
       depot.clone(),
       );
 
+  let t_start = time::Instant::now();
   if config::SAVING_WHOLE {
     let mut fid = 1;
     let dirpath = Path::new("/home/cju/test");
@@ -45,6 +46,7 @@ pub fn grading_loop(
       fid = fid + 1;
     }
   } else {
+    let mut grade_count = 0;
     let mut buf: Vec<u8> = Vec::with_capacity(1000);
     buf.resize(1000, 0);
     while running.load(Ordering::Relaxed) {
@@ -52,6 +54,13 @@ pub fn grading_loop(
       if len != 0 {
         buf.resize(len as usize, 0);
         executor.run_sync(&buf);
+        grade_count = grade_count + 1;
+      }
+      if grade_count % 10000 == 0 {
+        let used_t1 = t_start.elapsed().as_secs() as u32;
+        if used_t1 != 0 {
+          warn!("Grading throughput is {}", grade_count / used_t1);
+        }
       }
     }
   }
