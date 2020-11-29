@@ -1,5 +1,5 @@
 #ifndef INTERFACE_H_
 #define INTERFACE_H_
-void init();
+void init(bool saving_whole);
 #endif
 

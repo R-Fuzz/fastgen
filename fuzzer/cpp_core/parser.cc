@@ -106,17 +106,20 @@ FUT* construct_task(SearchTask* task) {
     std::shared_ptr<AstNode> req = std::make_shared<AstNode>();
     req->CopyFrom(c.node());
     struct myKV *res = Expr2Func.find(req);
+//   struct myKV *res = nullptr;
     if ( res == nullptr) {
       ++miss;
       uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
       addFunction(&c.node(), cons->local_map, id);
       auto fn = performJit(id);
+
       res = new struct myKV(req, fn);
       if (!Expr2Func.insert(res)) {
         // if the function has already been inserted during this time
         delete res;
         res = nullptr;
       }
+
       cons->fn = fn; // fn could be duplicated, but that's fine
     } else {
       ++hit;

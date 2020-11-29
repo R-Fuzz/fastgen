@@ -34,6 +34,7 @@ using namespace google::protobuf::io;
 std::unique_ptr<GradJit> JIT;
 static std::atomic<uint64_t> fid;
 ctpl::thread_pool* pool;
+bool SAVING_WHOLE; 
 moodycamel::ConcurrentQueue<std::pair<uint32_t, std::unordered_map<uint32_t,uint8_t>>> solution_queue;
 std::vector<std::future<bool>> gresults;
 
@@ -51,22 +52,25 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
   fut->rgd_solution = &rgd_solution;
   gd_search(fut);
-  solution_queue.enqueue({task->fid(), rgd_solution});
-  if (solution_queue.size_approx() % 1000 == 0)
+  if (!SAVING_WHOLE) {
+    solution_queue.enqueue({task->fid(), rgd_solution});
+    if (solution_queue.size_approx() % 1000 == 0)
      printf("queue item is about %u\n", solution_queue.size_approx());
-
+  } else {
+    std::string old_string = std::to_string(task->fid());
+    std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+    generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+  }
   delete fut;
- // std::string old_string = std::to_string(task->fid());
- // std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
- // generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
 }
 
-void init() {
+void init(bool saving_whole) {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   llvm::InitializeNativeTargetAsmParser();
   JIT = std::move(GradJit::Create().get());
   pool = new ctpl::thread_pool(THREAD_POOL_SIZE,0);
+  SAVING_WHOLE = saving_whole;
 }
 
 std::string get_current_dir() {
@@ -86,7 +90,7 @@ extern "C" {
     //handle_task(0,task);
   }
 
-  void init_core() { init(); }
+  void init_core(bool saving_whole) { init(saving_whole); }
   void aggregate_results() {
     int finished = 0;
     for(auto && r: gresults) {

@@ -13,6 +13,9 @@ use crate::fifo::*;
 use crate::cpp_interface::*;
 use crate::track_cons::*;
 use crate::union_table::*;
+use crate::file::*;
+use fastgen_common::config;
+use std::path::{Path, PathBuf};
 
 pub fn grading_loop(
     running: Arc<AtomicBool>,
@@ -26,29 +29,34 @@ pub fn grading_loop(
       depot.clone(),
       );
 
-  while running.load(Ordering::Relaxed) {
-    /*
-       let dirpath = Path::new("/home/cju/test");
-       let file_name = format!("id-{:08}", fid);
-       let fpath = dirpath.join(file_name);
-       if !fpath.exists() {
-       continue;
-       }
-       trace!("grading {:?}", &fpath);
-       let buf = read_from_file(&fpath);
-       executor.run_sync(&buf);
-       std::fs::remove_file(fpath);
-       fid = fid + 1;
-     */
+  if config::SAVING_WHOLE {
+    let mut fid = 1;
+    let dirpath = Path::new("/home/cju/test");
+    while running.load(Ordering::Relaxed) {
+      let file_name = format!("id-{:08}", fid);
+      let fpath = dirpath.join(file_name);
+      if !fpath.exists() {
+        continue;
+      }
+      trace!("grading {:?}", &fpath);
+      let buf = read_from_file(&fpath);
+      executor.run_sync(&buf);
+      std::fs::remove_file(fpath);
+      fid = fid + 1;
+    }
+  } else {
     let mut buf: Vec<u8> = Vec::with_capacity(1000);
     buf.resize(1000, 0);
-    let len = unsafe { get_next_input(buf.as_mut_ptr()) };
-    if len != 0 {
-      buf.resize(len as usize, 0);
-      executor.run_sync(&buf);
+    while running.load(Ordering::Relaxed) {
+      let len = unsafe { get_next_input(buf.as_mut_ptr()) };
+      if len != 0 {
+        buf.resize(len as usize, 0);
+        executor.run_sync(&buf);
+      }
     }
   }
 }
+
 
 pub fn dispatcher(table: &UnionTable) {
   let labels = read_pipe();
