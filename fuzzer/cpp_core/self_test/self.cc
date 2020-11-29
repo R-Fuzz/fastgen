@@ -21,7 +21,7 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task);
 extern std::vector<std::future<bool>> gresults;
 
 int main() {
-  init(true);
+  init(true, true);
   int fd = open("../test.data",O_RDONLY);
   ZeroCopyInputStream* rawInput = new google::protobuf::io::FileInputStream(fd);
   bool suc = false;

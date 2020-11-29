@@ -35,6 +35,7 @@ std::unique_ptr<GradJit> JIT;
 static std::atomic<uint64_t> fid;
 ctpl::thread_pool* pool;
 bool SAVING_WHOLE; 
+bool USE_CODECACHE;
 moodycamel::ConcurrentQueue<std::pair<uint32_t, std::unordered_map<uint32_t,uint8_t>>> solution_queue;
 std::vector<std::future<bool>> gresults;
 
@@ -64,13 +65,14 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   delete fut;
 }
 
-void init(bool saving_whole) {
+void init(bool saving_whole, bool use_codecache) {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   llvm::InitializeNativeTargetAsmParser();
   JIT = std::move(GradJit::Create().get());
   pool = new ctpl::thread_pool(THREAD_POOL_SIZE,0);
   SAVING_WHOLE = saving_whole;
+  USE_CODECACHE = use_codecache;
 }
 
 std::string get_current_dir() {
@@ -90,7 +92,7 @@ extern "C" {
     //handle_task(0,task);
   }
 
-  void init_core(bool saving_whole) { init(saving_whole); }
+  void init_core(bool saving_whole, bool use_codecache) { init(saving_whole, use_codecache); }
   void aggregate_results() {
     int finished = 0;
     for(auto && r: gresults) {

@@ -62,7 +62,7 @@ pub fn fuzz_main(
   }
 
 
-  unsafe { init_core(config::SAVING_WHOLE); }
+  unsafe { init_core(config::SAVING_WHOLE, config::USE_CODECACHE); }
   let mut handlers = vec![];
   {
     let r = running.clone();

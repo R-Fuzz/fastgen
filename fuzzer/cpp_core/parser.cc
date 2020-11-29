@@ -9,6 +9,7 @@ using namespace pbbs;
 static std::atomic_uint64_t uuid;
 static std::atomic_uint64_t miss;
 static std::atomic_uint64_t hit;
+extern bool USE_CODECACHE;
 
 bool recursive_equal(const AstNode& lhs, const AstNode& rhs) {
   if ((lhs.kind() >= rgd::Ult && lhs.kind() <= rgd::Uge) &&
@@ -75,7 +76,7 @@ struct myHash {
   bool replaceQ(eType, eType) {return 0;}
   eType update(eType v, eType) {return v;}
   bool cas(eType* p, eType o, eType n) {return atomic_compare_and_swap(p, o, n);}
-};
+  };
 
 
 static pbbs::Table<myHash> Expr2Func(8000016, myHash(), 1.3);
@@ -103,29 +104,36 @@ FUT* construct_task(SearchTask* task) {
   for (auto c : task->constraints()) {
     assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
     std::shared_ptr<Cons> cons = std::make_shared<Cons>();
-    std::shared_ptr<AstNode> req = std::make_shared<AstNode>();
-    req->CopyFrom(c.node());
-    struct myKV *res = Expr2Func.find(req);
-//   struct myKV *res = nullptr;
-    if ( res == nullptr) {
-      ++miss;
-      uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
-      addFunction(&c.node(), cons->local_map, id);
-      auto fn = performJit(id);
+    if (USE_CODECACHE) {
+      std::shared_ptr<AstNode> req = std::make_shared<AstNode>();
+      req->CopyFrom(c.node());
+      struct myKV *res = Expr2Func.find(req);
+      //   struct myKV *res = nullptr;
+      if ( res == nullptr) {
+        ++miss;
+        uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
+        addFunction(&c.node(), cons->local_map, id);
+        auto fn = performJit(id);
 
-      res = new struct myKV(req, fn);
-      if (!Expr2Func.insert(res)) {
-        // if the function has already been inserted during this time
-        delete res;
-        res = nullptr;
+        res = new struct myKV(req, fn);
+        if (!Expr2Func.insert(res)) {
+          // if the function has already been inserted during this time
+          delete res;
+          res = nullptr;
+        }
+        cons->fn = fn; // fn could be duplicated, but that's fine
+      } else {
+        ++hit;
+        if (hit % 1000 == 0) {
+          std::cout << "hit/miss is " << hit << "/" << miss << std::endl;
+        }
+        cons->fn = res->fn;
       }
-      cons->fn = fn; // fn could be duplicated, but that's fine
     } else {
-      ++hit;
-      if (hit % 1000 == 0) {
-         std::cout << "hit/miss is " << hit << "/" << miss << std::endl;
-      }
-      cons->fn = res->fn;
+        uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
+        addFunction(&c.node(), cons->local_map, id);
+        auto fn = performJit(id);
+        cons->fn = fn; // fn could be duplicated, but that's fine
     }
     append_meta(cons, &c);
     fut->constraints.push_back(cons);
