@@ -190,6 +190,7 @@ impl Executor {
         let ret_status = if let Some(ref mut fs) = self.forksrv {
             fs.run()
         } else {
+            warn!("run does not go through forksrv");
             self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit)
         };
         compiler_fence(Ordering::SeqCst);

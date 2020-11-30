@@ -8,6 +8,7 @@ use std::sync::{
 };
 use std::time; use std::thread;
 
+use std::fs;
 use protobuf::Message;
 use crate::fifo::*;
 use crate::cpp_interface::*;
@@ -15,7 +16,7 @@ use crate::track_cons::*;
 use crate::union_table::*;
 use crate::file::*;
 use fastgen_common::config;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 
 pub fn grading_loop(
     running: Arc<AtomicBool>,
@@ -42,7 +43,7 @@ pub fn grading_loop(
       trace!("grading {:?}", &fpath);
       let buf = read_from_file(&fpath);
       executor.run_sync(&buf);
-      std::fs::remove_file(fpath);
+      std::fs::remove_file(fpath).unwrap();
       fid = fid + 1;
     }
   } else {
@@ -125,6 +126,10 @@ pub fn fuzz_loop(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::path::PathBuf;
+  use crate::depot;
+  use crate::command;
+  use crate::branches;
 
 #[test]
   fn test_pointer() {
@@ -132,5 +137,41 @@ mod tests {
     buf.resize(10, 0);
     unsafe { get_input_buf(buf.as_mut_ptr()); }
     println!("{}",buf[0])
+  }
+
+#[test]
+  fn test_grading() {
+    let angora_out_dir = PathBuf::from("output");
+    let seeds_dir = PathBuf::from("input");
+    let args = vec!["./objdump.fast".to_string(), "-D".to_string(), "@@".to_string()];
+    fs::create_dir(&angora_out_dir).expect("Output directory has existed!");
+
+    let cmd_opt = command::CommandOpt::new("./objdump.track", args, &angora_out_dir, 200, 1);
+
+    let depot = Arc::new(depot::Depot::new(seeds_dir, &angora_out_dir));
+  
+    let global_branches = Arc::new(branches::GlobalBranches::new());
+
+    let mut executor = Executor::new(
+        cmd_opt,
+        global_branches.clone(),
+        depot.clone(),
+        );
+
+    let t_start = time::Instant::now();
+    let mut fid = 0;
+    let dirpath = Path::new("/home/cju/test");
+    loop {
+      let file_name = format!("id-{:08}", fid);
+      let fpath = dirpath.join(file_name);
+      if !fpath.exists() {
+        break;
+      }
+      trace!("grading {:?}", &fpath);
+      let buf = read_from_file(&fpath);
+      executor.run_sync(&buf);
+      fid = fid + 1;
+    }
+
   }
 }

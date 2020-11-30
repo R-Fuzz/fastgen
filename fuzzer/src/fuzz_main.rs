@@ -31,6 +31,7 @@ pub fn fuzz_main(
   pretty_env_logger::init();
 
   let (seeds_dir, angora_out_dir) = initialize_directories(in_dir, out_dir, sync_afl);
+
   let command_option = command::CommandOpt::new(
       track_target,
       pargs,
