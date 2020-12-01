@@ -153,13 +153,13 @@ mod tests {
     let global_branches = Arc::new(branches::GlobalBranches::new());
 
     let mut executor = Executor::new(
-        cmd_opt,
+        cmd_opt.specify(1),
         global_branches.clone(),
         depot.clone(),
         );
 
     let t_start = time::Instant::now();
-    let mut fid = 0;
+    let mut fid = 1;
     let dirpath = Path::new("/home/cju/test");
     loop {
       let file_name = format!("id-{:08}", fid);
