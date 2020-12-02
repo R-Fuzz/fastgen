@@ -2,6 +2,7 @@ use crate::rgd::*;
 use crate::op_def::*;
 use crate::union_table::*;
 use std::collections::HashSet;
+use num_traits::FromPrimitive;
 
 fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet<u32>)  {
   if label==0 {
@@ -352,7 +353,24 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
 
 }
 
-pub fn get_one_constraint(label: u32, node: &mut AstNode,  table: &UnionTable) {
+fn flip_op(node: &mut AstNode) {
+  let op = match FromPrimitive::from_u32(node.get_kind()) {
+    Some(RGD::Equal) => RGD::Distinct as u32,
+    Some(RGD::Distinct) => RGD::Equal as u32,
+    Some(RGD::Sge) => RGD::Slt as u32,
+    Some(RGD::Sgt) => RGD::Sle as u32,
+    Some(RGD::Sle) => RGD::Sgt as u32,
+    Some(RGD::Slt) => RGD::Sge as u32,
+    Some(RGD::Uge) => RGD::Ult as u32,
+    Some(RGD::Ugt) => RGD::Ule as u32,
+    Some(RGD::Ule) => RGD::Ugt as u32,
+    Some(RGD::Ult) => RGD::Uge as u32,
+    _ => panic!("Non-relational op!")
+  };
+  node.set_kind(op);
+}
+
+pub fn get_one_constraint(label: u32, direction: u32, node: &mut AstNode,  table: &UnionTable) {
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
   let mut cache = HashSet::new();
@@ -360,7 +378,9 @@ pub fn get_one_constraint(label: u32, node: &mut AstNode,  table: &UnionTable) {
           op == DFSAN_BVULT || op == DFSAN_BVULE ||
           op == DFSAN_BVUGT || op == DFSAN_BVUGE ||
           op == DFSAN_BVSLT || op == DFSAN_BVSLE ||
-          op == DFSAN_BVSGT || op == DFSAN_BVSGE, "the operator is not relational {}", info.op);
-  do_uta(label, node, table, &mut cache);
+          op == DFSAN_BVSGT || op == DFSAN_BVSGE, "the operator is not relational {}", info.op); do_uta(label, node, table, &mut cache);
+  if direction == 1 {
+    flip_op(node);
+  }
 }
 

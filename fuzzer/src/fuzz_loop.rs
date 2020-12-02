@@ -8,7 +8,6 @@ use std::sync::{
 };
 use std::time; use std::thread;
 
-use std::fs;
 use protobuf::Message;
 use crate::fifo::*;
 use crate::cpp_interface::*;
@@ -126,6 +125,7 @@ pub fn fuzz_loop(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::fs;
   use std::path::PathBuf;
   use crate::depot;
   use crate::command;
