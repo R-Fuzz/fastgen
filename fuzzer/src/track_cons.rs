@@ -83,10 +83,11 @@ mod tests {
 
     let mut tasks = Vec::new();
     let labels = read_pipe();
+    println!("labels len is {}", labels.len());
     scan_tasks(&labels, &mut tasks, table); 
     unsafe { init_core(true,true); }
     for task in tasks {
-      print_task(&task);
+      //print_task(&task);
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32); }
     }

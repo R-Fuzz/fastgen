@@ -895,30 +895,7 @@ bool Taint::runOnModule(Module &M) {
           nullptr,
           GlobalValue::GeneralDynamicTLSModel);
   }
-
-  AngoraMapPtr = Mod->getGlobalVariable("__angora_area_ptr");
-  if (!AngoraMapPtr) {
-    CallStack =
-      new GlobalVariable(*Mod, PointerType::get(Int32Ty, 0), false,
-          GlobalValue::CommonLinkage,
-          ConstantInt::get(Int32Ty, 0),
-          "__taint_trace_callstack",
-          nullptr,
-          GlobalValue::GeneralDynamicTLSModel);
-  }
-
-  AngoraPrevLoc = Mod->getGlobalVariable("__angora_prev_loc");
-  if (!AngoraPrevLoc) {
-    CallStack =
-      new GlobalVariable(*Mod, PointerType::get(Int32Ty, 0), false,
-          GlobalValue::CommonLinkage,
-          ConstantInt::get(Int32Ty, 0),
-          "__taint_trace_callstack",
-          nullptr,
-          GlobalValue::GeneralDynamicTLSModel);
-  }
-
-
+  
 
   std::vector<Function *> FnsToInstrument;
   SmallPtrSet<Function *, 2> FnsWithNativeABI;

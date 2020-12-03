@@ -996,13 +996,13 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
     void *addr, uint64_t ctx, int order, int skip, dfsan_label label1, dfsan_label label2, u8 r, u32 predicate) {
   char content[100];
   //session id, label, direction
+  static int count = 0;
   sprintf(content, "%u, %u, %u\n", __tid, label, r);
   write(mypipe,content,strlen(content));
   //fflush(mypipe);
   return;
   if ((get_label_info(label)->flags & B_FLIPPED)) {
   }
-  static int count = 0;
   static int dismatch = 0;
   printf("__solve_cond %d\n",++count);
 
@@ -1216,13 +1216,10 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
       uint64_t callstack = __taint_trace_callstack;
       XXH64_update(&ctx_state, &acc, sizeof(acc));
       XXH64_update(&ctx_state, &callstack, sizeof(callstack));
-      XXH64_update(&ctx_state, &order, sizeof(order));
-      //XXH64_update(&ctx_state, &r, sizeof(r));
       uint64_t ctx_hash = XXH64_digest(&ctx_state);          // hash value of untaken branch
       auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
       if (val) {
         return;
-        skip = 1;	
       } else {
         redis.set(std::to_string(ctx_hash)+PROGRAM, "explored");
         skip = 0;
@@ -1300,8 +1297,6 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
       uint64_t callstack = __taint_trace_callstack;
       XXH64_update(&ctx_state, &acc, sizeof(acc));
       XXH64_update(&ctx_state, &callstack, sizeof(callstack));
-      XXH64_update(&ctx_state, &order, sizeof(order));
-      //XXH64_update(&ctx_state, &r, sizeof(r));
       uint64_t ctx_hash = XXH64_digest(&ctx_state);          // hash value of untaken branch
       auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
       if (val) {
