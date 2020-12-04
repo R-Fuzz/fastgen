@@ -55,7 +55,7 @@
 #define OPTIMISTIC 1
 #define RESTRICT_CONSTRAINT 1
 #define PATH_PREFIX 0
-#define CTX_FILTER 0
+#define CTX_FILTER 1
 
 struct shmseg {
   int cnt;
@@ -991,16 +991,17 @@ static void printLabel(dfsan_label label) {
 }
 
 
-
+#if 1
 static void __solve_cond(dfsan_label label, z3::expr &result, 
     void *addr, uint64_t ctx, int order, int skip, dfsan_label label1, dfsan_label label2, u8 r, u32 predicate) {
   char content[100];
   //session id, label, direction
   static int count = 0;
-  sprintf(content, "%u, %u, %u\n", __tid, label, r);
-  write(mypipe,content,strlen(content));
-  //fflush(mypipe);
-  return;
+  if (__solver_select != 1) {
+    sprintf(content, "%u, %u, %u\n", __tid, label, r);
+    write(mypipe,content,strlen(content));
+    return;
+  }
   if ((get_label_info(label)->flags & B_FLIPPED)) {
   }
   static int dismatch = 0;
@@ -1012,135 +1013,63 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
     z3::expr cond = serialize(label, inputs);
 
     uint64_t addv = (uint64_t)addr;
-    int ret = 0;
-    if (__solver_select )  {//1 means JIGSAW
-      //ret = solve(label,r,ctx,addv,order,label1,label2, inputs, skip);
-    }	
-    if (ret == 0 || ret == 2) { //rejected bececause of fsize and fmemcmp
-#if 0
-      if (get_label_info(label)->tree_size > 50000) {
-        // don't bother?
-        throw z3::exception("formula too large");
+    __z3_solver.reset();
+    std::unordered_set<z3::expr,expr_hash,expr_equal> added;
+    for (auto off : inputs) {
+      auto c = __branch_deps->at(off);
+      if (c) {
+        for (auto &expr : c->exprs) {
+            if (added.insert(expr).second) {
+              __z3_solver.add(expr);
+            }
+          }
+        }
       }
-#endif
-      __z3_solver.reset();
-      std::unordered_set<z3::expr,expr_hash,expr_equal> added;
-      std::unordered_set<std::tuple<dfsan_label,u32>,expr_hash1,expr_equal1> added1;
+      __z3_solver.add(cond != result);
+      z3::check_result res = __z3_solver.check();
+      if (res == z3::sat) {
+        z3::model m = __z3_solver.get_model();
+        generate_input(m);
+      } else if (res == z3::unsat) {
+        z3::solver solver = z3::solver(__z3_context, "QF_BV");
+        solver.set("timeout", 5000U);
+        solver.add(cond != result);
+        if (solver.check() == z3::sat) {
+          z3::model m = solver.get_model();
+          generate_input(m);
+        }
+      }
+      // nested branch
+      branch_dep_t* the_tree = nullptr;
       for (auto off : inputs) {
         auto c = __branch_deps->at(off);
-        auto c1 = __branch_deps_shadow->at(off);
-        if (c) {
-#if RESTRICT_CONSTRAINT
-          for (auto &expr : c->exprs) {
-#else
-            for (auto &expr : *c) {
-#endif
-              if (added.insert(expr).second) {
-                //printf("adding expr: %s\n", expr.to_string().c_str());
-                __z3_solver.add(expr);
-              }
-            }
-          }
-          if (c1) {
-            for (auto &expr : c1->exprs) {
-              if (added1.insert(expr).second) {
-                //printf("adding expr label at %u\n", off);
-              }
-            }
+        if (c == nullptr) {
+          c = new branch_dep_t();
+        }
+        if (the_tree == nullptr) {
+          the_tree = c;
+        }
+        else  {
+          the_tree->exprs.insert(c->exprs.begin(),c->exprs.end());
+          the_tree->deps.insert(c->deps.begin(),c->deps.end());
+          for (auto &idx : c->deps) {
+            __branch_deps->at(idx) = the_tree;
           }
         }
-        if (added.size() != added1.size()) dismatch++;
-        printf("count is %d and expr count is %d, %d, %d\n",count,added.size(), added1.size(), dismatch);
-        __z3_solver.add(cond != result);
-        //AOUT("%s\n", cond.to_string().c_str());
-        printf("\n%s\n", __z3_solver.to_smt2().c_str());
-        z3::check_result res = __z3_solver.check();
-        if (res == z3::sat) {
-          AOUT("branch solved\n");
-          z3::model m = __z3_solver.get_model();
-          generate_input(m);
-        } else if (res == z3::unsat) {
-          AOUT("branch not solvable @%p\n", addr);
-          //AOUT("  tree_size = %d", __dfsan_label_info[label].tree_size);
-          // optimistic?
-#if OPTIMISTIC
-          z3::solver solver = z3::solver(__z3_context, "QF_BV");
-          solver.set("timeout", 5000U);
-          solver.add(cond != result);
-          if (solver.check() == z3::sat) {
-            z3::model m = solver.get_model();
-            generate_input(m);
-          }
-#endif
-        }
-#if RESTRICT_CONSTRAINT
-        // nested branch
-        branch_dep_t* the_tree = nullptr;
-        branch_dep_shadow_t* the_tree1 = nullptr;
-        for (auto off : inputs) {
-          auto c = __branch_deps->at(off);
-          auto c1 = __branch_deps_shadow->at(off);
-          if (c == nullptr) {
-            c = new branch_dep_t();
-            c1 = new branch_dep_shadow_t();
-          }
-          if (the_tree == nullptr) {
-            the_tree = c;
-            the_tree1 = c1;
-          }
-          else  {
-            the_tree->exprs.insert(c->exprs.begin(),c->exprs.end());
-            the_tree->deps.insert(c->deps.begin(),c->deps.end());
-            the_tree1->exprs.insert(c1->exprs.begin(),c1->exprs.end());
-            the_tree1->deps.insert(c1->deps.begin(),c1->deps.end());
-            for (auto &idx : c->deps) {
-              __branch_deps->at(idx) = the_tree;
-            }
-            for (auto &idx : c1->deps) {
-              __branch_deps_shadow->at(idx) = the_tree1;
-            }
-          }
-          __branch_deps->at(off) = the_tree;
-          __branch_deps_shadow->at(off) = the_tree1;
-        }
-        if (the_tree != nullptr) {
-          auto ok = the_tree->exprs.insert(cond == result);
-          if (ok.second)
-            the_tree1->exprs.insert({label, result});
-          /*(
-            auto ok1 = the_tree1->exprs.insert({label, 0}).second;
-            if (ok.second == false && ok1 == true) {
-            printf("insert z3 failed insert jigsaw ok label is %u\n", label);
-            printf("inserting one is %s\n", (cond==result).to_string().c_str());
-            printf("preventing one is %s\n", (*ok.first).to_string().c_str());
-            }
-            else if (ok.second == true && ok1 == false)
-            printf("insert z3 ok insert jigsaw failed\n");
-           */
-        }
-        for (auto off : inputs) {
-          the_tree->deps.insert(off);
-          the_tree1->deps.insert(off);
-        }
-#else
-        // nested branch
-        for (auto off : inputs) {
-          auto c = __branch_deps->at(off);
-          if (c == nullptr) {
-            c = new branch_dep_t();
-            __branch_deps->at(off) = c;
-          }
-          c->insert(cond == result);
-        }
-#endif
+        __branch_deps->at(off) = the_tree;
       }
-      // mark as flipped
+      if (the_tree != nullptr) {
+        auto ok = the_tree->exprs.insert(cond == result);
+      }
+      for (auto off : inputs) {
+        the_tree->deps.insert(off);
+      }
       get_label_info(label)->flags |= B_FLIPPED;
     } catch (z3::exception e) {
       Report("WARNING: solving error: %s @%p\n", e.msg(), addr);
     }
-
   }
+#endif
 
   uint8_t get_const_result(uint64_t c1, uint64_t c2, uint32_t predicate) {
     switch (predicate) {
@@ -1339,7 +1268,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
         std::unordered_set<dfsan_label> inputs;
         z3::expr index = serialize(label, inputs);
         z3::expr result = __z3_context.bv_val((uint64_t)r, size);
-        if (__solver_select) {
+        if (!__solver_select) {
           //add_cons_gep(label,r,inputs);
         } else {
 #if 0
