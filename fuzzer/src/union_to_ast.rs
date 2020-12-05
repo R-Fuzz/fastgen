@@ -3,6 +3,7 @@ use crate::op_def::*;
 use crate::union_table::*;
 use std::collections::HashSet;
 use num_traits::FromPrimitive;
+use protobuf::Message;
 
 fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet<u32>)  {
   if label==0 {
@@ -370,7 +371,78 @@ fn flip_op(node: &mut AstNode) {
   node.set_kind(op);
 }
 
-pub fn get_one_constraint(label: u32, direction: u32, node: &mut AstNode,  table: &UnionTable) {
+
+fn is_relational(op: Option<RGD>) -> bool {
+  match op {
+    Some(RGD::Equal) => true,
+    Some(RGD::Distinct) => true,
+    Some(RGD::Sgt) => true,
+    Some(RGD::Sle) => true,
+    Some(RGD::Sle) => true,
+    Some(RGD::Slt) => true,
+    Some(RGD::Uge) => true,
+    Some(RGD::Ugt) => true,
+    Some(RGD::Ule) => true,
+    Some(RGD::Ult) => true,
+    _ => false,
+  }
+}
+
+//e.g. equal(zext(equal(X, Y), 0))  => distinct(x,y)
+fn simplify(src: &mut AstNode, dst: &mut AstNode) {
+
+  if (src.get_kind() == RGD::Distinct as u32 || src.get_kind() == RGD::Equal as u32) {
+    let c0 = &src.get_children()[0];
+    let c1 = &src.get_children()[1];
+
+    let left;
+    let right;
+    if (c1.get_kind() == RGD::ZExt as u32 && c0.get_kind() == RGD::Constant as u32) {
+      left = c1;
+      right = c0;
+    } else if (c0.get_kind() == RGD::ZExt as u32 && c1.get_kind() == RGD::Constant as u32) {
+      left = c0;
+      right = c1;
+    } else {
+      dst.merge_from_bytes(&src.write_to_bytes().unwrap());
+      return;
+    }
+
+    if (left.get_kind() == RGD::ZExt as u32 && right.get_kind() == RGD::Constant as u32) {
+      let c00 = &left.get_children()[0];
+      if is_relational(FromPrimitive::from_u32(c00.get_kind())) {
+        let cv = right.get_value().parse::<u64>().expect("expect u64 number in value field");
+        if (src.get_kind() == RGD::Distinct as u32) {
+          if cv == 0 {
+            // != 0 => true => keep the same
+            dst.merge_from_bytes(&c00.write_to_bytes().unwrap());
+          } else {
+            // != 1 => false => negate
+            dst.merge_from_bytes(&c00.write_to_bytes().unwrap());
+            flip_op(dst);
+          }
+        } else { // RGD::Equal
+          if cv == 0 {
+            // == 0 => false => negate
+            dst.merge_from_bytes(&c00.write_to_bytes().unwrap());
+            flip_op(dst);
+          } else {
+            // == 1 => true => keep the same
+            dst.merge_from_bytes(&c00.write_to_bytes().unwrap());
+          }
+        }
+      } else {
+        dst.merge_from_bytes(&src.write_to_bytes().unwrap());
+      }
+    } else {
+      dst.merge_from_bytes(&src.write_to_bytes().unwrap());
+    } 
+  } else {
+      dst.merge_from_bytes(&src.write_to_bytes().unwrap());
+  }
+}
+
+pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table: &UnionTable) {
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
   let mut cache = HashSet::new();
@@ -378,9 +450,14 @@ pub fn get_one_constraint(label: u32, direction: u32, node: &mut AstNode,  table
           op == DFSAN_BVULT || op == DFSAN_BVULE ||
           op == DFSAN_BVUGT || op == DFSAN_BVUGE ||
           op == DFSAN_BVSLT || op == DFSAN_BVSLE ||
-          op == DFSAN_BVSGT || op == DFSAN_BVSGE, "the operator is not relational {}", info.op); do_uta(label, node, table, &mut cache);
+          op == DFSAN_BVSGT || op == DFSAN_BVSGE, "the operator is not relational {}", info.op); 
+
+  let mut src = AstNode::new();
+  do_uta(label, &mut src, table, &mut cache);
   if direction == 1 {
-    flip_op(node);
+    flip_op(&mut src);
   }
+  
+  simplify(&mut src, dst);
 }
 

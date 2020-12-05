@@ -85,7 +85,7 @@ mod tests {
     let labels = read_pipe();
     println!("labels len is {}", labels.len());
     scan_tasks(&labels, &mut tasks, table); 
-    unsafe { init_core(true,true); }
+    unsafe { init_core(true,false); }
     for task in tasks {
       //print_task(&task);
       let task_ser = task.write_to_bytes().unwrap();

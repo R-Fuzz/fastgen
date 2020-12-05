@@ -68,6 +68,7 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 
 		case rgd::Read: {
 			uint32_t start = local_map[node->index()];
+      printf("in read start is %u index is %u\n", start, node->index());
 			size_t length = node->bits()/8;
 			llvm::Value* idx[1];
 			idx[0] = llvm::ConstantInt::get(Builder.getInt32Ty(),start+RET_OFFSET);

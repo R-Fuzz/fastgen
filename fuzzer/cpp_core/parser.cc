@@ -104,6 +104,7 @@ FUT* construct_task(SearchTask* task) {
   for (auto c : task->constraints()) {
     assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
     std::shared_ptr<Cons> cons = std::make_shared<Cons>();
+    append_meta(cons, &c);
     if (USE_CODECACHE) {
       std::shared_ptr<AstNode> req = std::make_shared<AstNode>();
       req->CopyFrom(c.node());
@@ -135,7 +136,6 @@ FUT* construct_task(SearchTask* task) {
         auto fn = performJit(id);
         cons->fn = fn; // fn could be duplicated, but that's fine
     }
-    append_meta(cons, &c);
     fut->constraints.push_back(cons);
   }
   fut->finalize();

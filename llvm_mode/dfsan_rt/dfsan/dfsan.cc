@@ -927,6 +927,8 @@ static void do_print(dfsan_label label) {
     case __dfsan::Extract: name="extract";break;
     case __dfsan::Not: name="not";break;
     case __dfsan::fmemcmp: name="fmemcmp";break;
+    case __dfsan::fsize: name="fsize";break;
+    case __dfsan::fcrc32: name="fcrc3";break;
     default: break;
   }
 
@@ -990,6 +992,47 @@ static void printLabel(dfsan_label label) {
   std::cerr<<std::endl;
 }
 
+static bool do_reject(dfsan_label label,
+    std::unordered_map<uint32_t,bool> &expr_cache) {
+  if (label<1) return false;
+  auto itr = expr_cache.find(label);
+  if (label != 0 && itr != expr_cache.end()) {
+    return itr->second;
+  }
+
+  dfsan_label_info* info  = &__dfsan_label_info[label];
+  if (info==NULL || info->op == 0)  {//if invalid or read
+    expr_cache[label]=false;
+    return false;
+  } if (info->op == __dfsan::fmemcmp) {
+    expr_cache[label]=true;
+    return true;
+  } if (info->op == __dfsan::fcrc32) {
+    expr_cache[label]=true;
+    return true;
+  } if (info->op == __dfsan::fsize) {
+    expr_cache[label]=true;
+    return true;
+  } if (((info->l1 == 0 && info->op1 > 1) || (info->l2 == 0 && info->op2 > 1)) && info->size == 0) { // FIXME
+    //std::cout << "do_reject for abnormal size" << std::endl;
+    expr_cache[label]=true;
+    return true;
+  } if (do_reject(info->l1,expr_cache)) {
+    expr_cache[label]=true;
+    return true;
+  } if (do_reject(info->l2,expr_cache)) {
+    expr_cache[label]=true;
+    return true;
+  }
+  expr_cache[label]=false;
+  return false;
+}
+
+static bool rejectBranch(dfsan_label label) {
+  std::unordered_map<uint32_t,bool> expr_cache;
+  return do_reject(label,expr_cache);
+}
+
 
 #if 1
 static void __solve_cond(dfsan_label label, z3::expr &result, 
@@ -998,6 +1041,8 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
   //session id, label, direction
   static int count = 0;
   if (__solver_select != 1) {
+    if (rejectBranch(label)) return;
+    printLabel(label);
     sprintf(content, "%u, %u, %u\n", __tid, label, r);
     write(mypipe,content,strlen(content));
     return;
@@ -1019,29 +1064,303 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
       auto c = __branch_deps->at(off);
       if (c) {
         for (auto &expr : c->exprs) {
+          if (added.insert(expr).second) {
+            __z3_solver.add(expr);
+          }
+        }
+      }
+    }
+    __z3_solver.add(cond != result);
+    z3::check_result res = __z3_solver.check();
+    if (res == z3::sat) {
+      z3::model m = __z3_solver.get_model();
+      generate_input(m);
+    } else if (res == z3::unsat) {
+      z3::solver solver = z3::solver(__z3_context, "QF_BV");
+      solver.set("timeout", 5000U);
+      solver.add(cond != result);
+      if (solver.check() == z3::sat) {
+        z3::model m = solver.get_model();
+        generate_input(m);
+      }
+    }
+    // nested branch
+    branch_dep_t* the_tree = nullptr;
+    for (auto off : inputs) {
+      auto c = __branch_deps->at(off);
+      if (c == nullptr) {
+        c = new branch_dep_t();
+      }
+      if (the_tree == nullptr) {
+        the_tree = c;
+      }
+      else  {
+        the_tree->exprs.insert(c->exprs.begin(),c->exprs.end());
+        the_tree->deps.insert(c->deps.begin(),c->deps.end());
+        for (auto &idx : c->deps) {
+          __branch_deps->at(idx) = the_tree;
+        }
+      }
+      __branch_deps->at(off) = the_tree;
+    }
+    if (the_tree != nullptr) {
+      auto ok = the_tree->exprs.insert(cond == result);
+    }
+    for (auto off : inputs) {
+      the_tree->deps.insert(off);
+    }
+    get_label_info(label)->flags |= B_FLIPPED;
+  } catch (z3::exception e) {
+    Report("WARNING: solving error: %s @%p\n", e.msg(), addr);
+  }
+}
+#endif
+
+uint8_t get_const_result(uint64_t c1, uint64_t c2, uint32_t predicate) {
+  switch (predicate) {
+    case __dfsan::bveq:  return c1 == c2;
+    case __dfsan::bvneq: return c1 != c2;
+    case __dfsan::bvugt: return c1 > c2;
+    case __dfsan::bvuge: return c1 >= c2;
+    case __dfsan::bvult: return c1 < c2;
+    case __dfsan::bvule: return c1 <= c2;
+    case __dfsan::bvsgt: return (int64_t)c1 > (int64_t)c2;
+    case __dfsan::bvsge: return (int64_t)c1 >= (int64_t)c2;
+    case __dfsan::bvslt: return (int64_t)c1 < (int64_t)c2;
+    case __dfsan::bvsle: return (int64_t)c1 <= (int64_t)c2;
+    default: break;
+  }
+}
+
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+__taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
+    u64 c1, u64 c2) {
+
+  int order = 0;
+  int skip = 0;
+  void *addr = __builtin_return_address(0);
+  uint64_t acc = (uint64_t)addr;
+  u8 r = get_const_result(c1,c2,predicate);
+  u8 sym_r = 1-r;
+#if PATH_PREFIX
+  if ((op1 == 0 && op2 == 0)) {
+    u8 deter = 1;
+    XXH64_update(&state, &acc, sizeof(acc));
+    XXH64_update(&state, &deter, sizeof(deter));
+    XXH64_update(&state, &r, sizeof(r));
+    return;
+  }
+  u8 deter = 0;
+  XXH64_update(&state, &acc, sizeof(acc));
+  XXH64_update(&state, &deter, sizeof(deter));
+  XXH64_copyState(&state_sym, &state);
+
+  XXH64_update(&state, &r, sizeof(r));               // rolling in the direction of taken branch.
+  XXH64_update(&state_sym, &sym_r, sizeof(sym_r));   // rolling in the direction of untaken branch.
+
+  tmp_hash_symb = XXH64_digest(&state_sym);          // hash value of untaken branch
+  path_prefix_hash = XXH64_digest(&state);
+  redis.set(std::to_string(path_prefix_hash), "concrete");
+  auto val = redis.get(std::to_string(tmp_hash_symb));
+  if (val) {
+    skip = 1;	
+  } else {
+    redis.set(std::to_string(tmp_hash_symb), "explored");
+    skip = 0;
+  }
+#endif
+  if ((op1 == 0 && op2 == 0))
+    return;
+  auto itr = __branches.find({__taint_trace_callstack, addr});
+  if (itr == __branches.end()) {
+    itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
+    order = 1;
+  } else if (itr->second < MAX_BRANCH_COUNT) {
+    itr->second += 1;
+    order = itr->second;
+  } else {
+    skip += 1;
+    return;
+  }
+
+#if CTX_FILTER
+  XXH64_state_t ctx_state;
+  XXH64_reset(&ctx_state,0);
+  uint64_t callstack = __taint_trace_callstack;
+  XXH64_update(&ctx_state, &acc, sizeof(acc));
+  XXH64_update(&ctx_state, &callstack, sizeof(callstack));
+  uint64_t ctx_hash = XXH64_digest(&ctx_state);          // hash value of untaken branch
+  auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
+  if (val) {
+    return;
+  } else {
+    redis.set(std::to_string(ctx_hash)+PROGRAM, "explored");
+    skip = 0;
+  }
+#endif
+
+
+  AOUT("solving cmp: %u %u %u %d %llu %llu @%p\n", op1, op2, size, predicate, c1, c2, addr);
+
+  dfsan_label temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
+
+  z3::expr bv_c1 = __z3_context.bv_val((uint64_t)c1, size);
+  z3::expr bv_c2 = __z3_context.bv_val((uint64_t)c2, size);
+  z3::expr result = get_cmd(bv_c1, bv_c2, predicate).simplify();
+
+  __solve_cond(temp, result, addr, __taint_trace_callstack,order,skip,op1,op2,r,predicate);
+}
+
+extern "C" void
+__unfold_branch_fn(u32 r) {}
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+__taint_trace_cond(dfsan_label label, u8 r) {
+
+  int order = 0;
+  int skip = 0;
+  void *addr = __builtin_return_address(0);
+  uint64_t acc = (uint64_t)addr;
+  u8 sym_r = 1-r;
+#if PATH_PREFIX
+  if ((label == 0)) {
+    u8 deter = 1;
+    XXH64_update(&state, &acc, sizeof(acc));
+    XXH64_update(&state, &deter, sizeof(deter));
+    XXH64_update(&state, &r, sizeof(r));
+    return;
+  }
+  u8 deter = 0;
+  XXH64_update(&state, &acc, sizeof(acc));
+  XXH64_update(&state, &deter, sizeof(deter));
+  XXH64_copyState(&state_sym, &state);
+
+  XXH64_update(&state, &r, sizeof(r));               // rolling in the direction of taken branch.
+  XXH64_update(&state_sym, &sym_r, sizeof(sym_r));   // rolling in the direction of untaken branch.
+
+  tmp_hash_symb = XXH64_digest(&state_sym);          // hash value of untaken branch
+  path_prefix_hash = XXH64_digest(&state);
+  redis.set(std::to_string(path_prefix_hash), "concrete");
+  auto val = redis.get(std::to_string(tmp_hash_symb));
+  if (val) {
+    skip = 1;	
+  } else {
+    redis.set(std::to_string(tmp_hash_symb), "explored");
+    skip = 0;
+  }
+
+#endif
+  if (label == 0)
+    return;
+  auto itr = __branches.find({__taint_trace_callstack, addr});
+  if (itr == __branches.end()) {
+    itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
+    order = 1;
+  } else if (itr->second < MAX_BRANCH_COUNT) {
+    itr->second += 1;
+    order = itr->second;
+  } else {
+    skip += 1;
+    return;
+  }
+
+#if CTX_FILTER
+  XXH64_state_t ctx_state;
+  XXH64_reset(&ctx_state,0);
+  uint64_t callstack = __taint_trace_callstack;
+  XXH64_update(&ctx_state, &acc, sizeof(acc));
+  XXH64_update(&ctx_state, &callstack, sizeof(callstack));
+  uint64_t ctx_hash = XXH64_digest(&ctx_state);          // hash value of untaken branch
+  auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
+  if (val) {
+    return;
+    skip = 1;	
+  } else {
+    redis.set(std::to_string(ctx_hash)+PROGRAM, "explored");
+    skip = 0;
+  }
+#endif
+
+
+  AOUT("solving cond: %u %u %u %p %u\n", label, r, __taint_trace_callstack, addr, itr->second);
+
+  z3::expr result = __z3_context.bool_val(r);
+  __solve_cond(label, result, addr, __taint_trace_callstack, order, skip, label,0, r,0);
+}
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+__taint_trace_indcall(dfsan_label label) {
+  if (label == 0)
+    return;
+
+  AOUT("tainted indirect call target: %d\n", label);
+}
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+__taint_trace_gep(dfsan_label label, u64 r) {
+  if (label == 0)
+    return;
+
+  if ((get_label_info(label)->flags & B_FLIPPED))
+    return;
+
+  AOUT("tainted GEP index: %d = %lld\n", label, r);
+
+  bool pushed = false;
+  u8 size = get_label_info(label)->size;
+  try {
+    std::unordered_set<dfsan_label> inputs;
+    z3::expr index = serialize(label, inputs);
+    z3::expr result = __z3_context.bv_val((uint64_t)r, size);
+    if (!__solver_select) {
+      //add_cons_gep(label,r,inputs);
+    } else {
+#if 0
+
+      __z3_solver.reset();
+      // add dependencies
+      branch_dep_t added;
+      for (auto off : inputs) {
+        auto c = __branch_deps->at(off);
+        if (c) {
+          for (auto &expr : *c) {
             if (added.insert(expr).second) {
               __z3_solver.add(expr);
             }
           }
         }
       }
-      __z3_solver.add(cond != result);
+      __z3_solver.add(index > result);
       z3::check_result res = __z3_solver.check();
+
+      //AOUT("\n%s\n", __z3_solver.to_smt2().c_str());
       if (res == z3::sat) {
+        AOUT("\tindex > %lld solved\n", r);
         z3::model m = __z3_solver.get_model();
         generate_input(m);
       } else if (res == z3::unsat) {
+        AOUT("\tindex > %lld not possible\n", r);
+
+        // optimistic?
+#if OPTIMISTIC
         z3::solver solver = z3::solver(__z3_context, "QF_BV");
         solver.set("timeout", 5000U);
-        solver.add(cond != result);
+        solver.add(index > result);
         if (solver.check() == z3::sat) {
           z3::model m = solver.get_model();
           generate_input(m);
         }
+#endif
       }
+
+#endif
+      // preserve
+#if RESTRICT_CONSTRAINT
       // nested branch
       branch_dep_t* the_tree = nullptr;
       for (auto off : inputs) {
+        printf("build tree at %d\n",off);
         auto c = __branch_deps->at(off);
         if (c == nullptr) {
           c = new branch_dep_t();
@@ -1058,573 +1377,299 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
         }
         __branch_deps->at(off) = the_tree;
       }
-      if (the_tree != nullptr) {
-        auto ok = the_tree->exprs.insert(cond == result);
+      if (the_tree) {
+        the_tree->exprs.insert(index == result);
       }
       for (auto off : inputs) {
         the_tree->deps.insert(off);
       }
-      get_label_info(label)->flags |= B_FLIPPED;
-    } catch (z3::exception e) {
-      Report("WARNING: solving error: %s @%p\n", e.msg(), addr);
-    }
-  }
-#endif
-
-  uint8_t get_const_result(uint64_t c1, uint64_t c2, uint32_t predicate) {
-    switch (predicate) {
-      case __dfsan::bveq:  return c1 == c2;
-      case __dfsan::bvneq: return c1 != c2;
-      case __dfsan::bvugt: return c1 > c2;
-      case __dfsan::bvuge: return c1 >= c2;
-      case __dfsan::bvult: return c1 < c2;
-      case __dfsan::bvule: return c1 <= c2;
-      case __dfsan::bvsgt: return (int64_t)c1 > (int64_t)c2;
-      case __dfsan::bvsge: return (int64_t)c1 >= (int64_t)c2;
-      case __dfsan::bvslt: return (int64_t)c1 < (int64_t)c2;
-      case __dfsan::bvsle: return (int64_t)c1 <= (int64_t)c2;
-      default: break;
-    }
-  }
-
-
-  extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
-    __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
-        u64 c1, u64 c2) {
-
-      int order = 0;
-      int skip = 0;
-      void *addr = __builtin_return_address(0);
-      uint64_t acc = (uint64_t)addr;
-      u8 r = get_const_result(c1,c2,predicate);
-      u8 sym_r = 1-r;
-#if PATH_PREFIX
-      if ((op1 == 0 && op2 == 0)) {
-        u8 deter = 1;
-        XXH64_update(&state, &acc, sizeof(acc));
-        XXH64_update(&state, &deter, sizeof(deter));
-        XXH64_update(&state, &r, sizeof(r));
-        return;
-      }
-      u8 deter = 0;
-      XXH64_update(&state, &acc, sizeof(acc));
-      XXH64_update(&state, &deter, sizeof(deter));
-      XXH64_copyState(&state_sym, &state);
-
-      XXH64_update(&state, &r, sizeof(r));               // rolling in the direction of taken branch.
-      XXH64_update(&state_sym, &sym_r, sizeof(sym_r));   // rolling in the direction of untaken branch.
-
-      tmp_hash_symb = XXH64_digest(&state_sym);          // hash value of untaken branch
-      path_prefix_hash = XXH64_digest(&state);
-      redis.set(std::to_string(path_prefix_hash), "concrete");
-      auto val = redis.get(std::to_string(tmp_hash_symb));
-      if (val) {
-        skip = 1;	
-      } else {
-        redis.set(std::to_string(tmp_hash_symb), "explored");
-        skip = 0;
-      }
-#endif
-      if ((op1 == 0 && op2 == 0))
-        return;
-      auto itr = __branches.find({__taint_trace_callstack, addr});
-      if (itr == __branches.end()) {
-        itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
-        order = 1;
-      } else if (itr->second < MAX_BRANCH_COUNT) {
-        itr->second += 1;
-        order = itr->second;
-      } else {
-        skip += 1;
-        return;
-      }
-
-#if CTX_FILTER
-      XXH64_state_t ctx_state;
-      XXH64_reset(&ctx_state,0);
-      uint64_t callstack = __taint_trace_callstack;
-      XXH64_update(&ctx_state, &acc, sizeof(acc));
-      XXH64_update(&ctx_state, &callstack, sizeof(callstack));
-      uint64_t ctx_hash = XXH64_digest(&ctx_state);          // hash value of untaken branch
-      auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
-      if (val) {
-        return;
-      } else {
-        redis.set(std::to_string(ctx_hash)+PROGRAM, "explored");
-        skip = 0;
-      }
-#endif
-
-
-      AOUT("solving cmp: %u %u %u %d %llu %llu @%p\n", op1, op2, size, predicate, c1, c2, addr);
-
-      dfsan_label temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
-
-      z3::expr bv_c1 = __z3_context.bv_val((uint64_t)c1, size);
-      z3::expr bv_c2 = __z3_context.bv_val((uint64_t)c2, size);
-      z3::expr result = get_cmd(bv_c1, bv_c2, predicate).simplify();
-
-      __solve_cond(temp, result, addr, __taint_trace_callstack,order,skip,op1,op2,r,predicate);
-    }
-
-  extern "C" void
-    __unfold_branch_fn(u32 r) {}
-
-  extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
-    __taint_trace_cond(dfsan_label label, u8 r) {
-
-      int order = 0;
-      int skip = 0;
-      void *addr = __builtin_return_address(0);
-      uint64_t acc = (uint64_t)addr;
-      u8 sym_r = 1-r;
-#if PATH_PREFIX
-      if ((label == 0)) {
-        u8 deter = 1;
-        XXH64_update(&state, &acc, sizeof(acc));
-        XXH64_update(&state, &deter, sizeof(deter));
-        XXH64_update(&state, &r, sizeof(r));
-        return;
-      }
-      u8 deter = 0;
-      XXH64_update(&state, &acc, sizeof(acc));
-      XXH64_update(&state, &deter, sizeof(deter));
-      XXH64_copyState(&state_sym, &state);
-
-      XXH64_update(&state, &r, sizeof(r));               // rolling in the direction of taken branch.
-      XXH64_update(&state_sym, &sym_r, sizeof(sym_r));   // rolling in the direction of untaken branch.
-
-      tmp_hash_symb = XXH64_digest(&state_sym);          // hash value of untaken branch
-      path_prefix_hash = XXH64_digest(&state);
-      redis.set(std::to_string(path_prefix_hash), "concrete");
-      auto val = redis.get(std::to_string(tmp_hash_symb));
-      if (val) {
-        skip = 1;	
-      } else {
-        redis.set(std::to_string(tmp_hash_symb), "explored");
-        skip = 0;
-      }
-
-#endif
-      if (label == 0)
-        return;
-      auto itr = __branches.find({__taint_trace_callstack, addr});
-      if (itr == __branches.end()) {
-        itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
-        order = 1;
-      } else if (itr->second < MAX_BRANCH_COUNT) {
-        itr->second += 1;
-        order = itr->second;
-      } else {
-        skip += 1;
-        return;
-      }
-
-#if CTX_FILTER
-      XXH64_state_t ctx_state;
-      XXH64_reset(&ctx_state,0);
-      uint64_t callstack = __taint_trace_callstack;
-      XXH64_update(&ctx_state, &acc, sizeof(acc));
-      XXH64_update(&ctx_state, &callstack, sizeof(callstack));
-      uint64_t ctx_hash = XXH64_digest(&ctx_state);          // hash value of untaken branch
-      auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
-      if (val) {
-        return;
-        skip = 1;	
-      } else {
-        redis.set(std::to_string(ctx_hash)+PROGRAM, "explored");
-        skip = 0;
-      }
-#endif
-
-
-      AOUT("solving cond: %u %u %u %p %u\n", label, r, __taint_trace_callstack, addr, itr->second);
-
-      z3::expr result = __z3_context.bool_val(r);
-      __solve_cond(label, result, addr, __taint_trace_callstack, order, skip, label,0, r,0);
-    }
-
-  extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
-    __taint_trace_indcall(dfsan_label label) {
-      if (label == 0)
-        return;
-
-      AOUT("tainted indirect call target: %d\n", label);
-    }
-
-  extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
-    __taint_trace_gep(dfsan_label label, u64 r) {
-      if (label == 0)
-        return;
-
-      if ((get_label_info(label)->flags & B_FLIPPED))
-        return;
-
-      AOUT("tainted GEP index: %d = %lld\n", label, r);
-
-      bool pushed = false;
-      u8 size = get_label_info(label)->size;
-      try {
-        std::unordered_set<dfsan_label> inputs;
-        z3::expr index = serialize(label, inputs);
-        z3::expr result = __z3_context.bv_val((uint64_t)r, size);
-        if (!__solver_select) {
-          //add_cons_gep(label,r,inputs);
-        } else {
-#if 0
-
-          __z3_solver.reset();
-          // add dependencies
-          branch_dep_t added;
-          for (auto off : inputs) {
-            auto c = __branch_deps->at(off);
-            if (c) {
-              for (auto &expr : *c) {
-                if (added.insert(expr).second) {
-                  __z3_solver.add(expr);
-                }
-              }
-            }
-          }
-          __z3_solver.add(index > result);
-          z3::check_result res = __z3_solver.check();
-
-          //AOUT("\n%s\n", __z3_solver.to_smt2().c_str());
-          if (res == z3::sat) {
-            AOUT("\tindex > %lld solved\n", r);
-            z3::model m = __z3_solver.get_model();
-            generate_input(m);
-          } else if (res == z3::unsat) {
-            AOUT("\tindex > %lld not possible\n", r);
-
-            // optimistic?
-#if OPTIMISTIC
-            z3::solver solver = z3::solver(__z3_context, "QF_BV");
-            solver.set("timeout", 5000U);
-            solver.add(index > result);
-            if (solver.check() == z3::sat) {
-              z3::model m = solver.get_model();
-              generate_input(m);
-            }
-#endif
-          }
-
-#endif
-          // preserve
-#if RESTRICT_CONSTRAINT
-          // nested branch
-          branch_dep_t* the_tree = nullptr;
-          for (auto off : inputs) {
-            printf("build tree at %d\n",off);
-            auto c = __branch_deps->at(off);
-            if (c == nullptr) {
-              c = new branch_dep_t();
-            }
-            if (the_tree == nullptr) {
-              the_tree = c;
-            }
-            else  {
-              the_tree->exprs.insert(c->exprs.begin(),c->exprs.end());
-              the_tree->deps.insert(c->deps.begin(),c->deps.end());
-              for (auto &idx : c->deps) {
-                __branch_deps->at(idx) = the_tree;
-              }
-            }
-            __branch_deps->at(off) = the_tree;
-          }
-          if (the_tree) {
-            the_tree->exprs.insert(index == result);
-          }
-          for (auto off : inputs) {
-            the_tree->deps.insert(off);
-          }
 #else
-          for (auto off : inputs) {
-            auto c = __branch_deps->at(off);
-            if (c == nullptr) {
-              c = new branch_dep_t();
-              __branch_deps->at(off) = c;
-            }
-            c->insert(index == result);
-          }
-#endif
+      for (auto off : inputs) {
+        auto c = __branch_deps->at(off);
+        if (c == nullptr) {
+          c = new branch_dep_t();
+          __branch_deps->at(off) = c;
         }
-        // mark as visited
-        get_label_info(label)->flags |= B_FLIPPED;
-      } catch (z3::exception e) {
-        Report("WARNING: index solving error: %s @%p\n", e.msg(), __builtin_return_address(0));
+        c->insert(index == result);
       }
-
+#endif
     }
+    // mark as visited
+    get_label_info(label)->flags |= B_FLIPPED;
+  } catch (z3::exception e) {
+    Report("WARNING: index solving error: %s @%p\n", e.msg(), __builtin_return_address(0));
+  }
 
-  extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
-    __taint_debug(dfsan_label op1, dfsan_label op2, int predicate,
-        u32 size, u32 target) {
-      if (op1 == 0 && op2 == 0) return;
-    }
+}
 
-  SANITIZER_INTERFACE_ATTRIBUTE void
-    taint_set_file(const char *filename, int fd) {
-      char path[PATH_MAX];
-      realpath(filename, path);
-      if (internal_strcmp(tainted.filename, path) == 0) {
-        tainted.fd = fd;
-        AOUT("fd:%d created\n", fd);
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+__taint_debug(dfsan_label op1, dfsan_label op2, int predicate,
+    u32 size, u32 target) {
+  if (op1 == 0 && op2 == 0) return;
+}
 
-        __z3_solver.set("timeout", 5000U);
-      }
-    }
+SANITIZER_INTERFACE_ATTRIBUTE void
+taint_set_file(const char *filename, int fd) {
+  char path[PATH_MAX];
+  realpath(filename, path);
+  if (internal_strcmp(tainted.filename, path) == 0) {
+    tainted.fd = fd;
+    AOUT("fd:%d created\n", fd);
 
-  SANITIZER_INTERFACE_ATTRIBUTE int
-    is_taint_file(const char *filename) {
-      char path[PATH_MAX];
-      realpath(filename, path);
-      if (internal_strcmp(tainted.filename, path) == 0) {
-        tainted.is_utmp = 1;
-        return 1;
-      }
-      tainted.is_utmp = 0;
-      return 0;
-    }
+    __z3_solver.set("timeout", 5000U);
+  }
+}
 
-  SANITIZER_INTERFACE_ATTRIBUTE off_t
-    taint_get_file(int fd) {
-      AOUT("fd: %d\n", fd);
-      AOUT("tainted.fd: %d\n", tainted.fd);
-      return tainted.fd == fd ? tainted.size : 0;
-    }
+SANITIZER_INTERFACE_ATTRIBUTE int
+is_taint_file(const char *filename) {
+  char path[PATH_MAX];
+  realpath(filename, path);
+  if (internal_strcmp(tainted.filename, path) == 0) {
+    tainted.is_utmp = 1;
+    return 1;
+  }
+  tainted.is_utmp = 0;
+  return 0;
+}
 
-  SANITIZER_INTERFACE_ATTRIBUTE void
-    taint_close_file(int fd) {
-      if (fd == tainted.fd) {
-        AOUT("close tainted.fd: %d\n", tainted.fd);
-        tainted.fd = -1;
-      }
-    }
+SANITIZER_INTERFACE_ATTRIBUTE off_t
+taint_get_file(int fd) {
+  AOUT("fd: %d\n", fd);
+  AOUT("tainted.fd: %d\n", tainted.fd);
+  return tainted.fd == fd ? tainted.size : 0;
+}
 
-  SANITIZER_INTERFACE_ATTRIBUTE int
-    is_stdin_taint(void) {
-      return tainted.is_stdin;
-    }
+SANITIZER_INTERFACE_ATTRIBUTE void
+taint_close_file(int fd) {
+  if (fd == tainted.fd) {
+    AOUT("close tainted.fd: %d\n", tainted.fd);
+    tainted.fd = -1;
+  }
+}
 
-  // for utmp interface
-  SANITIZER_INTERFACE_ATTRIBUTE int
-    is_utmp_taint(void) {
-      return tainted.is_utmp;
-    }
+SANITIZER_INTERFACE_ATTRIBUTE int
+is_stdin_taint(void) {
+  return tainted.is_stdin;
+}
 
-  SANITIZER_INTERFACE_ATTRIBUTE void
-    set_utmp_offset(off_t offset) {
-      tainted.offset = offset;
-    }
+// for utmp interface
+SANITIZER_INTERFACE_ATTRIBUTE int
+is_utmp_taint(void) {
+  return tainted.is_utmp;
+}
 
-  SANITIZER_INTERFACE_ATTRIBUTE off_t
-    get_utmp_offset() {
-      return tainted.offset;
-    }
+SANITIZER_INTERFACE_ATTRIBUTE void
+set_utmp_offset(off_t offset) {
+  tainted.offset = offset;
+}
 
-  SANITIZER_INTERFACE_ATTRIBUTE void
-    taint_set_offset_label(dfsan_label label) {
-      tainted.offset_label = label;
-    }
+SANITIZER_INTERFACE_ATTRIBUTE off_t
+get_utmp_offset() {
+  return tainted.offset;
+}
 
-  SANITIZER_INTERFACE_ATTRIBUTE dfsan_label
-    taint_get_offset_label() {
-      return tainted.offset_label;
-    }
+SANITIZER_INTERFACE_ATTRIBUTE void
+taint_set_offset_label(dfsan_label label) {
+  tainted.offset_label = label;
+}
 
-  void Flags::SetDefaults() {
+SANITIZER_INTERFACE_ATTRIBUTE dfsan_label
+taint_get_offset_label() {
+  return tainted.offset_label;
+}
+
+void Flags::SetDefaults() {
 #define DFSAN_FLAG(Type, Name, DefaultValue, Description) Name = DefaultValue;
 #include "dfsan_flags.inc"
 #undef DFSAN_FLAG
-  }
+}
 
-  static void RegisterDfsanFlags(FlagParser *parser, Flags *f) {
+static void RegisterDfsanFlags(FlagParser *parser, Flags *f) {
 #define DFSAN_FLAG(Type, Name, DefaultValue, Description) \
-    RegisterFlag(parser, #Name, Description, &f->Name);
+  RegisterFlag(parser, #Name, Description, &f->Name);
 #include "dfsan_flags.inc"
 #undef DFSAN_FLAG
-  }
+}
 
-  static void InitializeSolver() {
-    __output_dir = flags().output_dir;
-    __instance_id = flags().instance_id;
-    __session_id = flags().session_id;
-    __solver_select = flags().solver_select;
-    __tid = flags().tid;
-  }
+static void InitializeSolver() {
+  __output_dir = flags().output_dir;
+  __instance_id = flags().instance_id;
+  __session_id = flags().session_id;
+  __solver_select = flags().solver_select;
+  __tid = flags().tid;
+}
 
-  static void InitializeTaintFile() {
-    for (long i = 1; i < CONST_OFFSET; i++) {
-      // for synthesis
-      dfsan_label label = dfsan_create_label(i);
-      assert(label == i);
-    }
-    struct stat st;
-    const char *filename = flags().taint_file;
-    //const char *filename = GetEnv("TAINT_FILE");
-    //if (filename == nullptr) return;
-    if (internal_strcmp(filename, "stdin") == 0) {
-      tainted.fd = 0;
-      // try to get the size, as stdin may be a file
-      if (!fstat(0, &st)) {
-        tainted.size = st.st_size;
-        tainted.is_stdin = 0;
-        // map a copy
-        tainted.buf_size = RoundUpTo(st.st_size, GetPageSizeCached());
-        uptr map = internal_mmap(nullptr, tainted.buf_size, PROT_READ, MAP_PRIVATE, 0, 0);
-        if (internal_iserror(map)) {
-          Printf("FATAL: failed to map a copy of input file\n");
-          Die();
-        }
-        tainted.buf = reinterpret_cast<char *>(map);
-      } else {
-        tainted.size = 1;
-        tainted.is_stdin = 1; // truly stdin
-      }
-    } else if (internal_strcmp(filename, "") == 0) {
-      tainted.fd = -1;
-    } else {
-      if (!realpath(filename, tainted.filename)) {
-        Report("WARNING: failed to get to real path for taint file\n");
-        return;
-      }
-      stat(filename, &st);
+static void InitializeTaintFile() {
+  for (long i = 1; i < CONST_OFFSET; i++) {
+    // for synthesis
+    dfsan_label label = dfsan_create_label(i);
+    assert(label == i);
+  }
+  struct stat st;
+  const char *filename = flags().taint_file;
+  //const char *filename = GetEnv("TAINT_FILE");
+  //if (filename == nullptr) return;
+  if (internal_strcmp(filename, "stdin") == 0) {
+    tainted.fd = 0;
+    // try to get the size, as stdin may be a file
+    if (!fstat(0, &st)) {
       tainted.size = st.st_size;
       tainted.is_stdin = 0;
       // map a copy
-      tainted.buf = static_cast<char *>(
-          MapFileToMemory(filename, &tainted.buf_size));
-      if (tainted.buf == nullptr) {
+      tainted.buf_size = RoundUpTo(st.st_size, GetPageSizeCached());
+      uptr map = internal_mmap(nullptr, tainted.buf_size, PROT_READ, MAP_PRIVATE, 0, 0);
+      if (internal_iserror(map)) {
         Printf("FATAL: failed to map a copy of input file\n");
         Die();
       }
-      AOUT("%s %lld size\n", filename, tainted.size);
-    }
-
-    if (tainted.fd != -1 && !tainted.is_stdin) {
-      for (off_t i = 0; i < tainted.size; i++) {
-        dfsan_label label = dfsan_create_label(i);
-        dfsan_check_label(label);
-      }
-    }
-
-    // create branch dependencies
-    __branch_deps = new std::vector<branch_dep_t*>(tainted.size);
-    __branch_deps_shadow = new std::vector<branch_dep_shadow_t*>(tainted.size);
-    //__branch_deps_jigsaw = new std::vector<branch_dep_jigsaw_t*>(tainted.size);
-  }
-
-  static void InitializeFlags() {
-    SetCommonFlagsDefaults();
-    flags().SetDefaults();
-
-    FlagParser parser;
-    RegisterCommonFlags(&parser);
-    RegisterDfsanFlags(&parser, &flags());
-    parser.ParseString(GetEnv("TAINT_OPTIONS"));
-    InitializeCommonFlags();
-    if (Verbosity()) ReportUnrecognizedFlags();
-    if (common_flags()->help) parser.PrintFlagDescriptions();
-  }
-
-  static void InitializePlatformEarly() {
-    AvoidCVE_2016_2143();
-#ifdef DFSAN_RUNTIME_VMA
-    __dfsan::vmaSize =
-      (MostSignificantSetBitIndex(GET_CURRENT_FRAME()) + 1);
-    if (__dfsan::vmaSize == 39 || __dfsan::vmaSize == 42 ||
-        __dfsan::vmaSize == 48) {
-      __dfsan_shadow_ptr_mask = ShadowMask();
+      tainted.buf = reinterpret_cast<char *>(map);
     } else {
-      Printf("FATAL: DataFlowSanitizer: unsupported VMA range\n");
-      Printf("FATAL: Found %d - Supported 39, 42, and 48\n", __dfsan::vmaSize);
+      tainted.size = 1;
+      tainted.is_stdin = 1; // truly stdin
+    }
+  } else if (internal_strcmp(filename, "") == 0) {
+    tainted.fd = -1;
+  } else {
+    if (!realpath(filename, tainted.filename)) {
+      Report("WARNING: failed to get to real path for taint file\n");
+      return;
+    }
+    stat(filename, &st);
+    tainted.size = st.st_size;
+    tainted.is_stdin = 0;
+    // map a copy
+    tainted.buf = static_cast<char *>(
+        MapFileToMemory(filename, &tainted.buf_size));
+    if (tainted.buf == nullptr) {
+      Printf("FATAL: failed to map a copy of input file\n");
       Die();
     }
+    AOUT("%s %lld size\n", filename, tainted.size);
+  }
+
+  if (tainted.fd != -1 && !tainted.is_stdin) {
+    for (off_t i = 0; i < tainted.size; i++) {
+      dfsan_label label = dfsan_create_label(i);
+      dfsan_check_label(label);
+    }
+  }
+
+  // create branch dependencies
+  __branch_deps = new std::vector<branch_dep_t*>(tainted.size);
+  __branch_deps_shadow = new std::vector<branch_dep_shadow_t*>(tainted.size);
+  //__branch_deps_jigsaw = new std::vector<branch_dep_jigsaw_t*>(tainted.size);
+}
+
+static void InitializeFlags() {
+  SetCommonFlagsDefaults();
+  flags().SetDefaults();
+
+  FlagParser parser;
+  RegisterCommonFlags(&parser);
+  RegisterDfsanFlags(&parser, &flags());
+  parser.ParseString(GetEnv("TAINT_OPTIONS"));
+  InitializeCommonFlags();
+  if (Verbosity()) ReportUnrecognizedFlags();
+  if (common_flags()->help) parser.PrintFlagDescriptions();
+}
+
+static void InitializePlatformEarly() {
+  AvoidCVE_2016_2143();
+#ifdef DFSAN_RUNTIME_VMA
+  __dfsan::vmaSize =
+    (MostSignificantSetBitIndex(GET_CURRENT_FRAME()) + 1);
+  if (__dfsan::vmaSize == 39 || __dfsan::vmaSize == 42 ||
+      __dfsan::vmaSize == 48) {
+    __dfsan_shadow_ptr_mask = ShadowMask();
+  } else {
+    Printf("FATAL: DataFlowSanitizer: unsupported VMA range\n");
+    Printf("FATAL: Found %d - Supported 39, 42, and 48\n", __dfsan::vmaSize);
+    Die();
+  }
 #endif
-  }
+}
 
-  static void dfsan_fini() {
-    if (internal_strcmp(flags().dump_labels_at_exit, "") != 0) {
-      fd_t fd = OpenFile(flags().dump_labels_at_exit, WrOnly);
-      if (fd == kInvalidFd) {
-        Report("WARNING: DataFlowSanitizer: unable to open output file %s\n",
-            flags().dump_labels_at_exit);
-        return;
-      }
-
-      Report("INFO: DataFlowSanitizer: dumping labels to %s\n",
+static void dfsan_fini() {
+  if (internal_strcmp(flags().dump_labels_at_exit, "") != 0) {
+    fd_t fd = OpenFile(flags().dump_labels_at_exit, WrOnly);
+    if (fd == kInvalidFd) {
+      Report("WARNING: DataFlowSanitizer: unable to open output file %s\n",
           flags().dump_labels_at_exit);
-      dfsan_dump_labels(fd);
-      CloseFile(fd);
+      return;
     }
-    if (tainted.buf) {
-      UnmapOrDie(tainted.buf, tainted.buf_size);
-    }
-    // write output
-    char *afl_shmid = getenv("__AFL_SHM_ID");
-    if (afl_shmid) {
-      u32 shm_id = atoi(afl_shmid);
-      void *trace_id = shmat(shm_id, NULL, 0);
-      *(reinterpret_cast<u32*>(trace_id)) = __current_index;
-      shmdt(trace_id);
-    }
-    close(mypipe);
-    shmdt(shmp);
+
+    Report("INFO: DataFlowSanitizer: dumping labels to %s\n",
+        flags().dump_labels_at_exit);
+    dfsan_dump_labels(fd);
+    CloseFile(fd);
   }
-
-  static void dfsan_init(int argc, char **argv, char **envp) {
-    InitializeFlags();
-
-    InitializePlatformEarly();
-    MmapFixedNoReserve(ShadowAddr(), UnionTableAddr() - ShadowAddr());
-    printf("unsued addr %p and shadow addr %p and uniton addr %p\n", UnusedAddr(),ShadowAddr(),UnionTableAddr());
-    printf("mapping %lx bytes\n",UnusedAddr() - ShadowAddr());
-    __dfsan_label_info = (dfsan_label_info *)UnionTableAddr();
-    int shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
-    //  void* ret = shmat(shmid, (void *)ShadowAddr(), 0); 
-    if (shmid == -1) {
-      perror("Shared mmoery");
-    } else {
-      shmp = shmat(shmid, (void *)UnionTableAddr(), 0);
-      if (shmp == (void*) -1) {
-        perror("error shared memory attach");
-      }  else {
-        printf("address mappped to shared mem\n");
-      }
-    }
-    //mypipe = open("/tmp/wp", O_WRONLY | O_NONBLOCK);
-    mypipe = open("/tmp/wp", O_WRONLY);
-    //else {
-    //   printf("segment containts: \n\%s\n", shmp->buf);
-    //}
-    // init const size
-    __dfsan_label_info[CONST_LABEL].size = 8;
-
-    InitializeInterceptors();
-
-    // Protect the region of memory we don't use, to preserve the one-to-one
-    // mapping from application to shadow memory.
-    MmapFixedNoAccess(UnusedAddr(), AppAddr() - UnusedAddr());
-    MmapFixedNoReserve(HashTableAddr(), hashtable_size);
-    __taint::allocator_init(HashTableAddr(), HashTableAddr() + hashtable_size);
-
-    InitializeTaintFile();
-
-    InitializeSolver();
-
-    // Register the fini callback to run when the program terminates successfully
-    // or it is killed by the runtime.
-    Atexit(dfsan_fini);
-    AddDieCallback(dfsan_fini);
-    //const char *taint_file = GetEnv("TAINT_FILE");
-    //std::string r(taint_file);
-    std::string r(flags().taint_file);
-    std::string s = r+ ".data";
-    //initRGDProxy(s.c_str(),r.c_str(), tainted.size);
+  if (tainted.buf) {
+    UnmapOrDie(tainted.buf, tainted.buf_size);
   }
+  // write output
+  char *afl_shmid = getenv("__AFL_SHM_ID");
+  if (afl_shmid) {
+    u32 shm_id = atoi(afl_shmid);
+    void *trace_id = shmat(shm_id, NULL, 0);
+    *(reinterpret_cast<u32*>(trace_id)) = __current_index;
+    shmdt(trace_id);
+  }
+  close(mypipe);
+  shmdt(shmp);
+}
+
+static void dfsan_init(int argc, char **argv, char **envp) {
+  InitializeFlags();
+
+  InitializePlatformEarly();
+  MmapFixedNoReserve(ShadowAddr(), UnionTableAddr() - ShadowAddr());
+  printf("unsued addr %p and shadow addr %p and uniton addr %p\n", UnusedAddr(),ShadowAddr(),UnionTableAddr());
+  printf("mapping %lx bytes\n",UnusedAddr() - ShadowAddr());
+  __dfsan_label_info = (dfsan_label_info *)UnionTableAddr();
+  int shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
+  //  void* ret = shmat(shmid, (void *)ShadowAddr(), 0); 
+  if (shmid == -1) {
+    perror("Shared mmoery");
+  } else {
+    shmp = shmat(shmid, (void *)UnionTableAddr(), 0);
+    if (shmp == (void*) -1) {
+      perror("error shared memory attach");
+    }  else {
+      printf("address mappped to shared mem\n");
+    }
+  }
+  //mypipe = open("/tmp/wp", O_WRONLY | O_NONBLOCK);
+  mypipe = open("/tmp/wp", O_WRONLY);
+  //else {
+  //   printf("segment containts: \n\%s\n", shmp->buf);
+  //}
+  // init const size
+  __dfsan_label_info[CONST_LABEL].size = 8;
+
+  InitializeInterceptors();
+
+  // Protect the region of memory we don't use, to preserve the one-to-one
+  // mapping from application to shadow memory.
+  MmapFixedNoAccess(UnusedAddr(), AppAddr() - UnusedAddr());
+  MmapFixedNoReserve(HashTableAddr(), hashtable_size);
+  __taint::allocator_init(HashTableAddr(), HashTableAddr() + hashtable_size);
+
+  InitializeTaintFile();
+
+  InitializeSolver();
+
+  // Register the fini callback to run when the program terminates successfully
+  // or it is killed by the runtime.
+  Atexit(dfsan_fini);
+  AddDieCallback(dfsan_fini);
+  //const char *taint_file = GetEnv("TAINT_FILE");
+  //std::string r(taint_file);
+  std::string r(flags().taint_file);
+  std::string s = r+ ".data";
+  //initRGDProxy(s.c_str(),r.c_str(), tainted.size);
+}
 
 #if SANITIZER_CAN_USE_PREINIT_ARRAY
-  __attribute__((section(".preinit_array"), used))
-    static void (*dfsan_init_ptr)(int, char **, char **) = dfsan_init;
+__attribute__((section(".preinit_array"), used))
+static void (*dfsan_init_ptr)(int, char **, char **) = dfsan_init;
 #endif

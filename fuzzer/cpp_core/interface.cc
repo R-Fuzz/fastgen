@@ -53,6 +53,10 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
   fut->rgd_solution = &rgd_solution;
   gd_search(fut);
+  if (rgd_solution.size() == 0) {
+    printf("not solved\n");
+    return false;
+  }
   if (!SAVING_WHOLE) {
     solution_queue.enqueue({task->fid(), rgd_solution});
     if (solution_queue.size_approx() % 1000 == 0)
@@ -60,9 +64,12 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   } else {
     std::string old_string = std::to_string(task->fid());
     std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+    for(auto itr : rgd_solution)
+        printf("sol index is %u and value is %u\n",itr.first,itr.second);
     generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
   }
   delete fut;
+  return true;
 }
 
 void init(bool saving_whole, bool use_codecache) {
@@ -88,8 +95,9 @@ extern "C" {
     s.SetRecursionLimit(10000);
     std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
     task->ParseFromCodedStream(&s);
-    gresults.emplace_back(pool->push(handle_task, task));
-    //handle_task(0,task);
+    printTask(task.get());
+    //gresults.emplace_back(pool->push(handle_task, task));
+    handle_task(0,task);
   }
 
   void init_core(bool saving_whole, bool use_codecache) { init(saving_whole, use_codecache); }

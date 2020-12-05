@@ -102,8 +102,8 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
 			}
 			++arg_idx;
 		}
-		//for(int p=0;p<5;p++) std::cout << (int)fut->scratch_args[p]<<", ";
-		//std::cout << std::endl;
+		for(int p=0;p<6;p++) std::cout << (int)fut->scratch_args[p]<<", ";
+		std::cout << std::endl;
 		cur = (uint64_t)c->fn(fut->scratch_args);
 		uint64_t dis = getDistance(c->comparison,fut->scratch_args[0],fut->scratch_args[1]);
 /*
@@ -112,7 +112,7 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
 				addOptiResults(input, fut);
 		}
 */
-		//printf("func called and expr %d, comparison %d, arg0 %lu and arg1 %lu and return value is %lu \n",i, c->comparison, fut->scratch_args[0], fut->scratch_args[1], dis);
+		printf("func called and expr %d, comparison %d, arg0 %lu and arg1 %lu and return value is %lu \n",i, c->comparison, fut->scratch_args[0], fut->scratch_args[1], dis);
 	//	if (cur>0)
 	///		res += cur;
 		if (dis>0) {
