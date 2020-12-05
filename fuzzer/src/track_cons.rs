@@ -67,7 +67,7 @@ mod tests {
   use crate::cpp_interface::*;
   use protobuf::Message;
   use crate::fifo::*;
-  use crate::util::*;
+  //use crate::util::*;
 
 #[test]
   fn test_scan() {

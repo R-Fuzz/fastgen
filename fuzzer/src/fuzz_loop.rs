@@ -158,7 +158,7 @@ mod tests {
         depot.clone(),
         );
 
-    let t_start = time::Instant::now();
+    //let t_start = time::Instant::now();
     let mut fid = 1;
     let dirpath = Path::new("/home/cju/test");
     loop {

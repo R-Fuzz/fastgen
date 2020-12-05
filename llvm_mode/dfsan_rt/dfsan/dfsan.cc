@@ -1042,7 +1042,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
   static int count = 0;
   if (__solver_select != 1) {
     if (rejectBranch(label)) return;
-    printLabel(label);
+    //printLabel(label);
     sprintf(content, "%u, %u, %u\n", __tid, label, r);
     write(mypipe,content,strlen(content));
     return;

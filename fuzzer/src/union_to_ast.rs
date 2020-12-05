@@ -377,7 +377,7 @@ fn is_relational(op: Option<RGD>) -> bool {
     Some(RGD::Equal) => true,
     Some(RGD::Distinct) => true,
     Some(RGD::Sgt) => true,
-    Some(RGD::Sle) => true,
+    Some(RGD::Sge) => true,
     Some(RGD::Sle) => true,
     Some(RGD::Slt) => true,
     Some(RGD::Uge) => true,
@@ -391,54 +391,54 @@ fn is_relational(op: Option<RGD>) -> bool {
 //e.g. equal(zext(equal(X, Y), 0))  => distinct(x,y)
 fn simplify(src: &mut AstNode, dst: &mut AstNode) {
 
-  if (src.get_kind() == RGD::Distinct as u32 || src.get_kind() == RGD::Equal as u32) {
+  if src.get_kind() == RGD::Distinct as u32 || src.get_kind() == RGD::Equal as u32 {
     let c0 = &src.get_children()[0];
     let c1 = &src.get_children()[1];
 
     let left;
     let right;
-    if (c1.get_kind() == RGD::ZExt as u32 && c0.get_kind() == RGD::Constant as u32) {
+    if c1.get_kind() == RGD::ZExt as u32 && c0.get_kind() == RGD::Constant as u32 {
       left = c1;
       right = c0;
-    } else if (c0.get_kind() == RGD::ZExt as u32 && c1.get_kind() == RGD::Constant as u32) {
+    } else if c0.get_kind() == RGD::ZExt as u32 && c1.get_kind() == RGD::Constant as u32 {
       left = c0;
       right = c1;
     } else {
-      dst.merge_from_bytes(&src.write_to_bytes().unwrap());
+      dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
       return;
     }
 
-    if (left.get_kind() == RGD::ZExt as u32 && right.get_kind() == RGD::Constant as u32) {
+    if left.get_kind() == RGD::ZExt as u32 && right.get_kind() == RGD::Constant as u32 {
       let c00 = &left.get_children()[0];
       if is_relational(FromPrimitive::from_u32(c00.get_kind())) {
         let cv = right.get_value().parse::<u64>().expect("expect u64 number in value field");
-        if (src.get_kind() == RGD::Distinct as u32) {
+        if src.get_kind() == RGD::Distinct as u32 {
           if cv == 0 {
             // != 0 => true => keep the same
-            dst.merge_from_bytes(&c00.write_to_bytes().unwrap());
+            dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
           } else {
             // != 1 => false => negate
-            dst.merge_from_bytes(&c00.write_to_bytes().unwrap());
+            dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
             flip_op(dst);
           }
         } else { // RGD::Equal
           if cv == 0 {
             // == 0 => false => negate
-            dst.merge_from_bytes(&c00.write_to_bytes().unwrap());
+            dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
             flip_op(dst);
           } else {
             // == 1 => true => keep the same
-            dst.merge_from_bytes(&c00.write_to_bytes().unwrap());
+            dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
           }
         }
       } else {
-        dst.merge_from_bytes(&src.write_to_bytes().unwrap());
+        dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
       }
     } else {
-      dst.merge_from_bytes(&src.write_to_bytes().unwrap());
+      dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
     } 
   } else {
-      dst.merge_from_bytes(&src.write_to_bytes().unwrap());
+      dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
   }
 }
 
