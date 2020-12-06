@@ -50,10 +50,12 @@ void save_task(const unsigned char* input, unsigned int input_length) {
 
 bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   FUT* fut = construct_task(task.get());
+
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
   fut->rgd_solution = &rgd_solution;
   gd_search(fut);
   if (rgd_solution.size() == 0) {
+    delete fut;
     return false;
   }
   if (!SAVING_WHOLE) {
@@ -67,6 +69,7 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
      //   printf("sol index is %u and value is %u\n",itr.first,itr.second);
     generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
   }
+
   delete fut;
   return true;
 }
@@ -79,6 +82,11 @@ void init(bool saving_whole, bool use_codecache) {
   pool = new ctpl::thread_pool(THREAD_POOL_SIZE,0);
   SAVING_WHOLE = saving_whole;
   USE_CODECACHE = use_codecache;
+}
+
+
+void fini() {
+  delete pool;
 }
 
 std::string get_current_dir() {
@@ -100,6 +108,7 @@ extern "C" {
   }
 
   void init_core(bool saving_whole, bool use_codecache) { init(saving_whole, use_codecache); }
+  void fini_core() { fini(); }
   void aggregate_results() {
     int finished = 0;
     for(auto && r: gresults) {

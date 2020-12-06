@@ -8,4 +8,5 @@ extern {
   pub fn aggregate_results();
   pub fn get_input_buf(input: *mut u8);
   pub fn get_next_input(input: *mut u8) -> u32;
+  pub fn fini_core();
 }

@@ -55,7 +55,7 @@
 #define OPTIMISTIC 1
 #define RESTRICT_CONSTRAINT 1
 #define PATH_PREFIX 0
-#define CTX_FILTER 1
+#define CTX_FILTER 0
 
 struct shmseg {
   int cnt;

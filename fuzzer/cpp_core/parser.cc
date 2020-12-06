@@ -110,6 +110,7 @@ FUT* construct_task(SearchTask* task) {
       req->CopyFrom(c.node());
       struct myKV *res = Expr2Func.find(req);
       //   struct myKV *res = nullptr;
+
       if ( res == nullptr) {
         ++miss;
         uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
@@ -130,6 +131,7 @@ FUT* construct_task(SearchTask* task) {
         }
         cons->fn = res->fn;
       }
+
     } else {
         uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
         addFunction(&c.node(), cons->local_map, id);
