@@ -18,6 +18,7 @@ using namespace google::protobuf::io;
 using namespace rgd;
 extern ctpl::thread_pool* pool;
 bool handle_task(int tid, std::shared_ptr<SearchTask> task);
+bool handle_task_v2(int tid, std::shared_ptr<SearchTask> task);
 extern std::vector<std::future<bool>> gresults;
 
 int main() {
@@ -27,15 +28,11 @@ int main() {
   bool suc = false;
   int fid = 1;
   int finished = 0;
-  do {
-    std::shared_ptr<SearchTask>  task = std::make_shared<SearchTask>();
-    suc = readDelimitedFrom(rawInput,task.get());
-    printTask(task.get());
-    if (suc) {
-      gresults.emplace_back(pool->push(handle_task, task));
-    }
-  } while (suc);
-  for(auto && r: gresults)
-    finished += (int)r.get();
+  std::shared_ptr<SearchTask>  task = std::make_shared<SearchTask>();
+  suc = readDelimitedFrom(rawInput,task.get());
+  printTask(task.get());
+  if (suc) {
+    handle_task_v2(0,task);
+  }
 }
 

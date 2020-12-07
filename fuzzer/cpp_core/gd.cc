@@ -120,11 +120,12 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
 		}
 	}
 	if (res==0) {
-		fut->stopped = true;
+    //we don't stop if one solution is found
+		//fut->stopped = true;
 		fut->gsol = true;
-		//dumpResults(input, fut);
+		dumpResults(input, fut);
 		//fut->scratch_args[24] = fut->scratch_args[24] & 0x1f;
-		addResults(input, fut);
+		//addResults(input, fut);
 	}
 	fut->att++;
 	if (fut->att>MAX_EXEC_TIMES) {
@@ -269,8 +270,9 @@ uint64_t descend(MutInput &input_min, MutInput &input, uint64_t f0, Grad &grad, 
 
 			uint64_t f_new = distance(input,fut);
 
+      //if distance is zero, we donn;t break 
 			if (f_new >= f_last) {
-				//if (f_new == UINTMAX_MAX)
+				if (f_new == UINTMAX_MAX)
 					break;
 			}
 
@@ -305,7 +307,8 @@ uint64_t repick_start_point(MutInput &input_min, struct FUT* fut) {
 }
 
 uint64_t reload_input(MutInput &input_min,struct FUT* fut) {
-	input_min.assign(fut->inputs);
+	//input_min.assign(fut->inputs);
+	input_min.randomize();
 	return distance(input_min,fut);
 }
 
