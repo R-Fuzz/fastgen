@@ -309,9 +309,6 @@ uint64_t reload_input(MutInput &input_min,struct FUT* fut) {
 	return distance(input_min,fut);
 }
 
-
-
-
 bool gd_search(struct FUT* fut) {
 	MutInput input(fut->inputs.size());
 	MutInput scratch_input(fut->inputs.size());
@@ -342,8 +339,6 @@ bool gd_search(struct FUT* fut) {
 			if (fut->stopped)
 				break;
 			g_i++;
-			//f0 = repick_start_point(input, f0, rng);
-			//f0 = reload_input(input);
 			f0 = repick_start_point(input,fut);
 			if (fut->stopped)
 				break;
@@ -351,10 +346,8 @@ bool gd_search(struct FUT* fut) {
 			cal_gradient(input,f0,grad,fut);
 		}
 		if (fut->stopped || g_i > MAX_NUM_MINIMAL_OPTIMA_ROUND) {
-			//std::cout << "trapped in local optimia for too long" << std::endl;
 			break;
 		}
-		//TODO
 		grad.normalize();
 		f0 = descend(input, scratch_input,f0, grad,fut);
 		ep_i += 1;
