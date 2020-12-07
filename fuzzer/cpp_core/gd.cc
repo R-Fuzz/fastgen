@@ -123,7 +123,7 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
 	}
 	if (res==0) {
     //we don't stop if one solution is found
-		//fut->stopped = true;
+		fut->stopped = true;
 		fut->gsol = true;
 		//dumpResults(input, fut);
 		//fut->scratch_args[24] = fut->scratch_args[24] & 0x1f;
@@ -274,7 +274,8 @@ uint64_t descend(MutInput &input_min, MutInput &input, uint64_t f0, Grad &grad, 
 
       //if distance is zero, we donn;t break 
 			if (f_new >= f_last) {
-				if (f_new == UINTMAX_MAX)
+				//if (f_new == UINTMAX_MAX)
+        //if (f_new != 0)
 					break;
 			}
 

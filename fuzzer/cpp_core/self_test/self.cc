@@ -36,6 +36,7 @@ int main() {
   } while (suc);
   for(auto && r: gresults)
     finished += (int)r.get();
+  printf("finished %d\n",finished);
   fini();
 }
 
