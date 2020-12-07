@@ -36,5 +36,6 @@ int main() {
   } while (suc);
   for(auto && r: gresults)
     finished += (int)r.get();
+  fini();
 }
 

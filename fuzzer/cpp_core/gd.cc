@@ -16,10 +16,12 @@ void dumpResults(MutInput &input, struct FUT* fut) {
 }
 void addResults(MutInput &input, struct FUT* fut) {
 	int i = 0;
+  std::unordered_map<uint32_t, uint8_t> sol;
 	for (auto it : fut->inputs) {
-			(*fut->rgd_solution)[it.first] = input.value[i];
+			sol[it.first] = input.value[i];
 			i++;
 	}
+	(*fut->rgd_solutions).push_back(sol);
 }
 void addOptiResults(MutInput &input, struct FUT* fut) {
 	int i = 0;
@@ -123,9 +125,9 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
     //we don't stop if one solution is found
 		//fut->stopped = true;
 		fut->gsol = true;
-		dumpResults(input, fut);
+		//dumpResults(input, fut);
 		//fut->scratch_args[24] = fut->scratch_args[24] & 0x1f;
-		//addResults(input, fut);
+		addResults(input, fut);
 	}
 	fut->att++;
 	if (fut->att>MAX_EXEC_TIMES) {

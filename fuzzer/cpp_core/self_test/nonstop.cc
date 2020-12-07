@@ -34,5 +34,7 @@ int main() {
   if (suc) {
     handle_task_v2(0,task);
   }
+  delete rawInput;
+  fini();
 }
 
