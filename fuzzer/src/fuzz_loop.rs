@@ -158,9 +158,10 @@ mod tests {
         depot.clone(),
         );
 
-    //let t_start = time::Instant::now();
+    let t_start = time::Instant::now();
     let mut fid = 1;
     let dirpath = Path::new("/home/cju/test");
+    let mut count = 0;
     loop {
       let file_name = format!("id-{:08}", fid);
       let fpath = dirpath.join(file_name);
@@ -171,7 +172,10 @@ mod tests {
       let buf = read_from_file(&fpath);
       executor.run_sync(&buf);
       fid = fid + 1;
+      count = count + 1;
     }
+    let used_t1 = t_start.elapsed();
+    println!("throught put is {}", count / used_t1.as_secs() as u32);
 
   }
 }
