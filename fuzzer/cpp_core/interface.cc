@@ -55,7 +55,6 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   fut->rgd_solutions = &rgd_solutions;
   gd_search(fut);
   if (rgd_solutions.size() == 0) {
-    printf("did not found\n");
     delete fut;
     return false;
   }

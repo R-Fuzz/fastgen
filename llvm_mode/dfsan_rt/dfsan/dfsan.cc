@@ -1190,7 +1190,7 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
   uint64_t callstack = __taint_trace_callstack;
   XXH64_update(&ctx_state, &acc, sizeof(acc));
   XXH64_update(&ctx_state, &callstack, sizeof(callstack));
-  //XXH64_update(&ctx_state, &order, sizeof(order));
+  XXH64_update(&ctx_state, &order, sizeof(order));
   uint64_t ctx_hash = XXH64_digest(&ctx_state);          // hash value of untaken branch
   auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
   if (val) {
@@ -1272,7 +1272,7 @@ __taint_trace_cond(dfsan_label label, u8 r) {
   uint64_t callstack = __taint_trace_callstack;
   XXH64_update(&ctx_state, &acc, sizeof(acc));
   XXH64_update(&ctx_state, &callstack, sizeof(callstack));
-  //XXH64_update(&ctx_state, &order, sizeof(order));
+  XXH64_update(&ctx_state, &order, sizeof(order));
   uint64_t ctx_hash = XXH64_digest(&ctx_state);          // hash value of untaken branch
   auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
   if (val) {

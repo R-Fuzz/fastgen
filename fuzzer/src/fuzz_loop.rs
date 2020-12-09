@@ -56,7 +56,7 @@ pub fn grading_loop(
         executor.run_sync(&buf);
         grade_count = grade_count + 1;
       }
-      if grade_count % 10000 == 0 {
+      if grade_count % 1000 == 0 {
         let used_t1 = t_start.elapsed().as_secs() as u32;
         if used_t1 != 0 {
           warn!("Grading throughput is {}", grade_count / used_t1);
@@ -175,7 +175,8 @@ mod tests {
       count = count + 1;
     }
     let used_t1 = t_start.elapsed();
-    println!("throught put is {}", count / used_t1.as_secs() as u32);
-
+    if used_t1.as_secs() as u32 !=0  {
+      println!("throught put is {}", count / used_t1.as_secs() as u32);
+    }
   }
 }
