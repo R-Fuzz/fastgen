@@ -103,7 +103,7 @@ std::string get_current_dir() {
 
 extern "C" {
   void submit_task(const unsigned char* input, unsigned int input_length) {
-//    save_task(input,input_length);
+    //save_task(input,input_length);
 
     CodedInputStream s(input,input_length);
     s.SetRecursionLimit(10000);
