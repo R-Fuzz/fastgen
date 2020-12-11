@@ -21,6 +21,12 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u32)>, tasks: &mut Vec<SearchTask>, tabl
   }
 }
 
+pub fn scan_tasks_nested(labels: &Vec<(u32,u32,u32)>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
+  for &label in labels {
+  }
+}
+
+
 fn append_meta(cons: &mut Constraint, 
               local_map: &HashMap<u32,u32>, 
               input_args: &Vec<(bool,u64)>,

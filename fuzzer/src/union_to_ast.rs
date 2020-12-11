@@ -2,10 +2,11 @@ use crate::rgd::*;
 use crate::op_def::*;
 use crate::union_table::*;
 use std::collections::HashSet;
+use std::collections::HashMap;
 use num_traits::FromPrimitive;
 use protobuf::Message;
 
-fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet<u32>)  {
+fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap<u32, HashSet<u32>>)  {
   if label==0 {
     return;
   }
@@ -14,11 +15,12 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
   if size==0 { 
     size = 1;
   }
-  if cache.contains(&label) {
+  if cache.contains_key(&label) {
     ret.set_label(label);
     ret.set_bits(size as u32);
     return;
   }
+
 
   match info.op as u32 {
     DFSAN_READ => {
@@ -27,7 +29,10 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_index(info.op1 as u32);
                     ret.set_name("read".to_string());
                     //TODO set value field of read for iv
-                    ret.set_label(0);
+                    let mut deps = HashSet::new();
+                    deps.insert(info.op1 as u32);
+                    ret.set_label(label);
+                    cache.insert(label, deps);
                     return;
                   },
     DFSAN_LOAD => {
@@ -35,7 +40,12 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_bits(info.l2 * 8);
                     ret.set_index(table[info.l1 as usize].op1 as u32);
                     ret.set_name("read".to_string());
-                    ret.set_label(0);
+                    let mut deps = HashSet::new();
+                    for i in 0..info.l1 as u32 {
+                      deps.insert(table[info.l1 as usize].op1 as u32 + i);
+                    }
+                    ret.set_label(label);
+                    cache.insert(label, deps);
                     return;
                   },
     DFSAN_ZEXT => {
@@ -46,7 +56,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
-                    cache.insert(label);
+                    cache.insert(label, cache[&info.l1].clone());
                     return;
                   },
     DFSAN_SEXT => {
@@ -57,7 +67,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
-                    cache.insert(label);
+                    cache.insert(label, cache[&info.l1].clone());
                     return;
                   },
     DFSAN_TRUNC => {
@@ -69,7 +79,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
-                    cache.insert(label);
+                    cache.insert(label, cache[&info.l1].clone());
                     return;
                   },
     DFSAN_EXTRACT => {
@@ -81,7 +91,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     do_uta(info.l1, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
-                    cache.insert(label);
+                    cache.insert(label, cache[&info.l1].clone());
                     return;
                   },
     DFSAN_NOT => {
@@ -93,7 +103,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     do_uta(info.l2, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
-                    cache.insert(label);
+                    cache.insert(label, cache[&info.l1].clone());
                     return;
                   },
     DFSAN_NEG => {
@@ -105,7 +115,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     do_uta(info.l2, &mut c, table, cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
-                    cache.insert(label);
+                    cache.insert(label, cache[&info.l1].clone());
                     return;
                   },
     _ => (),
@@ -139,6 +149,20 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
   }
   ret.mut_children().push(left);
   ret.mut_children().push(right);
+
+  //TODO merge cache
+  let mut merged = HashSet::new();
+  if info.l1 >= CONST_OFFSET {
+    for &v in &cache[&info.l1] {
+      merged.insert(v);
+    }
+  }
+  if info.l2 >= CONST_OFFSET {
+    for &v in &cache[&info.l2] {
+      merged.insert(v);
+    }
+  }
+  cache.insert(label, merged);
   
   match (info.op & 0xff) as u32 {
     DFSAN_AND => {
@@ -151,7 +175,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     } 
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_OR => {
@@ -164,7 +187,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     } 
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_XOR => {
@@ -172,7 +194,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("xor".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_SHL => {
@@ -180,7 +201,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("shl".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_LSHR => {
@@ -188,7 +208,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("lshr".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_ASHR => {
@@ -196,7 +215,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("ashr".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_ADD => {
@@ -204,7 +222,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("add".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_SUB => {
@@ -212,7 +229,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("sub".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_MUL => {
@@ -220,7 +236,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("mul".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_UDIV => {
@@ -228,7 +243,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("udiv".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_SDIV => {
@@ -236,7 +250,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("sdiv".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_UREM => {
@@ -244,7 +257,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("urem".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_SREM => {
@@ -252,7 +264,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("srem".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_CONCAT => {
@@ -260,7 +271,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("concat".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     _ => (),
@@ -272,7 +282,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("equal".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_BVNEQ => {
@@ -280,7 +289,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("distinct".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_BVULT => {
@@ -288,7 +296,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("ult".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
 
@@ -297,7 +304,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("ule".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_BVUGT => {
@@ -305,7 +311,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("ugt".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_BVUGE => {
@@ -313,7 +318,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("uge".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_BVSLT => {
@@ -321,7 +325,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("slt".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_BVSLE => {
@@ -329,7 +332,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("sle".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_BVSGT => {
@@ -337,7 +339,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("sgt".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     DFSAN_BVSGE => {
@@ -345,7 +346,6 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashSet
                     ret.set_name("sge".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    cache.insert(label);
                     return;
                   },
     _ => (),
@@ -445,7 +445,7 @@ fn simplify(src: &mut AstNode, dst: &mut AstNode) {
 pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table: &UnionTable) {
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
-  let mut cache = HashSet::new();
+  let mut cache = HashMap::new();
   assert!(op == DFSAN_BVEQ || op == DFSAN_BVNEQ ||
           op == DFSAN_BVULT || op == DFSAN_BVULE ||
           op == DFSAN_BVUGT || op == DFSAN_BVUGE ||
