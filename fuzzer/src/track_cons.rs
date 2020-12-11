@@ -6,12 +6,21 @@ use crate::analyzer::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+//each input offset has a coresspdoing slot
+pub struct BranchDep {
+  //the dependent expr labels associated with this input
+  pub expr_labels: HashSet<u32>,
+  // the dependent input offsets associated with this input offset
+  pub input_deps: HashSet<u32>, 
+}
 
+//label 0: fid  label 1: label  label 2: direction
 pub fn scan_tasks(labels: &Vec<(u32,u32,u32)>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
   for &label in labels {
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
-    get_one_constraint(label.1, label.2, &mut node, table);
+    let mut deps = HashSet::new();
+    get_one_constraint(label.1, label.2, &mut node, table, &mut deps);
     cons.set_node(node);
     analyze_meta(&mut cons);
     let mut task = SearchTask::new();
@@ -21,11 +30,78 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u32)>, tasks: &mut Vec<SearchTask>, tabl
   }
 }
 
-pub fn scan_tasks_nested(labels: &Vec<(u32,u32,u32)>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
+pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u32)>, tasks: &mut Vec<SearchTask>, table: &UnionTable, tainted_size: usize) {
+  let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
+  branch_deps.resize_with(tainted_size, || None);
+  let mut cons_table = HashMap::new();
+  //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
   for &label in labels {
+    let mut node = AstNode::new();
+    let mut cons = Constraint::new();
+    let mut inputs = HashSet::new();
+    get_one_constraint(label.1, label.2, &mut node, table, &mut inputs);
+
+    //Step 1: collect additional input deps
+    let mut work_list = Vec::new();
+    for &v in inputs.iter() {
+      work_list.push(v);
+    }
+    while work_list.is_empty() {
+      let off = work_list.pop().unwrap();
+      let deps_opt = &branch_deps[off as usize];
+      if let Some(deps) = deps_opt {
+        for &v in deps.input_deps.iter() {
+          if inputs.insert(v) {
+            work_list.push(v);
+          }
+        }
+      }
+    }
+
+    //step 2: add constraints
+    let mut added = HashSet::new();
+    for &off in inputs.iter() {
+      let deps_opt = &branch_deps[off as usize];
+      if let Some(deps) = deps_opt {
+        for &l in deps.expr_labels.iter() {
+          added.insert(l);
+        }
+      }
+    }
+
+    // add constraints
+    cons.set_node(node);
+    analyze_meta(&mut cons);
+    cons_table.insert(label.1, cons.clone());
+    let mut task = SearchTask::new();
+    task.mut_constraints().push(cons);
+    for l in added.iter() {
+      task.mut_constraints().push(cons_table[l].clone());
+    }
+    task.set_fid(label.0);
+    tasks.push(task);
+
+    //step 3: nested branch
+    for &off in inputs.iter() {
+      let mut is_empty = false;
+      {
+        let deps_opt = &branch_deps[off as usize];
+        if deps_opt.is_none() {
+          is_empty = true;
+        }
+      }
+      if is_empty {
+        branch_deps.insert(off as usize, Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
+      }
+      let deps_opt = &mut branch_deps[off as usize];
+      let deps = deps_opt.as_mut().unwrap(); 
+      for &off1 in inputs.iter() {
+        deps.input_deps.insert(off1);
+      }
+      deps.expr_labels.insert(label.1);
+    }
   }
 }
-
 
 fn append_meta(cons: &mut Constraint, 
               local_map: &HashMap<u32,u32>, 

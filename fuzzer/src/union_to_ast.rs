@@ -22,8 +22,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
   }
 
 
-  match info.op as u32 {
-    DFSAN_READ => {
+  match info.op as u32 { DFSAN_READ => {
                     ret.set_kind(RGD::Read as u32);
                     ret.set_bits(8 as u32);
                     ret.set_index(info.op1 as u32);
@@ -442,7 +441,7 @@ fn simplify(src: &mut AstNode, dst: &mut AstNode) {
   }
 }
 
-pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table: &UnionTable) {
+pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
   let mut cache = HashMap::new();
@@ -458,6 +457,9 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
     flip_op(&mut src);
   }
   
+  for &v in &cache[&label] {
+    deps.insert(v);
+  }
   simplify(&mut src, dst);
 }
 
