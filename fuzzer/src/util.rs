@@ -18,8 +18,25 @@ pub fn to_rgd_op(op: u32) -> u32 {
   }
 }
 
+fn get_name(op: u32) -> String {
+  match FromPrimitive::from_u32(op) {
+    Some(RGD::Equal) => "equal".to_string(),
+    Some(RGD::Distinct) => "distinct".to_string(),
+    Some(RGD::Sgt) => "sgt".to_string(),
+    Some(RGD::Sge) => "sge".to_string(),
+    Some(RGD::Slt) => "slt".to_string(),
+    Some(RGD::Sle) => "sle".to_string(),
+    Some(RGD::Ugt) => "ugt".to_string(),
+    Some(RGD::Uge) => "uge".to_string(),
+    Some(RGD::Ult) => "ult".to_string(),
+    Some(RGD::Ule) => "ule".to_string(),
+    _ => "".to_string(),
+  }
+}
+
+
 pub fn do_print(node: &AstNode) {
-  print!("{}(",node.get_name());
+  print!("{}(", get_name(node.get_kind()));
   print!("width={},",node.get_bits());
   print!("label={},",node.get_label());
   match FromPrimitive::from_u32(node.get_kind()) {
