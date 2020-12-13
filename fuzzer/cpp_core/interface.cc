@@ -49,14 +49,24 @@ void save_task(const unsigned char* input, unsigned int input_length) {
 }
 
 bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
-  FUT* fut = construct_task(task.get());
+
+  FUT *fut = new FUT();
+  FUT *fut_opt = new FUT();
+
+  bool search_result = true;
+  construct_task(task.get(), &fut, &fut_opt);
 
   std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions;
+  std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions_opt;
   fut->rgd_solutions = &rgd_solutions;
+  fut_opt->rgd_solutions = &rgd_solutions_opt;
   gd_search(fut);
   if (rgd_solutions.size() == 0) {
-    delete fut;
-    return false;
+    gd_search(fut_opt);
+    if (rgd_solutions_opt.size() == 0) {
+      search_result = false;
+    }
+    printf("solution size is %d\n",rgd_solutions_opt.size());
   }
   if (!SAVING_WHOLE) {
     for (auto rgd_solution :  rgd_solutions) {
@@ -64,19 +74,25 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
       if (solution_queue.size_approx() % 1000 == 0)
         printf("queue item is about %u\n", solution_queue.size_approx());
     }
+    for (auto rgd_solution :  rgd_solutions_opt) {
+      solution_queue.enqueue({task->fid(), rgd_solution});
+      if (solution_queue.size_approx() % 1000 == 0)
+        printf("queue item is about %u\n", solution_queue.size_approx());
+    }
   } else {
     std::string old_string = std::to_string(task->fid());
     std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-    printf("solution's size is %d\n", rgd_solutions.size());
-    for (auto rgd_solution :  rgd_solutions) {
-      //for(auto itr : rgd_solution)
-        //printf("sol index is %u and value is %u\n",itr.first,itr.second);
+    for (auto rgd_solution : rgd_solutions) {
+      generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+    }
+    for (auto rgd_solution : rgd_solutions_opt) {
       generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
     }
   }
 
   delete fut;
-  return true;
+  delete fut_opt;
+  return search_result;
 }
 
 void init(bool saving_whole, bool use_codecache) {
@@ -126,7 +142,7 @@ extern "C" {
   
   void get_input_buf(unsigned char* input) {
     for(int i=0; i<10;i++) {
-      input[i] = 32 ;
+      input[i] = 32;
     }
   }
 

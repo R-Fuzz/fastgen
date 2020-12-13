@@ -95,12 +95,17 @@ static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
   cons->const_num = c->meta().const_num(); 
 }
 
-FUT* construct_task(SearchTask* task) {
-  struct FUT *fut = new FUT();
-  fut->gsol = false;
-  fut->att = 0;
-  fut->stopped = false;
-  fut->num_minimal_optima = 0;
+void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
+  (*fut)->gsol = false;
+  (*fut)->att = 0;
+  (*fut)->stopped = false;
+  (*fut)->num_minimal_optima = 0;
+
+  (*fut_opt)->gsol = false;
+  (*fut_opt)->att = 0;
+  (*fut_opt)->stopped = false;
+  (*fut_opt)->num_minimal_optima = 0;
+  int i = 0;
   for (auto c : task->constraints()) {
     assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
     std::shared_ptr<Cons> cons = std::make_shared<Cons>();
@@ -138,8 +143,14 @@ FUT* construct_task(SearchTask* task) {
         auto fn = performJit(id);
         cons->fn = fn; // fn could be duplicated, but that's fine
     }
-    fut->constraints.push_back(cons);
+    (*fut)->constraints.push_back(cons);
+    if ( i == 0)
+      (*fut_opt)->constraints.push_back(cons);
+    i++;
   }
-  fut->finalize();
-  return fut;
+
+  (*fut)->finalize();
+  (*fut_opt)->finalize();
+  //return fut;
+  return;
 }
