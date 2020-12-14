@@ -66,7 +66,6 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
     if (rgd_solutions_opt.size() == 0) {
       search_result = false;
     }
-    printf("solution size is %d\n",rgd_solutions_opt.size());
   }
   if (!SAVING_WHOLE) {
     for (auto rgd_solution :  rgd_solutions) {
