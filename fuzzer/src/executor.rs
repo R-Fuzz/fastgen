@@ -104,7 +104,8 @@ impl Executor {
 
     pub fn track(&mut self, id: usize, buf: &Vec<u8>) {
         //FIXME
-        let e = format!("taint_file=output/tmp/cur_input_2 tid={}",id); 
+        //let e = format!("taint_file=output/tmp/cur_input_2 solver_select=1 tid={}",id);
+        let e = format!("taint_file=output/tmp/cur_input_2 tid={}",id);
         info!("Track {}", &id);
         self.envs.insert(
             defs::TAINT_OPTIONS.to_string(),
@@ -154,6 +155,11 @@ impl Executor {
         self.run_init();
         let status = self.run_inner(buf);
         self.do_if_has_new(buf, status);
+    }
+
+    pub fn run_norun(&mut self, buf: &Vec<u8>)  {
+        let status = StatusType::Normal;
+        self.depot.save(status, &buf);
     }
 
     

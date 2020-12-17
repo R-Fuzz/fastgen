@@ -129,13 +129,13 @@ static void add_runtime() {
 
 static void add_dfsan_pass() {
 
-/*
+
     cc_params[cc_par_cnt++] = "-Xclang";
     cc_params[cc_par_cnt++] = "-load";
     cc_params[cc_par_cnt++] = "-Xclang";
     cc_params[cc_par_cnt++] =
         alloc_printf("%s/pass/libUnfoldBranchPass.so", obj_path);
-*/
+
 
 
   cc_params[cc_par_cnt++] = "-Xclang";

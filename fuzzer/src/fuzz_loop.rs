@@ -39,10 +39,14 @@ pub fn grading_loop(
       if !fpath.exists() {
         continue;
       }
-      trace!("grading {:?}", &fpath);
       let buf = read_from_file(&fpath);
+      if buf.len() == 0 {
+        continue;
+      }
+      info!("grading {:?} and length is {}", &fpath, &buf.len());
+      //executor.run_norun(&buf);
       executor.run_sync(&buf);
-      std::fs::remove_file(fpath).unwrap();
+      //std::fs::remove_file(fpath).unwrap();
       fid = fid + 1;
     }
   } else {
@@ -70,7 +74,7 @@ pub fn grading_loop(
 pub fn dispatcher(table: &UnionTable) {
   let labels = read_pipe();
   let mut tasks = Vec::new();
-  scan_tasks(&labels, &mut tasks, table); 
+  scan_nested_tasks(&labels, &mut tasks, table, 400); 
   for task in tasks {
     let task_ser = task.write_to_bytes().unwrap();
     unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32); }
@@ -108,11 +112,15 @@ pub fn fuzz_loop(
       let handle = thread::spawn(move || {
           dispatcher(table);
           });
+
       let t_start = time::Instant::now();
+
       executor.track(id, &buf);
+
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
+
       let used_t1 = t_start.elapsed();
       let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
       trace!("track time {}", used_us1);

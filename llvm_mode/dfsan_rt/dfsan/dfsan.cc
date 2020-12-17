@@ -55,7 +55,7 @@
 #define OPTIMISTIC 1
 #define RESTRICT_CONSTRAINT 1
 #define PATH_PREFIX 0
-#define CTX_FILTER 1
+#define CTX_FILTER 0
 
 struct shmseg {
   int cnt;
@@ -1040,14 +1040,20 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
   char content[100];
   //session id, label, direction
   static int count = 0;
+
+  if ((get_label_info(label)->flags & B_FLIPPED)) {
+    if (skip == 1)
+      return;
+  }
+
+  printf("__solve_cond %d and solver_select is %d\n",++count, __solver_select);
   if (__solver_select != 1) {
     if (rejectBranch(label)) return;
     //printLabel(label);
     sprintf(content, "%u, %u, %u\n", __tid, label, r);
     write(mypipe,content,strlen(content));
+  get_label_info(label)->flags |= B_FLIPPED;
     return;
-  }
-  if ((get_label_info(label)->flags & B_FLIPPED)) {
   }
   static int dismatch = 0;
   printf("__solve_cond %d\n",++count);
@@ -1181,7 +1187,7 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
     order = itr->second;
   } else {
     skip += 1;
-    return;
+   // return;
   }
 
 #if CTX_FILTER
@@ -1194,10 +1200,11 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
   uint64_t ctx_hash = XXH64_digest(&ctx_state);          // hash value of untaken branch
   auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
   if (val) {
+    //skip = 1;
     return;
   } else {
     redis.set(std::to_string(ctx_hash)+PROGRAM, "explored");
-    skip = 0;
+    //skip = 0;
   }
 #endif
 
@@ -1263,7 +1270,7 @@ __taint_trace_cond(dfsan_label label, u8 r) {
     order = itr->second;
   } else {
     skip += 1;
-    return;
+    //return;
   }
 
 #if CTX_FILTER
@@ -1277,10 +1284,10 @@ __taint_trace_cond(dfsan_label label, u8 r) {
   auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
   if (val) {
     return;
-    skip = 1;	
+    //skip = 1;	
   } else {
     redis.set(std::to_string(ctx_hash)+PROGRAM, "explored");
-    skip = 0;
+    //skip = 0;
   }
 #endif
 

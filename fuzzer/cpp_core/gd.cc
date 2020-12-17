@@ -14,6 +14,7 @@ void dumpResults(MutInput &input, struct FUT* fut) {
 			i++;
 	}
 }
+
 void addResults(MutInput &input, struct FUT* fut) {
 	int i = 0;
   std::unordered_map<uint32_t, uint8_t> sol;
@@ -21,8 +22,21 @@ void addResults(MutInput &input, struct FUT* fut) {
 			sol[it.first] = input.value[i];
 			i++;
 	}
-	(*fut->rgd_solutions).push_back(sol);
+  if ((*fut->rgd_solutions).size() < 50)
+	  (*fut->rgd_solutions).push_back(sol);
 }
+
+void addPartialResults(MutInput &input, struct FUT* fut) {
+	int i = 0;
+  std::unordered_map<uint32_t, uint8_t> sol;
+	for (auto it : fut->inputs) {
+			sol[it.first] = input.value[i];
+			i++;
+	}
+  if ((*fut->partial_solutions).size() < 5)
+	  (*fut->partial_solutions).push_back(sol);
+}
+
 void addOptiResults(MutInput &input, struct FUT* fut) {
 	int i = 0;
 	for (auto it : fut->inputs) {
@@ -91,6 +105,9 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
 	static int solved= 0;
 	uint64_t res = 0;
 	uint64_t cur = 0;
+  bool nested = false;
+  if (fut->constraints.size() > 1)
+    nested = true;
 	for(int i=0; i<fut->constraints.size(); i++) {
 		//mapping symbolic args
 		int arg_idx = 0;	
@@ -108,6 +125,8 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
 //		std::cout << std::endl;
 		cur = (uint64_t)c->fn(fut->scratch_args);
 		uint64_t dis = getDistance(c->comparison,fut->scratch_args[0],fut->scratch_args[1]);
+    if (dis == 0 && nested)
+		  addPartialResults(input, fut);
 /*
 		if (dis == 0 && i == 0 && !fut->opti_hit) {
 				fut->opti_hit = true;
@@ -310,8 +329,8 @@ uint64_t repick_start_point(MutInput &input_min, struct FUT* fut) {
 }
 
 uint64_t reload_input(MutInput &input_min,struct FUT* fut) {
-	//input_min.assign(fut->inputs);
-	input_min.randomize();
+	input_min.assign(fut->inputs);
+//	input_min.randomize();
 	return distance(input_min,fut);
 }
 

@@ -40,6 +40,7 @@ struct FUT {
 	bool gsol = false;
 	bool opti_hit = false;
   std::vector<std::unordered_map<uint32_t,uint8_t>> *rgd_solutions;
+  std::vector<std::unordered_map<uint32_t,uint8_t>> *partial_solutions;
 	std::unordered_map<uint32_t,uint8_t> *rgd_solution;
 	std::unordered_map<uint32_t,uint8_t> *opti_solution;
 	uint64_t* scratch_args;
