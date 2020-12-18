@@ -5,6 +5,7 @@ use crate::union_to_ast::*;
 use crate::analyzer::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::{RwLock,Arc};
 
 //each input offset has a coresspdoing slot
 pub struct BranchDep {
@@ -15,7 +16,7 @@ pub struct BranchDep {
 }
 
 //label 0: fid  label 1: label  label 2: direction
-pub fn scan_tasks(labels: &Vec<(u32,u32,u32)>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
+pub fn scan_tasks(labels: &Vec<(u32,u32,u32,u64,u64,u32)>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
   for &label in labels {
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
@@ -26,16 +27,24 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u32)>, tasks: &mut Vec<SearchTask>, tabl
     let mut task = SearchTask::new();
     task.mut_constraints().push(cons);
     task.set_fid(label.0);
+    task.set_addr(label.3);
+    task.set_ctx(label.4);
+    task.set_order(label.5);
     tasks.push(task);
   }
 }
 
-pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u32)>, tasks: &mut Vec<SearchTask>, table: &UnionTable, tainted_size: usize) {
+pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u32,u64,u64,u32)>, tasks: &mut Vec<SearchTask>,
+          table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32)>>>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
   branch_deps.resize_with(tainted_size, || None);
   let mut cons_table = HashMap::new();
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
   for &label in labels {
+    if dedup.read().unwrap().contains(&(label.3,label.4,label.5)) {
+      continue;
+    }
+    dedup.write().unwrap().insert((label.3,label.4,label.5));
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
     let mut inputs = HashSet::new();
@@ -168,7 +177,8 @@ mod tests {
     let mut tasks = Vec::new();
     let labels = read_pipe();
     println!("labels len is {}", labels.len());
-    scan_nested_tasks(&labels, &mut tasks, table, 400);
+    let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32)>::new()));
+    scan_nested_tasks(&labels, &mut tasks, table, 400, &dedup);
 //    scan_tasks(&labels, &mut tasks, table);
     unsafe { init_core(true,true); }
     for task in tasks {

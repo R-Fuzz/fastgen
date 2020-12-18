@@ -1050,7 +1050,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
   if (__solver_select != 1) {
     if (rejectBranch(label)) return;
     //printLabel(label);
-    sprintf(content, "%u, %u, %u\n", __tid, label, r);
+    sprintf(content, "%u, %u, %u, %lu, %lu, %u\n", __tid, label, r, (uint64_t)addr, ctx, (uint32_t)order);
     write(mypipe,content,strlen(content));
   get_label_info(label)->flags |= B_FLIPPED;
     return;

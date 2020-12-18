@@ -17,6 +17,7 @@ use crate::file::*;
 use fastgen_common::config;
 use std::path::{Path};
 use crate::rgd::*;
+use std::collections::HashSet;
 
 pub fn grading_loop(
     running: Arc<AtomicBool>,
@@ -72,10 +73,11 @@ pub fn grading_loop(
 }
 
 
-pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>) {
+pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>,
+        dedup: Arc<RwLock<HashSet<(u64,u64,u32)>>>) {
   let labels = read_pipe();
   let mut tasks = Vec::new();
-  scan_nested_tasks(&labels, &mut tasks, table, 400); 
+  scan_nested_tasks(&labels, &mut tasks, table, 400, &dedup);
   for task in tasks {
     let task_ser = task.write_to_bytes().unwrap();
     global_tasks.write().unwrap().push(task);
@@ -106,6 +108,7 @@ pub fn fuzz_loop(
   let ptr = unsafe { libc::shmat(shmid, std::ptr::null(), 0) as *mut UnionTable};
   let table = unsafe { & *ptr };
   let global_tasks = Arc::new(RwLock::new(Vec::<SearchTask>::new()));
+  let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32)>::new()));
 
   let mut no_more_seeds = 0;
   while running.load(Ordering::Relaxed) {
@@ -113,8 +116,9 @@ pub fn fuzz_loop(
       let buf = depot.get_input_buf(id);
       //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
       let gtasks = global_tasks.clone();
+      let gdedup = dedup.clone();
       let handle = thread::spawn(move || {
-          dispatcher(table, gtasks);
+          dispatcher(table, gtasks, gdedup);
           });
 
       let t_start = time::Instant::now();

@@ -12,7 +12,7 @@ pub fn make_pipe() {
   }
 }
 
-pub fn read_pipe() -> Vec<(u32,u32,u32)> {
+pub fn read_pipe() -> Vec<(u32,u32,u32,u64,u64,u32)> {
   let f = File::open("/tmp/wp").expect("open pipe failed");
   let mut reader = BufReader::new(f);
   let mut ret = Vec::new();
@@ -22,10 +22,13 @@ pub fn read_pipe() -> Vec<(u32,u32,u32)> {
     //if not EOF
     if num_bytes !=0  {
       let tokens: Vec<&str> = buffer.trim().split(',').collect();
-      let direction = tokens[2].trim().parse::<u32>().expect("we expect u32 number in each line");
-      let label = tokens[1].trim().parse::<u32>().expect("we expect u32 number in each line");
       let tid = tokens[0].trim().parse::<u32>().expect("we expect u32 number in each line");
-      ret.push((tid,label,direction)); 
+      let label = tokens[1].trim().parse::<u32>().expect("we expect u32 number in each line");
+      let direction = tokens[2].trim().parse::<u32>().expect("we expect u32 number in each line");
+      let addr = tokens[3].trim().parse::<u64>().expect("we expect u64 number in each line");
+      let ctx = tokens[4].trim().parse::<u64>().expect("we expect u64 number in each line");
+      let order = tokens[5].trim().parse::<u32>().expect("we expect u32 number in each line");
+      ret.push((tid,label,direction,addr,ctx,order));
     } else  {
       break;
     }
