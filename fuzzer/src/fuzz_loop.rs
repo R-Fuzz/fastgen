@@ -4,7 +4,7 @@ use crate::{
 };
 use std::sync::{
   atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, RwLock,
 };
 use std::time; use std::thread;
 
@@ -16,6 +16,7 @@ use crate::union_table::*;
 use crate::file::*;
 use fastgen_common::config;
 use std::path::{Path};
+use crate::rgd::*;
 
 pub fn grading_loop(
     running: Arc<AtomicBool>,
@@ -71,13 +72,14 @@ pub fn grading_loop(
 }
 
 
-pub fn dispatcher(table: &UnionTable) {
+pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>) {
   let labels = read_pipe();
   let mut tasks = Vec::new();
   scan_nested_tasks(&labels, &mut tasks, table, 400); 
   for task in tasks {
     let task_ser = task.write_to_bytes().unwrap();
-    unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32); }
+    global_tasks.write().unwrap().push(task);
+    unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
   }
 }
 
@@ -103,14 +105,16 @@ pub fn fuzz_loop(
   };
   let ptr = unsafe { libc::shmat(shmid, std::ptr::null(), 0) as *mut UnionTable};
   let table = unsafe { & *ptr };
+  let global_tasks = Arc::new(RwLock::new(Vec::<SearchTask>::new()));
 
+  let mut no_more_seeds = 0;
   while running.load(Ordering::Relaxed) {
     if id < depot.get_num_inputs() {
       let buf = depot.get_input_buf(id);
       //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
-
+      let gtasks = global_tasks.clone();
       let handle = thread::spawn(move || {
-          dispatcher(table);
+          dispatcher(table, gtasks);
           });
 
       let t_start = time::Instant::now();
@@ -125,6 +129,17 @@ pub fn fuzz_loop(
       let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
       trace!("track time {}", used_us1);
       id = id + 1;
+    } else {
+      no_more_seeds = no_more_seeds + 1;
+      thread::sleep(time::Duration::from_millis(10));
+      if no_more_seeds > 100 {
+        no_more_seeds = 0;
+        info!("Return all tasks again and size is {}", global_tasks.read().unwrap().len());
+        for task in global_tasks.read().unwrap().iter() {
+          let task_ser = task.write_to_bytes().unwrap();
+          unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
+        }
+      }
     }
   }
 }

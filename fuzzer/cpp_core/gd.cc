@@ -33,7 +33,7 @@ void addPartialResults(MutInput &input, struct FUT* fut) {
 			sol[it.first] = input.value[i];
 			i++;
 	}
-  if ((*fut->partial_solutions).size() < 5)
+  if ((*fut->partial_solutions).size() < 50)
 	  (*fut->partial_solutions).push_back(sol);
 }
 
@@ -125,8 +125,8 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
 //		std::cout << std::endl;
 		cur = (uint64_t)c->fn(fut->scratch_args);
 		uint64_t dis = getDistance(c->comparison,fut->scratch_args[0],fut->scratch_args[1]);
-    if (dis == 0 && nested)
-		  addPartialResults(input, fut);
+    //if (dis == 0 && nested)
+		 // addPartialResults(input, fut);
 /*
 		if (dis == 0 && i == 0 && !fut->opti_hit) {
 				fut->opti_hit = true;

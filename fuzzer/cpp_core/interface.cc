@@ -29,7 +29,7 @@ using namespace rgd;
 using namespace google::protobuf::io;
 
 #define THREAD_POOL_SIZE 32
-
+#define DEBUG 0
 //global variables
 std::unique_ptr<GradJit> JIT;
 static std::atomic<uint64_t> fid;
@@ -72,18 +72,24 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   if (!SAVING_WHOLE) {
     for (auto rgd_solution :  rgd_solutions) {
       solution_queue.enqueue({task->fid(), rgd_solution});
+#if DEBUG
       if (solution_queue.size_approx() % 1000 == 0)
         printf("queue item is about %u\n", solution_queue.size_approx());
+#endif
     }
     for (auto rgd_solution :  rgd_solutions_opt) {
       solution_queue.enqueue({task->fid(), rgd_solution});
+#if DEBUG
       if (solution_queue.size_approx() % 1000 == 0)
         printf("queue item is about %u\n", solution_queue.size_approx());
+#endif
     }
     for (auto rgd_solution :  partial_solutions) {
       solution_queue.enqueue({task->fid(), rgd_solution});
+#if DEBUG
       if (solution_queue.size_approx() % 1000 == 0)
         printf("queue item is about %u\n", solution_queue.size_approx());
+#endif
     }
   } else {
     std::string old_string = std::to_string(task->fid());
@@ -127,17 +133,18 @@ std::string get_current_dir() {
 }
 
 extern "C" {
-  void submit_task(const unsigned char* input, unsigned int input_length) {
+  void submit_task(const unsigned char* input, unsigned int input_length, bool expect_future) {
     //save_task(input,input_length);
-
     CodedInputStream s(input,input_length);
     s.SetRecursionLimit(10000);
     std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
     task->ParseFromCodedStream(&s);
     //printTask(task.get());
-    gresults.emplace_back(pool->push(handle_task, task));
+    if (expect_future)
+      gresults.emplace_back(pool->push(handle_task, task));
+    else
+      pool->push(handle_task, task);
     //handle_task(0,task);
-
   }
 
   void init_core(bool saving_whole, bool use_codecache) { init(saving_whole, use_codecache); }

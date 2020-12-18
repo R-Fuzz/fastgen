@@ -5,7 +5,7 @@
 #include "lprobe/hash_table.h"
 using namespace rgd;
 using namespace pbbs;
-
+#define DEBUG 0
 static std::atomic_uint64_t uuid;
 static std::atomic_uint64_t miss;
 static std::atomic_uint64_t hit;
@@ -131,9 +131,11 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
         cons->fn = fn; // fn could be duplicated, but that's fine
       } else {
         ++hit;
+#if DEBUG
         if (hit % 1000 == 0) {
           std::cout << "hit/miss is " << hit << "/" << miss << std::endl;
         }
+#endif
         cons->fn = res->fn;
       }
 
