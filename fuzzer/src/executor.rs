@@ -134,7 +134,7 @@ impl Executor {
     }
 
 
-    fn do_if_has_new(&mut self, buf: &Vec<u8>, status: StatusType) {
+    fn do_if_has_new(&mut self, buf: &Vec<u8>, status: StatusType) -> bool {
         // new edge: one byte in bitmap
         let has_new_path = self.branches.has_new(status);
 
@@ -142,6 +142,7 @@ impl Executor {
             self.has_new_path = true;
             self.depot.save(status, &buf);
         }
+        has_new_path
     }
 
     pub fn run(&mut self, buf: &Vec<u8>) -> StatusType {
@@ -151,10 +152,10 @@ impl Executor {
         self.check_timeout(status)
     }
 
-    pub fn run_sync(&mut self, buf: &Vec<u8>)  {
+    pub fn run_sync(&mut self, buf: &Vec<u8>) -> bool  {
         self.run_init();
         let status = self.run_inner(buf);
-        self.do_if_has_new(buf, status);
+        self.do_if_has_new(buf, status)
     }
 
     pub fn run_norun(&mut self, buf: &Vec<u8>)  {

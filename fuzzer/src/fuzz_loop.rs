@@ -55,11 +55,16 @@ pub fn grading_loop(
     let mut grade_count = 0;
     let mut buf: Vec<u8> = Vec::with_capacity(1000);
     buf.resize(1000, 0);
+    let mut addr: u64 = 0;
+    let mut ctx: u64 = 0;
     while running.load(Ordering::Relaxed) {
-      let len = unsafe { get_next_input(buf.as_mut_ptr()) };
+      let len = unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx) };
       if len != 0 {
         buf.resize(len as usize, 0);
-        executor.run_sync(&buf);
+        let new_path = executor.run_sync(&buf);
+        if new_path {
+          info!("next input addr is {} ctx is {}",addr,ctx);
+        }
         grade_count = grade_count + 1;
       }
       if grade_count % 1000 == 0 {

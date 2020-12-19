@@ -90,6 +90,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u32,u64,u64,u32)>, tasks: &mut Ve
       task.mut_constraints().push(c);
     }
     task.set_fid(label.0);
+    task.set_addr(label.3);
+    task.set_ctx(label.4);
+    task.set_order(label.5);
     tasks.push(task);
 
     //step 3: nested branch

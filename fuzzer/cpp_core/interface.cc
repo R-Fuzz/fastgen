@@ -36,8 +36,18 @@ static std::atomic<uint64_t> fid;
 ctpl::thread_pool* pool;
 bool SAVING_WHOLE; 
 bool USE_CODECACHE;
-moodycamel::ConcurrentQueue<std::pair<uint32_t, std::unordered_map<uint32_t,uint8_t>>> solution_queue;
+//moodycamel::ConcurrentQueue<std::pair<uint32_t, std::unordered_map<uint32_t,uint8_t>>> solution_queue;
 std::vector<std::future<bool>> gresults;
+
+struct RGDSolution {
+    std::unordered_map<uint32_t, uint8_t> sol;
+  //the intended branch for this solution
+    uint32_t fid;  //the seed
+    uint64_t addr;
+    uint64_t ctx;
+    uint32_t order;
+};
+moodycamel::ConcurrentQueue<RGDSolution> solution_queue;
 
 void save_task(const unsigned char* input, unsigned int input_length) {
   CodedInputStream s(input,input_length);
@@ -71,21 +81,24 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   }
   if (!SAVING_WHOLE) {
     for (auto rgd_solution :  rgd_solutions) {
-      solution_queue.enqueue({task->fid(), rgd_solution});
+      RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+      solution_queue.enqueue(sol);
 #if DEBUG
       if (solution_queue.size_approx() % 1000 == 0)
         printf("queue item is about %u\n", solution_queue.size_approx());
 #endif
     }
     for (auto rgd_solution :  rgd_solutions_opt) {
-      solution_queue.enqueue({task->fid(), rgd_solution});
+      RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+      solution_queue.enqueue(sol);
 #if DEBUG
       if (solution_queue.size_approx() % 1000 == 0)
         printf("queue item is about %u\n", solution_queue.size_approx());
 #endif
     }
     for (auto rgd_solution :  partial_solutions) {
-      solution_queue.enqueue({task->fid(), rgd_solution});
+      RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+      solution_queue.enqueue(sol);
 #if DEBUG
       if (solution_queue.size_approx() % 1000 == 0)
         printf("queue item is about %u\n", solution_queue.size_approx());
@@ -162,15 +175,18 @@ extern "C" {
     }
   }
 
-  uint32_t get_next_input(unsigned char* input) {
-    std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
+  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx ) {
+    //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
+    RGDSolution item;
  //   printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
     if(solution_queue.try_dequeue(item)) {
-      std::string old_string = std::to_string(item.first);
+      std::string old_string = std::to_string(item.fid);
       std::string input_file = "output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
       uint32_t size = load_input(input_file, input);
-      for(auto it = item.second.begin(); it != item.second.end(); ++it)
+      for(auto it = item.sol.begin(); it != item.sol.end(); ++it)
         input[it->first] = it->second;
+      *addr = item.addr;
+      *ctx = item.ctx;
       return size;
     } else {
       return 0; 
