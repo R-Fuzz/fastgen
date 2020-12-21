@@ -63,7 +63,7 @@ pub fn grading_loop(
         buf.resize(len as usize, 0);
         let new_path = executor.run_sync(&buf);
         if new_path {
-          info!("next input addr is {} ctx is {}",addr,ctx);
+          info!("next input addr is {:X} ctx is {}",addr,ctx);
         }
         grade_count = grade_count + 1;
       }
@@ -143,11 +143,12 @@ pub fn fuzz_loop(
       thread::sleep(time::Duration::from_millis(10));
       if no_more_seeds > 100 {
         no_more_seeds = 0;
-        info!("Return all tasks again and size is {}", global_tasks.read().unwrap().len());
+        info!("Rerun all {} tasks", global_tasks.read().unwrap().len());
         for task in global_tasks.read().unwrap().iter() {
           let task_ser = task.write_to_bytes().unwrap();
           unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
         }
+        break;
       }
     }
   }

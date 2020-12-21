@@ -76,10 +76,36 @@ struct myHash {
   bool replaceQ(eType, eType) {return 0;}
   eType update(eType v, eType) {return v;}
   bool cas(eType* p, eType o, eType n) {return atomic_compare_and_swap(p, o, n);}
-  };
+};
 
+
+struct taskKV {
+  std::tuple<uint64_t,uint64_t,uint32_t> branch;
+  FUT* fut;
+  FUT* fut_opt;
+  taskKV(std::tuple<uint64_t,uint64_t,uint32_t> abranch,
+        FUT* afut,
+        FUT* afut_opt)
+    : branch(abranch), fut(afut), fut_opt(afut_opt) {}
+};
+
+struct taskHash {
+  using eType = struct taskKV*;
+  using kType = std::tuple<uint64_t, uint64_t, uint32_t>;
+  eType empty() {return nullptr;}
+  kType getKey(eType v) {return v->branch;}
+  int hash(kType v) {return std::get<0>(v)^std::get<1>(v)^std::get<2>(v);} //hash64_2(v);}
+  //int hash(kType v) {return hash64_2(v);}
+  //int cmp(kType v, kType b) {return (v > b) ? 1 : ((v == b) ? 0 : -1);}
+  int cmp(kType v, kType b) {return (v == b) ? 0 : -1;}
+  bool replaceQ(eType, eType) {return 0;}
+  eType update(eType v, eType) {return v;}
+  bool cas(eType* p, eType o, eType n) {return atomic_compare_and_swap(p, o, n);}
+};
 
 static pbbs::Table<myHash> Expr2Func(8000016, myHash(), 1.3);
+pbbs::Table<taskHash> TaskCache(8000016, taskHash(), 1.3);
+
 
 static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
   for (auto amap : c->meta().map()) {
@@ -96,15 +122,6 @@ static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
 }
 
 void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
-  (*fut)->gsol = false;
-  (*fut)->att = 0;
-  (*fut)->stopped = false;
-  (*fut)->num_minimal_optima = 0;
-
-  (*fut_opt)->gsol = false;
-  (*fut_opt)->att = 0;
-  (*fut_opt)->stopped = false;
-  (*fut_opt)->num_minimal_optima = 0;
   int i = 0;
   for (auto c : task->constraints()) {
     assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
@@ -155,4 +172,27 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
   (*fut_opt)->finalize();
   //return fut;
   return;
+}
+
+
+void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
+  std::tuple<uint64_t,uint64_t,uint32_t> bid = {task->addr(),task->ctx(),task->order()};
+  struct taskKV *res = TaskCache.find(bid);
+  if (res == nullptr) {
+    *fut = new FUT();
+    *fut_opt = new FUT();
+    construct_task(task,fut,fut_opt);
+    res = new struct taskKV({bid, *fut, *fut_opt});
+    if (!TaskCache.insert(res)) {
+      delete res;
+      delete (*fut);
+      delete (*fut_opt);
+      res =  TaskCache.find(bid);
+      *fut = res->fut;
+      *fut_opt = res->fut_opt;
+    }
+  } else {
+    *fut = res->fut;
+    *fut_opt = res->fut_opt;
+  }
 }
