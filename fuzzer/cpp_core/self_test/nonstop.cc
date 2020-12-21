@@ -22,7 +22,7 @@ bool handle_task_v2(int tid, std::shared_ptr<SearchTask> task);
 extern std::vector<std::future<bool>> gresults;
 
 int main() {
-  init(true, true);
+  init(false, true);
   int fd = open("../test.data",O_RDONLY);
   ZeroCopyInputStream* rawInput = new google::protobuf::io::FileInputStream(fd);
   bool suc = false;
@@ -30,9 +30,12 @@ int main() {
   int finished = 0;
   std::shared_ptr<SearchTask>  task = std::make_shared<SearchTask>();
   suc = readDelimitedFrom(rawInput,task.get());
-  printTask(task.get());
+  //printTask(task.get());
   if (suc) {
-    handle_task(0,task);
+    for (int i=0 ;i<200 ; i++) {
+      printf("#%d search\n", i);
+      handle_task(0,task);
+    }
   }
   delete rawInput;
   fini();

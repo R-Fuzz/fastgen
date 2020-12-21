@@ -8,375 +8,384 @@
 #include "rgd_op.h"
 
 void dumpResults(MutInput &input, struct FUT* fut) {
-	int i = 0;
-	for (auto it : fut->inputs) {
-			std::cout << "index is " << it.first << " result is " << (int)input.value[i] << std::endl;
-			i++;
-	}
+  int i = 0;
+  for (auto it : fut->inputs) {
+    std::cout << "index is " << it.first << " result is " << (int)input.value[i] << std::endl;
+    i++;
+  }
 }
 
 void addResults(MutInput &input, struct FUT* fut) {
-	int i = 0;
+  int i = 0;
   std::unordered_map<uint32_t, uint8_t> sol;
-	for (auto it : fut->inputs) {
-			sol[it.first] = input.value[i];
-			i++;
-	}
+  for (auto it : fut->inputs) {
+    sol[it.first] = input.value[i];
+    i++;
+  }
   if ((*fut->rgd_solutions).size() < 50)
-	  (*fut->rgd_solutions).push_back(sol);
+    (*fut->rgd_solutions).push_back(sol);
 }
 
 void addPartialResults(MutInput &input, struct FUT* fut) {
-	int i = 0;
+  int i = 0;
   std::unordered_map<uint32_t, uint8_t> sol;
-	for (auto it : fut->inputs) {
-			sol[it.first] = input.value[i];
-			i++;
-	}
+  for (auto it : fut->inputs) {
+    sol[it.first] = input.value[i];
+    i++;
+  }
   if ((*fut->partial_solutions).size() < 50)
-	  (*fut->partial_solutions).push_back(sol);
+    (*fut->partial_solutions).push_back(sol);
 }
 
 void addOptiResults(MutInput &input, struct FUT* fut) {
-	int i = 0;
-	for (auto it : fut->inputs) {
-			(*fut->opti_solution)[it.first] = input.value[i];
-			i++;
-	}
+  int i = 0;
+  for (auto it : fut->inputs) {
+    (*fut->opti_solution)[it.first] = input.value[i];
+    i++;
+  }
 }
 
 
 inline uint64_t sat_inc(uint64_t base, uint64_t inc) {
-	return base+inc < base ? -1 : base+inc;
+  return base+inc < base ? -1 : base+inc;
 }
 
 uint64_t getDistance(uint32_t comp, uint64_t a, uint64_t b) {
-	uint64_t dis = 0;
-	switch (comp) {
-		case rgd::Equal:	
-			if (a>=b) dis = a-b;
-			else dis=b-a;
-			break;
-		case rgd::Distinct:	
-			if (a==b) dis = 1;
-			else dis = 0;
-			break;
-		case rgd::Ult:	
-			if (a<b) dis = 0;
-			else dis = sat_inc(a-b,1);
-			break;
-		case rgd::Ule:	
-			if (a<=b) dis = 0;
-			else dis = a-b;
-			break;
-		case rgd::Ugt:	
-			if (a>b) dis = 0;
-			else dis = sat_inc(b-a,1);
-			break;
-		case rgd::Uge:	
-			if (a>=b) dis = 0;
-			else dis = b-a;
-			break;
-		case rgd::Slt:	
-			if ((int64_t)a < (int64_t)b) return 0;
-			else dis = sat_inc(a-b,1);
-			break;
-		case rgd::Sle:	
-			if ((int64_t)a <= (int64_t)b) return 0;
-			else dis = a-b;
-			break;
-		case rgd::Sgt:	
-			if ((int64_t)a > (int64_t)b) return 0;
-			else dis = sat_inc(b-a,1);
-			break;
-		case rgd::Sge:	
-			if ((int64_t)a >= (int64_t)b) return 0;
-			else dis = b-a;
-			break;
-		default:
-			assert(0);
-	}
-	return dis;
+  uint64_t dis = 0;
+  switch (comp) {
+    case rgd::Equal:
+      if (a>=b) dis = a-b;
+      else dis=b-a;
+      break;
+    case rgd::Distinct:
+      if (a==b) dis = 1;
+      else dis = 0;
+      break;
+    case rgd::Ult:
+      if (a<b) dis = 0;
+      else dis = sat_inc(a-b,1);
+      break;
+    case rgd::Ule:
+      if (a<=b) dis = 0;
+      else dis = a-b;
+      break;
+    case rgd::Ugt:
+      if (a>b) dis = 0;
+      else dis = sat_inc(b-a,1);
+      break;
+    case rgd::Uge:
+      if (a>=b) dis = 0;
+      else dis = b-a;
+      break;
+    case rgd::Slt:
+      if ((int64_t)a < (int64_t)b) return 0;
+      else dis = sat_inc(a-b,1);
+      break;
+    case rgd::Sle:
+      if ((int64_t)a <= (int64_t)b) return 0;
+      else dis = a-b;
+      break;
+    case rgd::Sgt:
+      if ((int64_t)a > (int64_t)b) return 0;
+      else dis = sat_inc(b-a,1);
+      break;
+    case rgd::Sge:
+      if ((int64_t)a >= (int64_t)b) return 0;
+      else dis = b-a;
+      break;
+    default:
+      assert(0);
+  }
+  return dis;
 }
 
 
+//uint64_t distance(MutInput &input, struct FUT* fut, bool* partial_found) {
 uint64_t distance(MutInput &input, struct FUT* fut) {
-	static int timeout = 0;
-	static int solved= 0;
-	uint64_t res = 0;
-	uint64_t cur = 0;
+  static int timeout = 0;
+  static int solved= 0;
+  uint64_t res = 0;
+  uint64_t cur = 0;
   bool nested = false;
   if (fut->constraints.size() > 1)
     nested = true;
-	for(int i=0; i<fut->constraints.size(); i++) {
-		//mapping symbolic args
-		int arg_idx = 0;	
-		std::shared_ptr<Cons> c = fut->constraints[i];
-		for (auto arg : c->input_args) {
-			if (arg.first) {// symbolic
-				fut->scratch_args[2+arg_idx] = (uint64_t)input.value[arg.second];
-			}
-			else {
-				fut->scratch_args[2+arg_idx] = arg.second;
-			}
-			++arg_idx;
-		}
-//		for(int p=0;p<6;p++) std::cout << (int)fut->scratch_args[p]<<", ";
-//		std::cout << std::endl;
-		cur = (uint64_t)c->fn(fut->scratch_args);
-		uint64_t dis = getDistance(c->comparison,fut->scratch_args[0],fut->scratch_args[1]);
+  for(int i=0; i<fut->constraints.size(); i++) {
+    //mapping symbolic args
+    int arg_idx = 0;
+    std::shared_ptr<Cons> c = fut->constraints[i];
+    for (auto arg : c->input_args) {
+      if (arg.first) {// symbolic
+        fut->scratch_args[2+arg_idx] = (uint64_t)input.value[arg.second];
+      }
+      else {
+        fut->scratch_args[2+arg_idx] = arg.second;
+      }
+      ++arg_idx;
+    }
+    cur = (uint64_t)c->fn(fut->scratch_args);
+    uint64_t dis = getDistance(c->comparison,fut->scratch_args[0],fut->scratch_args[1]);
     //if (dis == 0 && nested)
-		 // addPartialResults(input, fut);
-/*
-		if (dis == 0 && i == 0 && !fut->opti_hit) {
-				fut->opti_hit = true;
-				addOptiResults(input, fut);
-		}
-*/
-//		printf("func called and expr %d, comparison %d, arg0 %lu and arg1 %lu and return value is %lu \n",i, c->comparison, fut->scratch_args[0], fut->scratch_args[1], dis);
-	//	if (cur>0)
-	///		res += cur;
-		if (dis>0) {
-			res = sat_inc(res,dis);
-		}
-	}
-	if (res==0) {
-    //we don't stop if one solution is found
-		fut->stopped = true;
-		fut->gsol = true;
-		//dumpResults(input, fut);
-		//fut->scratch_args[24] = fut->scratch_args[24] & 0x1f;
-		addResults(input, fut);
-	}
-	fut->att++;
-	if (fut->att>MAX_EXEC_TIMES) {
-		fut->stopped = true;
-		fut->gsol = false;
-	}
-	return res;
+    // *partial_found = true;
+    printf("input is %d distance is %lu\n", input.value[0], dis);
+    if (dis>0) {
+      res = sat_inc(res,dis);
+    }
+  }
+  return res;
 }
 
+bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *sign, bool* is_linear, uint64_t *val, struct FUT* fut) {
 
+  bool found = false;
+  uint8_t orig_val = orig_input.get(index);
+  orig_input.update(index,true,1);
 
-void partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *sign, bool* is_linear, uint64_t *val, struct FUT* fut) {
-	//TODO assign constructors
-	//MutInput input = orig_input;
-	//std::cout << "calculating partial derivative and orig_input is " << orig_input.get(0) << " and " << orig_input.get(1) << std::endl;
-	//std::cout << "calculating partial derivative and input is " << input.get(0) << " and " << input.get(1) << std::endl;
-	//int idx = 0;
-	//for(auto i : orig_input.value)
-	//	fut->scratch_args[idx++] = i;
+  uint64_t f_plus = distance(orig_input,fut);
+  if (f_plus == 0) {
+    addResults(orig_input, fut);
+    found = true;
+  }
 
-	uint8_t orig_val = orig_input.get(index);
-//	uint8_t orig_val = fut->scratch_args[index];
-	orig_input.update(index,true,1);
-//	fut->scratch_args[index]++;
-//	uint64_t f_plus = execute(fut->scratch_args,fut);
-	uint64_t f_plus = distance(orig_input,fut);
-	orig_input.set(index,orig_val);
-//	fut->scratch_args[index] = orig_val;
-	if (fut->stopped) { *val = 0; return;}
-	//orig_input.set(index,orig_val);
-	orig_input.update(index,false,1);
-//	fut->scratch_args[index]--;
-//	uint64_t f_minus = execute(fut->scratch_args,fut);
-	uint64_t f_minus = distance(orig_input,fut);
-//	fut->scratch_args[index] = orig_val;
-	orig_input.set(index,orig_val);	
-	if (fut->stopped) { *val = 0; return;}
+  orig_input.set(index,orig_val);
+  orig_input.update(index,false,1);
 
-	//std::cout << "calculating partial and f0 is " << f0 << " f_minus is" << f_minus << " and f_plus is " << f_plus << std::endl;
+  uint64_t f_minus = distance(orig_input,fut);
+  if (f_minus == 0) {
+    addResults(orig_input, fut);
+    found = true;
+  }
+  orig_input.set(index,orig_val);
 
-	if (f_minus < f0) {
-		if (f_plus < f0) {
-			if (f_minus < f_plus) {
-				*sign = false;
-				*is_linear = false;
-				*val = f0 - f_minus;
-			} else {
-				*sign = true;
-				*is_linear = false;
-				*val = f0 - f_plus;
-			}
-		} else {
-			*sign = false;
-			*is_linear = ((f_minus != f0) && (f0 - f_minus == f_plus -f0));
-			*val = f0 -f_minus;
-		}
-	} else {
-		if (f_plus < f0) {
-			*sign = true;
-			*is_linear = ((f_minus != f0) && (f_minus - f0 == f0 - f_plus));
-			*val = f0 - f_plus;
-		}
-		else {
-			*sign = true;
-			*is_linear = false;
-			*val = 0;
-		}
-	}
+  if (f_minus < f0) {
+    if (f_plus < f0) {
+      if (f_minus < f_plus) {
+        *sign = false;
+        *is_linear = false;
+        *val = f0 - f_minus;
+      } else {
+        *sign = true;
+        *is_linear = false;
+        *val = f0 - f_plus;
+      }
+    } else {
+      *sign = false;
+      *is_linear = ((f_minus != f0) && (f0 - f_minus == f_plus -f0));
+      *val = f0 -f_minus;
+    }
+  } else {
+    if (f_plus < f0) {
+      *sign = true;
+      *is_linear = ((f_minus != f0) && (f_minus - f0 == f0 - f_plus));
+      *val = f0 - f_plus;
+    }
+    else {
+      *sign = true;
+      *is_linear = false;
+      *val = 0;
+    }
+  }
+  return found;
 }
 
 void compute_delta_all(MutInput &input, Grad &grad, size_t step) {
-	double fstep = (double)step; 
-	int index = 0;
-	for(auto &gradu : grad.get_value()) {
-		double movement = gradu.pct * step;
-		input.update(index,gradu.sign,(uint64_t)movement);
-		index++;
-	} 
+  double fstep = (double)step;
+  int index = 0;
+  for(auto &gradu : grad.get_value()) {
+    double movement = gradu.pct * step;
+    printf("movement is %f\n",movement);
+    input.update(index,gradu.sign,(uint64_t)movement);
+    index++;
+  }
+}
+
+void cal_gradient(struct FUT *fut) {
+  int index = 0;
+  for(auto &gradu : fut->ctx->grad.get_value()) {
+    bool sign = false;
+    bool is_linear = false;
+    uint64_t val = 0;
+    if (partial_derivative(fut->ctx->min_input, index, fut->ctx->f_last,
+          &sign, &is_linear, &val, fut))
+      fut->ctx->solved = true;
+    gradu.sign = sign;
+    gradu.val = val;
+    index++;
+  }
+  fut->ctx->att += fut->ctx->grad.len();
+  if (fut->ctx->grad.max_val() == 0) {
+    fut->ctx->next_state = 5;  //randomize if there's no grad
+  } else {
+    fut->ctx->next_state = 2;  //go to guess_descend if grad is nonzero
+    fut->ctx->grad.normalize();
+  }
+}
+
+void guess_descend(struct FUT* fut) {
+  MutInput &input_min = fut->ctx->min_input;
+  MutInput &input_scratch = fut->ctx->scratch_input;
+  input_scratch = input_min;
+  uint64_t vsum = fut->ctx->grad.val_sum();
+  uint64_t f_last = fut->ctx->f_last;
+  printf("in guess_descend f_last is %lu\n", f_last);
+  if (vsum > 0) {
+    auto guess_step = f_last / vsum;
+    printf("guess step is %lu, f0 is %lu, vsum is %lu\n", guess_step, f_last, vsum);
+    printf("input is %d\n", input_scratch.value[0]);
+    compute_delta_all(input_scratch,fut->ctx->grad,guess_step);
+    uint64_t f_new = distance(input_scratch,fut);
+    fut->ctx->att += 1;
+    //if f_new && f_last are both zero, we start from the original input before guess step
+    if (f_new >= f_last) {
+      input_scratch = input_min;
+    } else {
+      input_min = input_scratch;
+      f_last = f_new;
+    }
+  }
+
+  fut->ctx->f_last = f_last;
+  fut->ctx->next_state = 3; //let's go to descend
+
+  if (f_last == 0) {
+    fut->ctx->solved = true;
+    addResults(input_min, fut);
+  }
 }
 
 
-
-void cal_gradient(MutInput &input, uint64_t f0, Grad &grad, struct FUT *fut) {
-	uint64_t max = 0;
-	int index = 0;
-	for(auto &gradu : grad.get_value()) {
-
-		//std::cout << "cal_gradient" << std::endl;
-		if (fut->stopped) {
-			break;
-		}
-		bool sign = false;
-		bool is_linear = false;
-		uint64_t val = 0;
-		partial_derivative(input,index,f0,&sign,&is_linear,&val,fut);
-		if (val > max) {
-			max = val;
-		}
-		//linear = linear && l;
-		gradu.sign = sign;
-		gradu.val = val;
-		index++;
-	}
+void alldimension_descend(struct FUT* fut) {
+  MutInput &input_min = fut->ctx->min_input;
+  MutInput &input_scratch = fut->ctx->scratch_input;
+  input_scratch = input_min;
+  size_t step = fut->ctx->step;
+  uint64_t f_last = fut->ctx->f_last;
+  while (true) {
+    compute_delta_all(input_scratch, fut->ctx->grad, step);
+    uint64_t f_new = distance(input_scratch, fut);
+    fut->ctx->att += 1;
+    if (f_new >= f_last && f_new != 0) {
+      //break; let's go to one dimension dimension
+      fut->ctx->next_state = 4;
+      fut->ctx->f_last = f_last;
+      break;
+    } else if (f_new == 0) {
+      fut->ctx->solved = true;
+      addResults(input_scratch, fut);
+      fut->ctx->next_state = 3; //continue to descend
+      fut->ctx->f_last = f_last;
+      f_last = f_new;
+      input_min = input_scratch;
+      break;
+    } else {
+      input_min = input_scratch;
+      f_last = f_new;
+    }
+  }
 }
 
-
-
-uint64_t descend(MutInput &input_min, MutInput &input, uint64_t f0, Grad &grad, struct FUT* fut) {
-	uint64_t f_last = f0;
-	input = input_min;
-	bool doDelta = false;
-	int deltaIdx = 0;
-
-	uint64_t vsum = grad.val_sum();
-
-	if (vsum > 0) {
-		auto guess_step = f0 / vsum;
-		compute_delta_all(input,grad,guess_step);
-		uint64_t f_new = distance(input,fut);
-		if (f_new >= f_last) {
-			input = input_min;
-		} else {
-			input_min = input;
-			f_last = f_new;
-		}
-	}
-
-
-	size_t step = 1;
-	while (true) {
-		while (true) {
-			if (fut->stopped) {
-				return f_last;
-			}
-
-			if (doDelta) {
-				double movement = grad.get_value()[deltaIdx].pct * (double)step;
-				input.update(deltaIdx,grad.get_value()[deltaIdx].sign,(uint64_t)movement);
-			} else {
-				compute_delta_all(input, grad, step);
-			}
-
-			uint64_t f_new = distance(input,fut);
-
-      //if distance is zero, we donn;t break 
-			if (f_new >= f_last) {
-				//if (f_new == UINTMAX_MAX)
-        //if (f_new != 0)
-					break;
-			}
-
-			step *= 2;
-			input_min = input;
-			f_last = f_new;
-		}
-		//break;
-
-		if (grad.len() == 1) {
-			break;
-		} else {
-			if (doDelta) deltaIdx++; 
-			else { deltaIdx = 0; doDelta = true;}
-			while ((deltaIdx < grad.len()) && grad.get_value()[deltaIdx].pct < 0.01) {
-				deltaIdx++ ;
-			}
-			if (deltaIdx >= grad.len()) {
-				break;
-			}
-			input = input_min;
-			step = 1;
-		}
-	}
-	return f_last;
+void onedimension_descend(struct FUT* fut) {
+  MutInput &input_min = fut->ctx->min_input;
+  MutInput &input_scratch = fut->ctx->scratch_input;
+  input_scratch = input_min;
+  size_t step = fut->ctx->step;
+  uint64_t f_last = fut->ctx->f_last;
+  int dimensionIdx = fut->ctx->dimensionIdx;
+  for (int dimensionIdx=fut->ctx->dimensionIdx; dimensionIdx < fut->ctx->grad.len(); dimensionIdx++) {
+    if (fut->ctx->grad.get_value()[dimensionIdx].pct < 0.01)
+      continue;
+    while (true) {
+      double movement = fut->ctx->grad.get_value()[dimensionIdx].pct * (double)step;
+      input_scratch.update(dimensionIdx,fut->ctx->grad.get_value()[dimensionIdx].sign,(uint64_t)movement);
+      uint64_t f_new = distance(input_scratch, fut);
+      fut->ctx->att += 1;
+      if (f_new >= f_last && f_new != 0) {
+        break;
+      } else if (f_new == 0) {
+        f_last = f_new;
+        fut->ctx->solved = true;
+        addResults(input_scratch, fut);
+        fut->ctx->next_state = 4; //continue to one dimension descend
+        fut->ctx->dimensionIdx = dimensionIdx;
+        input_min = input_scratch;
+        break;
+      } else {
+        input_min = input_scratch;
+        f_last = f_new;
+      }
+    }
+  }
+  fut->ctx->f_last = f_last;
+  if (!fut->ctx->solved) {
+    fut->ctx->next_state = 5; //go to randomize
+    fut->ctx->dimensionIdx = 1; //reset dimenionidx
+  }
 }
 
-
-uint64_t repick_start_point(MutInput &input_min, struct FUT* fut) {
-	input_min.randomize();
-	return distance(input_min,fut);
+void repick_start_point(struct FUT* fut) {
+  MutInput &input_min = fut->ctx->min_input;
+  input_min.randomize();
+  fut->ctx->f_last = distance(input_min,fut);
+  fut->ctx->next_state = 1;
+  fut->ctx->grad.clear();
+  fut->ctx->att += 1;
+  if (fut->ctx->f_last== 0) {
+    fut->ctx->solved = true;
+    addResults(input_min, fut);
+  }
 }
 
-uint64_t reload_input(MutInput &input_min,struct FUT* fut) {
-	input_min.assign(fut->inputs);
-//	input_min.randomize();
-	return distance(input_min,fut);
+void load_input(struct FUT* fut) {
+  MutInput &input_min = fut->ctx->min_input;
+  input_min.assign(fut->inputs);
+  fut->ctx->f_last = distance(input_min,fut);
+  fut->ctx->next_state = 1;
+  fut->ctx->grad.clear();
+  fut->ctx->att += 1;
+  if (fut->ctx->f_last== 0) {
+    fut->ctx->solved = true;
+    addResults(input_min, fut);
+  }
 }
 
 bool gd_search(struct FUT* fut) {
-	MutInput input(fut->inputs.size());
-	MutInput scratch_input(fut->inputs.size());
-	//return true;
-
-	uint64_t f0 = reload_input(input,fut); 
-
-	if (f0 == UINTMAX_MAX)
-		return false;
-
-	int ep_i = 0;
-
-	Grad grad(input.len());
-
-	while (true) {
-		//std::cout << "<<< epoch=" << ep_i << " f0=" << f0 << std::endl;
-		if (fut->stopped) {
-			break;
-		}
-		cal_gradient(input, f0, grad,fut);
-
-		int g_i = 0;
-
-		while (grad.max_val() == 0) {
-			if (g_i > MAX_NUM_MINIMAL_OPTIMA_ROUND) {
-				break;
-			}
-			if (fut->stopped)
-				break;
-			g_i++;
-			f0 = repick_start_point(input,fut);
-			if (fut->stopped)
-				break;
-			grad.clear();
-			cal_gradient(input,f0,grad,fut);
-		}
-		if (fut->stopped || g_i > MAX_NUM_MINIMAL_OPTIMA_ROUND) {
-			break;
-		}
-		grad.normalize();
-		f0 = descend(input, scratch_input,f0, grad,fut);
-		ep_i += 1;
-	}
-	
-	return fut->gsol;
+  while (true) {
+    switch (fut->ctx->next_state) {
+      //reload
+      case 0:
+        printf("load\n");
+        load_input(fut);
+        break;
+      case 1:
+        printf("gradient\n");
+        cal_gradient(fut);
+        break;
+      case 2:
+        printf("guess descend\n");
+        guess_descend(fut);
+        break;
+      case 3:
+        printf("all descend\n");
+        alldimension_descend(fut);
+        break;
+      case 4:
+        printf("one descend\n");
+        onedimension_descend(fut);
+        break;
+      case 5:
+        printf("randomize\n");
+        repick_start_point(fut);
+        break;
+      default:
+        break;
+    }
+    if (fut->ctx->solved) {
+      printf("solved next state is %d\n", fut->ctx->next_state);
+      fut->ctx->solved = false;
+      fut->ctx->att = 0;
+      return true;
+    }
+    if (fut->ctx->att > MAX_EXEC_TIMES)
+      fut->ctx->att = 0;
+      return false;
+  }
 }

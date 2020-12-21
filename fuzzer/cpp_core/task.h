@@ -5,9 +5,36 @@
 #include <map>
 #include <memory>
 #include <unordered_map>
+#include "grad.h"
+#include "input.h"
 //function under test
 //constraint: 0 = equal, 1 = distinct, 2 = lt, 3 = le, 4 = gt, 5 = ge 
 typedef uint64_t(*test_fn_type)(uint64_t*);
+
+class SContext {
+public:
+  //the input when the searching task exit
+  MutInput scratch_input;
+  MutInput min_input;
+  Grad grad;
+  //0: load_input 1: gradient 2: guess descend 3: all dimension descend 4, one dimension descend 5: randomize
+  int next_state;
+  int step;
+  uint64_t f_last; //the last distance
+  int dimensionIdx;
+  int att;
+  bool solved;
+  SContext(size_t len):
+      scratch_input(len),
+      min_input(len),
+      grad(len),
+      step(1),
+      f_last(-1),
+      dimensionIdx(1),
+      att(0),
+      solved(false),
+      next_state(0) {}
+};
 
 class Cons {
 public:
@@ -25,19 +52,17 @@ public:
 
 struct FUT {  
 	FUT(): scratch_args(nullptr), max_const_num(0) {}
-	~FUT() { if (scratch_args) free(scratch_args); }
+	~FUT() { if (scratch_args) free(scratch_args); if (ctx) delete ctx;}
 	uint32_t num_exprs;
 	std::vector<std::shared_ptr<Cons>> constraints;
 
 	// offset and input value
 	std::vector<std::pair<uint32_t,uint8_t>> inputs;
 
+  //Context
+  SContext *ctx;
 	uint64_t start; //start time
 	uint32_t max_const_num;
-	bool stopped = false;
-	int att = 0;
-	int num_minimal_optima = 0;
-	bool gsol = false;
 	bool opti_hit = false;
   std::vector<std::unordered_map<uint32_t,uint8_t>> *rgd_solutions;
   std::vector<std::unordered_map<uint32_t,uint8_t>> *partial_solutions;
@@ -69,6 +94,7 @@ struct FUT {
 		}
 
 		scratch_args = (uint64_t*)malloc((2 + inputs.size() + max_const_num) * sizeof(uint64_t));
+    ctx = new SContext(inputs.size());
 	}
 
 };

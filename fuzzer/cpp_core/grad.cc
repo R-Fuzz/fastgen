@@ -9,6 +9,12 @@ std::vector<GradUnit>& Grad::get_value() {
 	return grads;
 }
 
+void Grad::print() {
+  for(auto item : grads) {
+    printf("sign is %u, val is %lu, pct is %f\n", item.sign, item.val, item.pct);
+  }
+}
+
 
 uint64_t Grad::max_val() {
 	uint64_t ret = 0; 

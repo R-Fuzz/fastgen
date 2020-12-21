@@ -29,7 +29,7 @@ using namespace rgd;
 using namespace google::protobuf::io;
 
 #define THREAD_POOL_SIZE 32
-#define DEBUG 0
+#define DEBUG 1
 //global variables
 std::unique_ptr<GradJit> JIT;
 static std::atomic<uint64_t> fid;
@@ -47,6 +47,7 @@ struct RGDSolution {
     uint64_t ctx;
     uint32_t order;
 };
+
 moodycamel::ConcurrentQueue<RGDSolution> solution_queue;
 
 void save_task(const unsigned char* input, unsigned int input_length) {
@@ -60,11 +61,12 @@ void save_task(const unsigned char* input, unsigned int input_length) {
 
 bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
 
-  FUT *fut = new FUT();
-  FUT *fut_opt = new FUT();
+  FUT* fut = nullptr;
+  FUT* fut_opt = nullptr;
 
   bool search_result = true;
-  construct_task(task.get(), &fut, &fut_opt);
+
+  lookup_or_construct(task.get(), &fut, &fut_opt);
 
   std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions;
   std::vector<std::unordered_map<uint32_t, uint8_t>> partial_solutions;
@@ -83,6 +85,9 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
     for (auto rgd_solution :  rgd_solutions) {
       RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
       solution_queue.enqueue(sol);
+      for (auto it=rgd_solution.begin();it!=rgd_solution.end();it++) {
+		    printf("generate_input index is %u and value is %x\n", it->first,(uint32_t)it->second);
+	    }
 #if DEBUG
       if (solution_queue.size_approx() % 1000 == 0)
         printf("queue item is about %u\n", solution_queue.size_approx());
@@ -118,8 +123,8 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
     }
   }
 
-  delete fut;
-  delete fut_opt;
+  //delete fut;
+  //delete fut_opt;
   return search_result;
 }
 
@@ -178,7 +183,8 @@ extern "C" {
   uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx ) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
     RGDSolution item;
- //   printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
+    //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
+     // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
     if(solution_queue.try_dequeue(item)) {
       std::string old_string = std::to_string(item.fid);
       std::string input_file = "output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
