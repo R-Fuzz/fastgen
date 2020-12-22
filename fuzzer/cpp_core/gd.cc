@@ -22,7 +22,7 @@ void addResults(MutInput &input, struct FUT* fut) {
     sol[it.first] = input.value[i];
     i++;
   }
-  if ((*fut->rgd_solutions).size() < 50)
+  if ((*fut->rgd_solutions).size() < 1)
     (*fut->rgd_solutions).push_back(sol);
 }
 
@@ -130,6 +130,7 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
       res = sat_inc(res,dis);
     }
   }
+  //printf("%u %u %u %u => %lu\n", input.value[0], input.value[1], input.value[2], input.value[3], res);
   return res;
 }
 
@@ -224,11 +225,8 @@ void guess_descend(struct FUT* fut) {
   input_scratch = input_min;
   uint64_t vsum = fut->ctx->grad.val_sum();
   uint64_t f_last = fut->ctx->f_last;
-  printf("in guess_descend f_last is %lu\n", f_last);
   if (vsum > 0) {
     auto guess_step = f_last / vsum;
-    printf("guess step is %lu, f0 is %lu, vsum is %lu\n", guess_step, f_last, vsum);
-    printf("input is %d\n", input_scratch.value[0]);
     compute_delta_all(input_scratch,fut->ctx->grad,guess_step);
     uint64_t f_new = distance(input_scratch,fut);
     fut->ctx->att += 1;
@@ -255,15 +253,18 @@ void alldimension_descend(struct FUT* fut) {
   MutInput &input_min = fut->ctx->min_input;
   MutInput &input_scratch = fut->ctx->scratch_input;
   input_scratch = input_min;
-  size_t step = fut->ctx->step;
   uint64_t f_last = fut->ctx->f_last;
   while (true) {
-    compute_delta_all(input_scratch, fut->ctx->grad, step);
+    compute_delta_all(input_scratch, fut->ctx->grad, fut->ctx->step);
     uint64_t f_new = distance(input_scratch, fut);
     fut->ctx->att += 1;
     if (f_new >= f_last && f_new != 0) {
       //break; let's go to one dimension dimension
-      fut->ctx->next_state = 4;
+      if (fut->ctx->grad.len() == 1)
+        fut->ctx->next_state = 5; //go to randomize
+      else
+        fut->ctx->next_state = 4; //go to onedimension
+      fut->ctx->step = 1;
       fut->ctx->f_last = f_last;
       break;
     } else if (f_new == 0) {
@@ -277,6 +278,7 @@ void alldimension_descend(struct FUT* fut) {
     } else {
       input_min = input_scratch;
       f_last = f_new;
+      fut->ctx->step *= 2;
     }
   }
 }
@@ -287,7 +289,6 @@ void onedimension_descend(struct FUT* fut) {
   input_scratch = input_min;
   size_t step = fut->ctx->step;
   uint64_t f_last = fut->ctx->f_last;
-  int dimensionIdx = fut->ctx->dimensionIdx;
   for (int dimensionIdx=fut->ctx->dimensionIdx; dimensionIdx < fut->ctx->grad.len(); dimensionIdx++) {
     if (fut->ctx->grad.get_value()[dimensionIdx].pct < 0.01)
       continue;
@@ -297,6 +298,7 @@ void onedimension_descend(struct FUT* fut) {
       uint64_t f_new = distance(input_scratch, fut);
       fut->ctx->att += 1;
       if (f_new >= f_last && f_new != 0) {
+        fut->ctx->step = 1;
         break;
       } else if (f_new == 0) {
         f_last = f_new;
@@ -309,13 +311,14 @@ void onedimension_descend(struct FUT* fut) {
       } else {
         input_min = input_scratch;
         f_last = f_new;
+        fut->ctx->step *= 2;
       }
     }
   }
   fut->ctx->f_last = f_last;
   if (!fut->ctx->solved) {
-    fut->ctx->next_state = 5; //go to randomize
-    fut->ctx->dimensionIdx = 1; //reset dimenionidx
+    fut->ctx->next_state = 1; //go to cal gradient
+    fut->ctx->dimensionIdx = 0; //reset dimenionidx
   }
 }
 
@@ -375,8 +378,9 @@ bool gd_search(struct FUT* fut) {
       fut->ctx->att = 0;
       return true;
     }
-    if (fut->ctx->att > MAX_EXEC_TIMES)
+    if (fut->ctx->att > MAX_EXEC_TIMES) {
       fut->ctx->att = 0;
       return false;
+    }
   }
 }
