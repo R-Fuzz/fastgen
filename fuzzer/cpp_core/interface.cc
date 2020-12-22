@@ -85,9 +85,9 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
     for (auto rgd_solution :  rgd_solutions) {
       RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
       solution_queue.enqueue(sol);
-      //for (auto it=rgd_solution.begin();it!=rgd_solution.end();it++) {
-		   // printf("generate_input index is %u and value is %x\n", it->first,(uint32_t)it->second);
-	    //}
+//      for (auto it=rgd_solution.begin();it!=rgd_solution.end();it++) {
+//		    printf("generate_input index is %u and value is %x\n", it->first,(uint32_t)it->second);
+//	    }
 #if DEBUG
       if (solution_queue.size_approx() % 1000 == 0)
         printf("queue item is about %u\n", solution_queue.size_approx());
