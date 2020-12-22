@@ -32,6 +32,7 @@ pub fn grading_loop(
       depot.clone(),
       );
 
+  let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64), u32>::new()));
   let t_start = time::Instant::now();
   if config::SAVING_WHOLE {
     let mut fid = 1;
@@ -63,9 +64,16 @@ pub fn grading_loop(
       if len != 0 {
         buf.resize(len as usize, 0);
         let new_path = executor.run_sync(&buf);
-       // if new_path {
-        //  info!("next input addr is {:X} ctx is {}",addr,ctx);
-       // }
+        if new_path {
+          let mut count = 1;
+          if branch_gencount.read().unwrap().contains_key(&(addr,ctx)) {
+            count = *branch_gencount.read().unwrap().get(&(addr,ctx)).unwrap();
+            count += 1;
+            info!("gencount is {}",count);
+          }
+          branch_gencount.write().unwrap().insert((addr,ctx), count);
+          //info!("next input addr is {:X} ctx is {}",addr,ctx);
+        }
         grade_count = grade_count + 1;
       }
       if grade_count % 1000 == 0 {
@@ -80,7 +88,7 @@ pub fn grading_loop(
 
 
 pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>,
-        dedup: Arc<RwLock<HashSet<(u64,u64,u32)>>>, branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>) {
+    dedup: Arc<RwLock<HashSet<(u64,u64,u32)>>>, branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>) {
   let labels = read_pipe();
   let mut tasks = Vec::new();
   scan_nested_tasks(&labels, &mut tasks, table, 400, &dedup, &branch_hitcount);
@@ -185,7 +193,7 @@ mod tests {
     let cmd_opt = command::CommandOpt::new("./objdump.track", args, &angora_out_dir, 200, 1);
 
     let depot = Arc::new(depot::Depot::new(seeds_dir, &angora_out_dir));
-  
+
     let global_branches = Arc::new(branches::GlobalBranches::new());
 
     let mut executor = Executor::new(

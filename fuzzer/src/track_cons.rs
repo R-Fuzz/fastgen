@@ -42,6 +42,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u32,u64,u64,u32)>, tasks: &mut Ve
   let mut cons_table = HashMap::new();
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
   for &label in labels {
+/*
     let mut count = 1;
     if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5)) {
       count = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5)).unwrap();
@@ -49,6 +50,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u32,u64,u64,u32)>, tasks: &mut Ve
       info!("hitcount is {}",count);
     }
     branch_hitcount.write().unwrap().insert((label.3,label.4,label.5), count);
+*/
     if dedup.read().unwrap().contains(&(label.3,label.4,label.5)) {
       continue;
     }
