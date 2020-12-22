@@ -47,7 +47,7 @@ pub fn grading_loop(
       if buf.len() == 0 {
         continue;
       }
-      info!("grading {:?} and length is {}", &fpath, &buf.len());
+      //info!("grading {:?} and length is {}", &fpath, &buf.len());
       //executor.run_norun(&buf);
       executor.run_sync(&buf);
       //std::fs::remove_file(fpath).unwrap();
@@ -69,7 +69,7 @@ pub fn grading_loop(
           if branch_gencount.read().unwrap().contains_key(&(addr,ctx)) {
             count = *branch_gencount.read().unwrap().get(&(addr,ctx)).unwrap();
             count += 1;
-            info!("gencount is {}",count);
+            //info!("gencount is {}",count);
           }
           branch_gencount.write().unwrap().insert((addr,ctx), count);
           //info!("next input addr is {:X} ctx is {}",addr,ctx);
@@ -153,13 +153,20 @@ pub fn fuzz_loop(
       no_more_seeds = no_more_seeds + 1;
       thread::sleep(time::Duration::from_millis(10));
       if no_more_seeds > 100 {
+
         no_more_seeds = 0;
         info!("Rerun all {} tasks", global_tasks.read().unwrap().len());
+        let cloned_item: HashMap<(u64,u64,u32),u32> = branch_hitcount.read().unwrap().clone();
+        let mut count_vec: Vec<(&(u64,u64,u32), &u32)> = cloned_item.iter().collect();
+        count_vec.sort_by(|a, b| b.1.cmp(a.1));
+
+        println!("Most frequently hit branch are {:?}", count_vec[0].0);
+
         for task in global_tasks.read().unwrap().iter() {
           let task_ser = task.write_to_bytes().unwrap();
           unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
         }
-        //break;
+        break;
       }
     }
   }
