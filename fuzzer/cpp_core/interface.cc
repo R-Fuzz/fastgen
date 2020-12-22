@@ -60,7 +60,7 @@ void save_task(const unsigned char* input, unsigned int input_length) {
 }
 
 bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
-
+  //printTask(task.get());
   FUT* fut = nullptr;
   FUT* fut_opt = nullptr;
 
@@ -81,13 +81,11 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
       search_result = false;
     }
   }
+
   if (!SAVING_WHOLE) {
     for (auto rgd_solution :  rgd_solutions) {
       RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
       solution_queue.enqueue(sol);
-//      for (auto it=rgd_solution.begin();it!=rgd_solution.end();it++) {
-//		    printf("generate_input index is %u and value is %x\n", it->first,(uint32_t)it->second);
-//	    }
 #if DEBUG
       if (solution_queue.size_approx() % 1000 == 0)
         printf("queue item is about %u\n", solution_queue.size_approx());
@@ -158,11 +156,13 @@ extern "C" {
     std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
     task->ParseFromCodedStream(&s);
     //printTask(task.get());
+
     if (expect_future)
       gresults.emplace_back(pool->push(handle_task, task));
     else
       pool->push(handle_task, task);
-    //handle_task(0,task);
+
+//    handle_task(0,task);
   }
 
   void init_core(bool saving_whole, bool use_codecache) { init(saving_whole, use_codecache); }

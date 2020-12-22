@@ -30,7 +30,7 @@ public:
       grad(len),
       step(1),
       f_last(-1),
-      dimensionIdx(1),
+      dimensionIdx(0),
       att(0),
       solved(false),
       next_state(0) {}

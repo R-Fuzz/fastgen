@@ -23,7 +23,7 @@ extern std::vector<std::future<bool>> gresults;
 
 int main() {
   init(false, true);
-  int fd = open("../test.data",O_RDONLY);
+  int fd = open("../127.data",O_RDONLY);
   ZeroCopyInputStream* rawInput = new google::protobuf::io::FileInputStream(fd);
   bool suc = false;
   int fid = 1;
@@ -32,7 +32,7 @@ int main() {
   suc = readDelimitedFrom(rawInput,task.get());
   //printTask(task.get());
   if (suc) {
-    for (int i=0 ;i<200 ; i++) {
+    for (int i=0 ;i<100; i++) {
       printf("#%d search\n", i);
       handle_task(0,task);
     }

@@ -176,9 +176,15 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
 
 
 void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
+  static int hit = 0;
+  static int miss = 0;
+
+
   std::tuple<uint64_t,uint64_t,uint32_t> bid = {task->addr(),task->ctx(),task->order()};
   struct taskKV *res = TaskCache.find(bid);
+
   if (res == nullptr) {
+    printf("miss count %d\n", ++miss);
     *fut = new FUT();
     *fut_opt = new FUT();
     construct_task(task,fut,fut_opt);
@@ -192,6 +198,7 @@ void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_op
       *fut_opt = res->fut_opt;
     }
   } else {
+    printf("hit count %d\n", ++hit);
     *fut = res->fut;
     *fut_opt = res->fut_opt;
   }

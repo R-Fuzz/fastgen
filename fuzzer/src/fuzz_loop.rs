@@ -62,9 +62,9 @@ pub fn grading_loop(
       if len != 0 {
         buf.resize(len as usize, 0);
         let new_path = executor.run_sync(&buf);
-        if new_path {
-          info!("next input addr is {:X} ctx is {}",addr,ctx);
-        }
+       // if new_path {
+        //  info!("next input addr is {:X} ctx is {}",addr,ctx);
+       // }
         grade_count = grade_count + 1;
       }
       if grade_count % 1000 == 0 {
@@ -148,7 +148,7 @@ pub fn fuzz_loop(
           let task_ser = task.write_to_bytes().unwrap();
           unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
         }
-        break;
+        //break;
       }
     }
   }
