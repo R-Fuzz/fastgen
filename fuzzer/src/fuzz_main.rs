@@ -5,7 +5,7 @@ use std::{
     path::{PathBuf},
     sync::{
       atomic::{AtomicBool, Ordering},
-      Arc,
+      Arc, RwLock,
     },
     thread,
 };
@@ -16,6 +16,7 @@ use pretty_env_logger;
 use crate::fuzz_loop;
 use crate::cpp_interface::*;
 use fastgen_common::config;
+use std::collections::HashMap;
 
 pub fn fuzz_main(
     in_dir: &str,
@@ -47,6 +48,7 @@ pub fn fuzz_main(
   info!("{:?}", depot.dirs);
 
   let global_branches = Arc::new(branches::GlobalBranches::new());
+  let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
   let running = Arc::new(AtomicBool::new(true));
   set_sigint_handler(running.clone());
 
@@ -70,8 +72,9 @@ pub fn fuzz_main(
     let d = depot.clone();
     let b = global_branches.clone();
     let cmd = command_option.specify(1);
+    let bg = branch_gencount.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::grading_loop(r, cmd, d, b);
+        fuzz_loop::grading_loop(r, cmd, d, b, bg);
         });
     handlers.push(handle);
   }
@@ -81,8 +84,9 @@ pub fn fuzz_main(
     let d = depot.clone();
     let b = global_branches.clone();
     let cmd = command_option.specify(2);
+    let bg = branch_gencount.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg);
         });
     handlers.push(handle);
   }

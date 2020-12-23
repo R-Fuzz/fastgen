@@ -180,7 +180,7 @@ extern "C" {
     }
   }
 
-  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx ) {
+  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, uint32_t *order ) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
     RGDSolution item;
     //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
@@ -193,6 +193,7 @@ extern "C" {
         input[it->first] = it->second;
       *addr = item.addr;
       *ctx = item.ctx;
+      *order = item.order;
       return size;
     } else {
       return 0; 

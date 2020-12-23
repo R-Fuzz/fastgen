@@ -25,6 +25,7 @@ pub fn grading_loop(
     cmd_opt: CommandOpt,
     depot: Arc<Depot>,
     global_branches: Arc<GlobalBranches>,
+    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32),u32>>>,
     ) {
   let mut executor = Executor::new(
       cmd_opt,
@@ -32,7 +33,7 @@ pub fn grading_loop(
       depot.clone(),
       );
 
-  let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64), u32>::new()));
+  //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
   let t_start = time::Instant::now();
   if config::SAVING_WHOLE {
     let mut fid = 1;
@@ -59,20 +60,21 @@ pub fn grading_loop(
     buf.resize(1000, 0);
     let mut addr: u64 = 0;
     let mut ctx: u64 = 0;
+    let mut order: u32 = 0;
     while running.load(Ordering::Relaxed) {
-      let len = unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx) };
+      let len = unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order) };
       if len != 0 {
         buf.resize(len as usize, 0);
         let new_path = executor.run_sync(&buf);
         if new_path {
           let mut count = 1;
-          if branch_gencount.read().unwrap().contains_key(&(addr,ctx)) {
-            count = *branch_gencount.read().unwrap().get(&(addr,ctx)).unwrap();
+          if branch_gencount.read().unwrap().contains_key(&(addr, ctx, order)) {
+            count = *branch_gencount.read().unwrap().get(&(addr,ctx, order)).unwrap();
             count += 1;
             //info!("gencount is {}",count);
           }
-          branch_gencount.write().unwrap().insert((addr,ctx), count);
-          info!("next input addr is {:} ctx is {}",addr,ctx);
+          branch_gencount.write().unwrap().insert((addr,ctx,order), count);
+          //info!("next input addr is {:} ctx is {}",addr,ctx);
         }
         grade_count = grade_count + 1;
       }
@@ -104,6 +106,7 @@ pub fn fuzz_loop(
     cmd_opt: CommandOpt,
     depot: Arc<Depot>,
     global_branches: Arc<GlobalBranches>,
+    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32),u32>>>,
     ) {
   let mut executor = Executor::new(
       cmd_opt,
@@ -156,24 +159,42 @@ pub fn fuzz_loop(
 
         no_more_seeds = 0;
         info!("Rerun all {} tasks", global_tasks.read().unwrap().len());
-        let cloned_item: HashMap<(u64,u64,u32),u32> = branch_hitcount.read().unwrap().clone();
-        let mut count_vec: Vec<(&(u64,u64,u32), &u32)> = cloned_item.iter().collect();
-        count_vec.sort_by(|a, b| a.1.cmp(b.1));
-/*
-        for item in count_vec {
+        let cloned_branchhit: HashMap<(u64,u64,u32),u32> = branch_hitcount.read().unwrap().clone();
+        let cloned_branchgen: HashMap<(u64,u64,u32),u32> = branch_gencount.read().unwrap().clone();
+        let mut hitcount_vec: Vec<(&(u64,u64,u32), &u32)> = cloned_branchhit.iter().collect();
+        let mut gencount_vec: Vec<(&(u64,u64,u32), &u32)> = cloned_branchgen.iter().collect();
+        hitcount_vec.sort_by(|a, b| a.1.cmp(b.1));
+        gencount_vec.sort_by(|a, b| b.1.cmp(a.1));
+
+        for item in hitcount_vec {
           println!("Most frequently hit branch are {:?}, count is {}", item.0, item.1);
         }
-*/
+
+        warn!("gencount items is {}", gencount_vec.len());
+
+        for item in gencount_vec {
+          println!("Most frequently gen branch are {:?}, count is {}", item.0, item.1);
+        }
+
         let mut scheduled_count = 0;
         for task in global_tasks.read().unwrap().iter() {
-          let hitcount = cloned_item.get(&(task.get_addr(), task.get_ctx(), task.get_order()));
-          if (*hitcount.unwrap() < 5) {
+          let hitcount = match (cloned_branchhit.get(&(task.get_addr(), task.get_ctx(), task.get_order()))) {
+            Some(&x) => x,
+            None => 0,
+          };
+          let gencount = match (cloned_branchgen.get(&(task.get_addr(), task.get_ctx(), task.get_order()))) {
+            Some(&x) => x,
+            None => 0,
+          };
+          if hitcount < 5 || gencount > 1 {
             scheduled_count += 1;
             let task_ser = task.write_to_bytes().unwrap();
             unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
           }
         }
         info!("scheduled_count {}", scheduled_count);
+        thread::sleep(time::Duration::from_secs(scheduled_count/1000));
+        //break;
       }
     }
   }
