@@ -72,7 +72,7 @@ pub fn grading_loop(
             //info!("gencount is {}",count);
           }
           branch_gencount.write().unwrap().insert((addr,ctx), count);
-          //info!("next input addr is {:X} ctx is {}",addr,ctx);
+          info!("next input addr is {:} ctx is {}",addr,ctx);
         }
         grade_count = grade_count + 1;
       }
@@ -158,15 +158,22 @@ pub fn fuzz_loop(
         info!("Rerun all {} tasks", global_tasks.read().unwrap().len());
         let cloned_item: HashMap<(u64,u64,u32),u32> = branch_hitcount.read().unwrap().clone();
         let mut count_vec: Vec<(&(u64,u64,u32), &u32)> = cloned_item.iter().collect();
-        count_vec.sort_by(|a, b| b.1.cmp(a.1));
-
-        println!("Most frequently hit branch are {:?}", count_vec[0].0);
-
-        for task in global_tasks.read().unwrap().iter() {
-          let task_ser = task.write_to_bytes().unwrap();
-          unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
+        count_vec.sort_by(|a, b| a.1.cmp(b.1));
+/*
+        for item in count_vec {
+          println!("Most frequently hit branch are {:?}, count is {}", item.0, item.1);
         }
-        break;
+*/
+        let mut scheduled_count = 0;
+        for task in global_tasks.read().unwrap().iter() {
+          let hitcount = cloned_item.get(&(task.get_addr(), task.get_ctx(), task.get_order()));
+          if (*hitcount.unwrap() < 5) {
+            scheduled_count += 1;
+            let task_ser = task.write_to_bytes().unwrap();
+            unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
+          }
+        }
+        info!("scheduled_count {}", scheduled_count);
       }
     }
   }
