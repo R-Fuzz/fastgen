@@ -186,8 +186,10 @@ pub fn fuzz_loop(
             quota = *branch_quota.get(&(task.get_addr(), task.get_ctx(), task.get_order())).unwrap(); 
             if quota > 0 {
               if_quota = true;
+              quota = quota - 1;
+            } else {
+              if_quota = false;
             }
-            quota = quota - 1;
           } else {
             quota = 9;
             if_quota = true;
