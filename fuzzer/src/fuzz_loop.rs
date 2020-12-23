@@ -127,6 +127,7 @@ pub fn fuzz_loop(
   let global_tasks = Arc::new(RwLock::new(Vec::<SearchTask>::new()));
   let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32)>::new()));
   let branch_hitcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
+  let mut branch_quota = HashMap::<(u64,u64,u32), u32>::new();
 
   let mut no_more_seeds = 0;
   while running.load(Ordering::Relaxed) {
@@ -165,7 +166,7 @@ pub fn fuzz_loop(
         let mut gencount_vec: Vec<(&(u64,u64,u32), &u32)> = cloned_branchgen.iter().collect();
         hitcount_vec.sort_by(|a, b| a.1.cmp(b.1));
         gencount_vec.sort_by(|a, b| b.1.cmp(a.1));
-
+/*
         for item in hitcount_vec {
           println!("Most frequently hit branch are {:?}, count is {}", item.0, item.1);
         }
@@ -175,25 +176,42 @@ pub fn fuzz_loop(
         for item in gencount_vec {
           println!("Most frequently gen branch are {:?}, count is {}", item.0, item.1);
         }
+*/
 
         let mut scheduled_count = 0;
         for task in global_tasks.read().unwrap().iter() {
-          let hitcount = match (cloned_branchhit.get(&(task.get_addr(), task.get_ctx(), task.get_order()))) {
+          let mut if_quota = false;
+          let mut quota;
+          if branch_quota.contains_key(&(task.get_addr(), task.get_ctx(), task.get_order())) {
+            quota = *branch_quota.get(&(task.get_addr(), task.get_ctx(), task.get_order())).unwrap(); 
+            if quota > 0 {
+              if_quota = true;
+            }
+            quota = quota - 1;
+          } else {
+            quota = 9;
+            if_quota = true;
+          }
+          branch_quota.insert((task.get_addr(), task.get_ctx(), task.get_order()), quota);
+/*
+          let hitcount = match cloned_branchhit.get(&(task.get_addr(), task.get_ctx(), task.get_order())) {
             Some(&x) => x,
             None => 0,
           };
-          let gencount = match (cloned_branchgen.get(&(task.get_addr(), task.get_ctx(), task.get_order()))) {
+*/
+          let gencount = match cloned_branchgen.get(&(task.get_addr(), task.get_ctx(), task.get_order())) {
             Some(&x) => x,
             None => 0,
           };
-          if hitcount < 5 || gencount > 1 {
+          if if_quota || (!if_quota && gencount > 1) {
+          //if hitcount < 5 || gencount > 1 {
             scheduled_count += 1;
             let task_ser = task.write_to_bytes().unwrap();
             unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
           }
         }
         info!("scheduled_count {}", scheduled_count);
-        thread::sleep(time::Duration::from_secs(scheduled_count/1000));
+        //thread::sleep(time::Duration::from_secs(scheduled_count/1000));
         //break;
       }
     }
