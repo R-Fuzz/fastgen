@@ -138,7 +138,7 @@ static cl::opt<bool> ClDebugNonzeroLabels(
 static cl::opt<bool> ClTraceGEPOffset(
     "taint-trace-gep",
     cl::desc("Trace GEP offset for solving."),
-    cl::Hidden, cl::init(false));
+    cl::Hidden, cl::init(true));
 
 static cl::opt<bool> ClTraceFP(
     "taint-trace-float-pointer",
