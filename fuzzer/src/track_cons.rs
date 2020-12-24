@@ -15,13 +15,13 @@ pub struct BranchDep {
   pub input_deps: HashSet<u32>, 
 }
 
-//label 0: fid  label 1: label  label 2: direction
-pub fn scan_tasks(labels: &Vec<(u32,u32,u32,u64,u64,u32)>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
+//label 0: fid  label 1: label  label 2: direction/result label 3: addr, label4: ctx, label5, order label6: is gep
+pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
   for &label in labels {
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
     let mut deps = HashSet::new();
-    get_one_constraint(label.1, label.2, &mut node, table, &mut deps);
+    get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut deps);
     cons.set_node(node);
     analyze_meta(&mut cons);
     let mut task = SearchTask::new();
@@ -34,7 +34,7 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u32,u64,u64,u32)>, tasks: &mut Vec<Searc
   }
 }
 
-pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u32,u64,u64,u32)>, tasks: &mut Vec<SearchTask>,
+pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mut Vec<SearchTask>,
           table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32)>>> 
           , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
@@ -57,7 +57,11 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u32,u64,u64,u32)>, tasks: &mut Ve
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
     let mut inputs = HashSet::new();
-    get_one_constraint(label.1, label.2, &mut node, table, &mut inputs);
+    if label.6 == 1 {
+      get_gep_constraint(label.1, label.2, &mut node, table, &mut inputs);
+    } else {
+      get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
+    }
 
     //Step 1: collect additional input deps
     let mut work_list = Vec::new();

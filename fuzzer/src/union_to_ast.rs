@@ -387,6 +387,7 @@ fn is_relational(op: Option<RGD>) -> bool {
   }
 }
 
+
 //e.g. equal(zext(equal(X, Y), 0))  => distinct(x,y)
 fn simplify(src: &mut AstNode, dst: &mut AstNode) {
 
@@ -456,6 +457,34 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
   if direction == 1 {
     flip_op(&mut src);
   }
+  
+  for &v in &cache[&label] {
+    deps.insert(v);
+  }
+  simplify(&mut src, dst);
+}
+
+
+pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
+  let mut cache = HashMap::new();
+
+  let mut left = AstNode::new();
+  let mut right = AstNode::new();
+  let mut src = AstNode::new();
+  do_uta(label, &mut left, table, &mut cache);
+
+  //build left != result
+  src.set_bits(left.get_bits() as u32);
+  src.set_kind(RGD::Distinct as u32);
+  src.set_name("distinct".to_string());
+  right.set_kind(RGD::Constant as u32);
+  right.set_name("constant".to_string());
+  right.set_bits(left.get_bits() as u32);
+  right.set_value(result.to_string());
+  right.set_label(0);
+  src.mut_children().push(left);
+  src.mut_children().push(right);
+
   
   for &v in &cache[&label] {
     deps.insert(v);

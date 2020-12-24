@@ -1050,9 +1050,9 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
   if (__solver_select != 1) {
     if (rejectBranch(label)) return;
     //printLabel(label);
-    sprintf(content, "%u, %u, %u, %lu, %lu, %u\n", __tid, label, r, (uint64_t)addr, ctx, (uint32_t)order);
+    sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 0\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order);
     write(mypipe,content,strlen(content));
-  get_label_info(label)->flags |= B_FLIPPED;
+    get_label_info(label)->flags |= B_FLIPPED;
     return;
   }
   static int dismatch = 0;
@@ -1308,11 +1308,39 @@ __taint_trace_indcall(dfsan_label label) {
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
 __taint_trace_gep(dfsan_label label, u64 r) {
+  char content[100];
   if (label == 0)
     return;
 
   if ((get_label_info(label)->flags & B_FLIPPED))
     return;
+
+
+  int order = 0;
+  void *addr = __builtin_return_address(0);
+  auto itr = __branches.find({__taint_trace_callstack, addr});
+  if (itr == __branches.end()) {
+    itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
+    order = 1;
+  } else if (itr->second < MAX_BRANCH_COUNT) {
+    itr->second += 1;
+    order = itr->second;
+  } else {
+    //return;
+  }
+
+  uint64_t callstack = __taint_trace_callstack;
+  static int count = 0;
+  printf("__trace_gep %d and solver_select is %d\n",++count, __solver_select);
+  if (__solver_select != 1) {
+    if (rejectBranch(label)) return;
+    //printLabel(label);
+    sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 1\n",  __tid, label, r, (uint64_t)addr, callstack, (uint32_t)order);
+    write(mypipe,content,strlen(content));
+    get_label_info(label)->flags |= B_FLIPPED;
+    return;
+  }
+
 
   AOUT("tainted GEP index: %d = %lld\n", label, r);
 
