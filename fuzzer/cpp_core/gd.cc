@@ -293,7 +293,7 @@ void onedimension_descend(struct FUT* fut) {
     if (fut->ctx->grad.get_value()[dimensionIdx].pct < 0.01)
       continue;
     while (true) {
-      double movement = fut->ctx->grad.get_value()[dimensionIdx].pct * (double)step;
+      double movement = fut->ctx->grad.get_value()[dimensionIdx].pct * (double)fut->ctx->step;
       input_scratch.update(dimensionIdx,fut->ctx->grad.get_value()[dimensionIdx].sign,(uint64_t)movement);
       uint64_t f_new = distance(input_scratch, fut);
       fut->ctx->att += 1;
