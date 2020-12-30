@@ -176,7 +176,7 @@ mod tests {
   use crate::cpp_interface::*;
   use protobuf::Message;
   use crate::fifo::*;
-  //use crate::util::*;
+  use crate::util::*;
 
 #[test]
   fn test_scan() {
@@ -199,8 +199,8 @@ mod tests {
 //    scan_tasks(&labels, &mut tasks, table);
     unsafe { init_core(true,true); }
     for task in tasks {
-      //println!("print task");
-      //print_task(&task);
+      println!("print task");
+      print_task(&task);
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
     }
