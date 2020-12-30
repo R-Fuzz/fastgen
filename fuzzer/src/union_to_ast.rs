@@ -40,7 +40,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.set_index(table[info.l1 as usize].op1 as u32);
                     ret.set_name("read".to_string());
                     let mut deps = HashSet::new();
-                    for i in 0..info.l1 as u32 {
+                    for i in 0..info.l2 as u32 {
                       deps.insert(table[info.l1 as usize].op1 as u32 + i);
                     }
                     ret.set_label(label);
@@ -457,7 +457,6 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
   if direction == 1 {
     flip_op(&mut src);
   }
-  
   for &v in &cache[&label] {
     deps.insert(v);
   }

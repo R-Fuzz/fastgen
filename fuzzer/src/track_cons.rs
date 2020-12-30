@@ -68,7 +68,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
     for &v in inputs.iter() {
       work_list.push(v);
     }
-    while work_list.is_empty() {
+    while !work_list.is_empty() {
       let off = work_list.pop().unwrap();
       let deps_opt = &branch_deps[off as usize];
       if let Some(deps) = deps_opt {
@@ -118,7 +118,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
         }
       }
       if is_empty {
-        branch_deps.insert(off as usize, Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
+        branch_deps[off as usize] =  Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()});
       }
       let deps_opt = &mut branch_deps[off as usize];
       let deps = deps_opt.as_mut().unwrap(); 
@@ -199,7 +199,7 @@ mod tests {
 //    scan_tasks(&labels, &mut tasks, table);
     unsafe { init_core(true,true); }
     for task in tasks {
-      println!("print task");
+      println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
       print_task(&task);
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
