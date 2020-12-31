@@ -194,7 +194,7 @@ mod tests {
     let mut tasks = Vec::new();
     let labels = read_pipe();
     println!("labels len is {}", labels.len());
-    let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32)>::new()));
+    let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32,u64)>::new()));
     let branch_hit = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
     scan_nested_tasks(&labels, &mut tasks, table, 400, &dedup, &branch_hit);
 //    scan_tasks(&labels, &mut tasks, table);
