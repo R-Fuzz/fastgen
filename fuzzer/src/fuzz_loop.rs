@@ -6,7 +6,9 @@ use std::sync::{
   atomic::{AtomicBool, Ordering},
     Arc, RwLock,
 };
-use std::time; use std::thread;
+
+use std::time;
+use std::thread;
 
 use protobuf::Message;
 use crate::fifo::*;
@@ -19,7 +21,7 @@ use std::path::{Path};
 use crate::rgd::*;
 use std::collections::HashSet;
 use std::collections::HashMap;
-use crate::util::*;
+//use crate::util::*;
 
 pub fn grading_loop(
     running: Arc<AtomicBool>,
@@ -57,8 +59,8 @@ pub fn grading_loop(
     }
   } else {
     let mut grade_count = 0;
-    let mut buf: Vec<u8> = Vec::with_capacity(1000);
-    buf.resize(1000, 0);
+    let mut buf: Vec<u8> = Vec::with_capacity(config::MAX_INPUT_LEN);
+    buf.resize(config::MAX_INPUT_LEN, 0);
     let mut addr: u64 = 0;
     let mut ctx: u64 = 0;
     let mut order: u32 = 0;
@@ -82,7 +84,7 @@ pub fn grading_loop(
       if grade_count % 1000 == 0 {
         let used_t1 = t_start.elapsed().as_secs() as u32;
         if used_t1 != 0 {
-          warn!("Grading throughput is {}", grade_count / used_t1);
+       //   warn!("Grading throughput is {}", grade_count / used_t1);
         }
       }
     }
@@ -91,10 +93,12 @@ pub fn grading_loop(
 
 
 pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>,
-    dedup: Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>, branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>) {
+    dedup: Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>,
+    branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>,
+    buf: &Vec<u8>) {
   let labels = read_pipe();
   let mut tasks = Vec::new();
-  scan_nested_tasks(&labels, &mut tasks, table, 400, &dedup, &branch_hitcount);
+  scan_nested_tasks(&labels, &mut tasks, table, config::MAX_INPUT_LEN, &dedup, &branch_hitcount, buf);
   for task in tasks {
     //println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
     //print_task(&task);
@@ -136,12 +140,13 @@ pub fn fuzz_loop(
   while running.load(Ordering::Relaxed) {
     if id < depot.get_num_inputs() {
       let buf = depot.get_input_buf(id);
+      let buf_cloned = buf.clone();
       //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
       let gtasks = global_tasks.clone();
       let gdedup = dedup.clone();
       let gbranch_hitcount = branch_hitcount.clone();
       let handle = thread::spawn(move || {
-          dispatcher(table, gtasks, gdedup, gbranch_hitcount);
+          dispatcher(table, gtasks, gdedup, gbranch_hitcount, &buf_cloned);
           });
 
       let t_start = time::Instant::now();
@@ -183,7 +188,7 @@ pub fn fuzz_loop(
 
         let mut scheduled_count = 0;
         for task in global_tasks.read().unwrap().iter() {
-          let mut if_quota = false;
+          let if_quota;
           let mut quota;
           if branch_quota.contains_key(&(task.get_addr(), task.get_ctx(), task.get_order())) {
             quota = *branch_quota.get(&(task.get_addr(), task.get_ctx(), task.get_order())).unwrap(); 

@@ -99,6 +99,7 @@ fn sync_one_afl_dir(
                     if id >= min_id {
                         let file_len = fs::metadata(path).unwrap().len() as usize;
                         if file_len < config::MAX_INPUT_LEN {
+                            info!("sync {:?}", path);
                             let buf = read_from_file(path);
                             executor.run_sync(&buf);
                         }

@@ -2,7 +2,7 @@ use fastgen_common::defs;
 use chrono::prelude::Local;
 use std::{
     fs,
-    path::{PathBuf},
+    path::{PathBuf, Path},
     sync::{
       atomic::{AtomicBool, Ordering},
       Arc, RwLock,
@@ -10,6 +10,7 @@ use std::{
     thread,
 };
 
+use std::time;
 use crate::{branches, check_dep, command, depot, sync, executor};
 use ctrlc;
 use pretty_env_logger;
@@ -91,6 +92,13 @@ pub fn fuzz_main(
     handlers.push(handle);
   }
 
+  main_thread_sync(
+    out_dir,
+    sync_afl,
+    running.clone(),
+    &mut executor,
+  );
+
   
   for handle in handlers {
     if handle.join().is_err() {
@@ -139,4 +147,28 @@ fn set_sigint_handler(r: Arc<AtomicBool>) {
       r.store(false, Ordering::SeqCst);
       })
   .expect("Error setting SIGINT handler!");
+}
+
+
+
+fn main_thread_sync(
+  out_dir: &str,
+  sync_afl: bool,
+  running: Arc<AtomicBool>,
+  executor: &mut executor::Executor,
+) {
+  let sync_dir = Path::new(out_dir);
+  let mut synced_ids = HashMap::new();
+  if sync_afl {
+    sync::sync_afl(executor, running.clone(), sync_dir, &mut synced_ids);
+  }
+  let mut sync_counter = 1;
+  while running.load(Ordering::SeqCst) {
+    thread::sleep(time::Duration::from_secs(5));
+    sync_counter -= 1;
+    if sync_afl && sync_counter <= 0 {
+      sync::sync_afl(executor, running.clone(), sync_dir, &mut synced_ids);
+      sync_counter = 12;
+    }
+  }
 }

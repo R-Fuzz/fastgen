@@ -100,7 +100,6 @@ void MutInput::resetDisables() {
 }
 
 void MutInput::setDisable(size_t idx) {
-  printf("disables %d\n", idx);
   disables[idx] = 1;
 }
 

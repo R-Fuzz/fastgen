@@ -16,14 +16,17 @@ pub struct BranchDep {
 }
 
 //label 0: fid  label 1: label  label 2: direction/result label 3: addr, label4: ctx, label5, order label6: is gep
-pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mut Vec<SearchTask>, table: &UnionTable) {
+pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
+                  tasks: &mut Vec<SearchTask>,
+                  table: &UnionTable,
+                  buf: &Vec<u8>) {
   for &label in labels {
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
     let mut deps = HashSet::new();
     get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut deps);
     cons.set_node(node);
-    analyze_meta(&mut cons);
+    analyze_meta(&mut cons, buf);
     let mut task = SearchTask::new();
     task.mut_constraints().push(cons);
     task.set_fid(label.0);
@@ -36,7 +39,7 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mut Vec<S
 
 pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mut Vec<SearchTask>,
           table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>
-          , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>) {
+          , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>, buf: &Vec<u8>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
   branch_deps.resize_with(tainted_size, || None);
   let mut cons_table = HashMap::new();
@@ -93,7 +96,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
 
     // add constraints
     cons.set_node(node);
-    analyze_meta(&mut cons);
+    analyze_meta(&mut cons, buf);
     cons_table.insert(label.1, cons.clone());
     let mut task = SearchTask::new();
     task.mut_constraints().push(cons);
@@ -160,13 +163,13 @@ fn append_meta(cons: &mut Constraint,
 }
 
 
-fn analyze_meta(cons: &mut Constraint) {
+fn analyze_meta(cons: &mut Constraint, buf: &Vec<u8>) {
   let mut local_map = HashMap::new();
   let mut input_args = Vec::new();
   let mut inputs = Vec::new();
   let mut visited = HashSet::new();
   let mut const_num = 0;
-  map_args(cons.mut_node(), &mut local_map, &mut input_args, &mut inputs, &mut visited, &mut const_num);
+  map_args(cons.mut_node(), &mut local_map, &mut input_args, &mut inputs, &mut visited, &mut const_num, buf);
   append_meta(cons, &local_map, &input_args, &inputs, const_num);
 }
 

@@ -28,7 +28,7 @@
 using namespace rgd;
 using namespace google::protobuf::io;
 
-#define THREAD_POOL_SIZE 32
+#define THREAD_POOL_SIZE 1
 #define DEBUG 1
 //global variables
 std::unique_ptr<GradJit> JIT;
@@ -187,7 +187,7 @@ extern "C" {
      // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
     if(solution_queue.try_dequeue(item)) {
       std::string old_string = std::to_string(item.fid);
-      std::string input_file = "output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      std::string input_file = "output/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
       uint32_t size = load_input(input_file, input);
       for(auto it = item.sol.begin(); it != item.sol.end(); ++it)
         input[it->first] = it->second;
