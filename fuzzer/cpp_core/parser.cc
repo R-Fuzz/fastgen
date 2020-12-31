@@ -80,10 +80,10 @@ struct myHash {
 
 
 struct taskKV {
-  std::tuple<uint64_t,uint64_t,uint32_t> branch;
+  std::tuple<uint64_t,uint64_t,uint32_t, uint64_t> branch;
   FUT* fut;
   FUT* fut_opt;
-  taskKV(std::tuple<uint64_t,uint64_t,uint32_t> abranch,
+  taskKV(std::tuple<uint64_t,uint64_t,uint32_t, uint64_t> abranch,
         FUT* afut,
         FUT* afut_opt)
     : branch(abranch), fut(afut), fut_opt(afut_opt) {}
@@ -91,10 +91,10 @@ struct taskKV {
 
 struct taskHash {
   using eType = struct taskKV*;
-  using kType = std::tuple<uint64_t, uint64_t, uint32_t>;
+  using kType = std::tuple<uint64_t, uint64_t, uint32_t, uint64_t>;
   eType empty() {return nullptr;}
   kType getKey(eType v) {return v->branch;}
-  int hash(kType v) {return std::get<0>(v)^std::get<1>(v)^std::get<2>(v);} //hash64_2(v);}
+  int hash(kType v) {return std::get<0>(v)^std::get<1>(v)^std::get<2>(v)^std::get<3>(v);} //hash64_2(v);}
   //int hash(kType v) {return hash64_2(v);}
   //int cmp(kType v, kType b) {return (v > b) ? 1 : ((v == b) ? 0 : -1);}
   int cmp(kType v, kType b) {return (v == b) ? 0 : -1;}
@@ -180,7 +180,7 @@ void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_op
   static int miss = 0;
 
 
-  std::tuple<uint64_t,uint64_t,uint32_t> bid = {task->addr(),task->ctx(),task->order()};
+  std::tuple<uint64_t,uint64_t,uint32_t,uint64_t> bid = {task->addr(),task->ctx(),task->order(), task->direction()};
   struct taskKV *res = TaskCache.find(bid);
 
   if (res == nullptr) {

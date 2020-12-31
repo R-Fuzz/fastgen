@@ -19,6 +19,7 @@ use std::path::{Path};
 use crate::rgd::*;
 use std::collections::HashSet;
 use std::collections::HashMap;
+use crate::util::*;
 
 pub fn grading_loop(
     running: Arc<AtomicBool>,
@@ -90,11 +91,13 @@ pub fn grading_loop(
 
 
 pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>,
-    dedup: Arc<RwLock<HashSet<(u64,u64,u32)>>>, branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>) {
+    dedup: Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>, branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>) {
   let labels = read_pipe();
   let mut tasks = Vec::new();
   scan_nested_tasks(&labels, &mut tasks, table, 400, &dedup, &branch_hitcount);
   for task in tasks {
+    //println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
+    //print_task(&task);
     let task_ser = task.write_to_bytes().unwrap();
     global_tasks.write().unwrap().push(task);
     unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
@@ -125,7 +128,7 @@ pub fn fuzz_loop(
   let ptr = unsafe { libc::shmat(shmid, std::ptr::null(), 0) as *mut UnionTable};
   let table = unsafe { & *ptr };
   let global_tasks = Arc::new(RwLock::new(Vec::<SearchTask>::new()));
-  let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32)>::new()));
+  let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32, u64)>::new()));
   let branch_hitcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
   let mut branch_quota = HashMap::<(u64,u64,u32), u32>::new();
 

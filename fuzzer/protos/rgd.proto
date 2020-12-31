@@ -13,6 +13,7 @@ message SearchTask {
   uint64 addr = 3;
   uint64 ctx = 4;
   uint32 order = 5;
+  uint64 direction = 6;
 }
 
 //the constraint will be sent to c++ JIT/search engine

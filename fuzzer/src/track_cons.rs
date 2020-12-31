@@ -35,7 +35,7 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mut Vec<S
 }
 
 pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mut Vec<SearchTask>,
-          table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32)>>> 
+          table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>
           , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
   branch_deps.resize_with(tainted_size, || None);
@@ -50,10 +50,10 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
     }
     branch_hitcount.write().unwrap().insert((label.3,label.4,label.5), count);
 
-    if dedup.read().unwrap().contains(&(label.3,label.4,label.5)) {
+    if dedup.read().unwrap().contains(&(label.3,label.4,label.5, label.2)) {
       continue;
     }
-    dedup.write().unwrap().insert((label.3,label.4,label.5));
+    dedup.write().unwrap().insert((label.3,label.4,label.5, label.2));
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
     let mut inputs = HashSet::new();
@@ -106,6 +106,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
     task.set_addr(label.3);
     task.set_ctx(label.4);
     task.set_order(label.5);
+    task.set_direction(label.2);
     tasks.push(task);
 
     //step 3: nested branch
