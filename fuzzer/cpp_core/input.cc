@@ -6,10 +6,12 @@
 
 void MutInput::update(size_t index, bool direction, uint64_t delta)
 {
+  if (disables[index]==0) {
 	if (direction)
 		value[index] += delta;
 	else
 		value[index] -= delta;
+  }
 }
 
 uint8_t MutInput::get_rand()
@@ -68,7 +70,8 @@ void MutInput::dump() {
 
 void MutInput::randomize() {
 	for(int i=0;i<size_;i++) {
-		value[i] = get_rand();
+    if (disables[i]==0)
+		  value[i] = get_rand();
 		//std::cout << "randomize " << i << " and assign value " << (int)value[i] << std::endl;
 	}
 }
@@ -80,6 +83,8 @@ uint8_t MutInput::get(size_t i) {
 MutInput::MutInput(size_t size)  {
   r_idx = 0;
 	value = (uint8_t*)malloc(size);
+  disables = (uint8_t*)malloc(size);
+  memset(disables, 0, size);
 	size_ = size;
 	unsigned int seed;
   //_rdseed32_step(&seed);
@@ -90,8 +95,19 @@ MutInput::MutInput(size_t size)  {
   random_r(&r_d, &r_val);
 }
 
+void MutInput::resetDisables() {
+  memset(disables, 0, size_);
+}
+
+void MutInput::setDisable(size_t idx) {
+  printf("disables %d\n", idx);
+  disables[idx] = 1;
+}
+
 MutInput::~MutInput()
 {
   if (value)
     free(value);
+  if (disables)
+    free(disables);
 }

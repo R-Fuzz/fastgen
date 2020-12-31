@@ -17,6 +17,9 @@ public:
   MutInput scratch_input;
   MutInput min_input;
   Grad grad;
+  //use distances to represent distance for each sub-expr
+  std::vector<uint64_t> distances;
+  std::vector<uint64_t> orig_distances;
   //0: load_input 1: gradient 2: guess descend 3: all dimension descend 4, one dimension descend 5: randomize
   int next_state;
   int step;
@@ -24,7 +27,9 @@ public:
   int dimensionIdx;
   int att;
   bool solved;
-  SContext(size_t len):
+  SContext(size_t len, size_t num_exprs):
+      orig_distances(num_exprs,0),
+      distances(num_exprs,0),
       scratch_input(len),
       min_input(len),
       grad(len),
@@ -94,7 +99,7 @@ struct FUT {
 		}
 
 		scratch_args = (uint64_t*)malloc((2 + inputs.size() + max_const_num) * sizeof(uint64_t));
-    ctx = new SContext(inputs.size());
+    ctx = new SContext(inputs.size(), constraints.size());
 	}
 
 };

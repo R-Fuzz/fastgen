@@ -124,7 +124,7 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
     }
     cur = (uint64_t)c->fn(fut->scratch_args);
     uint64_t dis = getDistance(c->comparison,fut->scratch_args[0],fut->scratch_args[1]);
-    //if (dis == 0 && nested)
+    fut->ctx->distances[i] = dis;
     // *partial_found = true;
     if (dis>0) {
       res = sat_inc(res,dis);
@@ -141,6 +141,11 @@ bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *s
   orig_input.update(index,true,1);
 
   uint64_t f_plus = distance(orig_input,fut);
+
+  for(int i=0; i< fut->ctx->distances.size(); i++) {
+    if (fut->ctx->orig_distances[i] == 0  && fut->ctx->distances[i] != 0)
+        orig_input.setDisable(index);
+  }
   if (f_plus == 0) {
     addResults(orig_input, fut);
     found = true;
@@ -150,6 +155,10 @@ bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *s
   orig_input.update(index,false,1);
 
   uint64_t f_minus = distance(orig_input,fut);
+  for(int i=0; i< fut->ctx->distances.size(); i++) {
+    if (fut->ctx->orig_distances[i] == 0  && fut->ctx->distances[i] != 0)
+        orig_input.setDisable(index);
+  }
   if (f_minus == 0) {
     addResults(orig_input, fut);
     found = true;
@@ -326,6 +335,7 @@ void repick_start_point(struct FUT* fut) {
   MutInput &input_min = fut->ctx->min_input;
   input_min.randomize();
   fut->ctx->f_last = distance(input_min,fut);
+  fut->ctx->orig_distances = fut->ctx->distances;
   fut->ctx->next_state = 1;
   fut->ctx->grad.clear();
   fut->ctx->att += 1;
@@ -338,7 +348,14 @@ void repick_start_point(struct FUT* fut) {
 void load_input(struct FUT* fut) {
   MutInput &input_min = fut->ctx->min_input;
   input_min.assign(fut->inputs);
+/*
+  input_min.value[3] = 0xD0;
+  input_min.value[2] = 0xCF;
+  input_min.value[0] = 0x32;
+  input_min.value[6] = 0x00;
+*/
   fut->ctx->f_last = distance(input_min,fut);
+  fut->ctx->orig_distances = fut->ctx->distances;
   fut->ctx->next_state = 1;
   fut->ctx->grad.clear();
   fut->ctx->att += 1;

@@ -19,6 +19,7 @@ class MutInput {
 public:
  // std::vector<uint8_t> value;
 	uint8_t* value;
+	uint8_t* disables;
  // std::vector<InputMeta> meta;
 	size_t size_;
 	size_t get_size();
@@ -35,6 +36,8 @@ public:
 	int32_t r_idx;
 	uint8_t get_rand();
 
+  void resetDisables();
+  void setDisable(size_t i);
   uint8_t get(size_t i);
   void update(size_t index, bool direction, uint64_t delta);
   void flip(size_t index, size_t bit_index);
