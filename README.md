@@ -45,3 +45,12 @@ infer_type: yes
 if_eq: yes
 ```
 
+### TODOs
+
+* add AstNode caching
+* Test byte freezing
+* Test search from current input
+
+####  Known issues
+
+* Crashes when fuzzing GEP/GEP2
