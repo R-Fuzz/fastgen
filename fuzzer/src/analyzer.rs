@@ -20,7 +20,8 @@ pub fn map_args(node: &mut AstNode,
                 input_args: &mut Vec<(bool,u64)>, 
                 inputs: &mut Vec<(u32,u8)>,
                 visited: &mut HashSet<u32>,
-                const_num: &mut u32) {
+                const_num: &mut u32,
+                buf: &Vec<u8>) {
   for i in 0..node.get_children().len() {
     let c  = &mut node.mut_children()[i];
     let label = c.get_label();
@@ -28,7 +29,7 @@ pub fn map_args(node: &mut AstNode,
       continue;
     }
     visited.insert(label);
-    map_args(c,local_map,input_args,inputs,visited, const_num);
+    map_args(c,local_map,input_args,inputs,visited, const_num, buf);
   }
 
   match FromPrimitive::from_u32(node.get_kind()) {
@@ -43,9 +44,11 @@ pub fn map_args(node: &mut AstNode,
 
     Some(RGD::Read) => {
       let mut iv = 0;
+/*
       if !node.get_value().is_empty() {
         iv = node.get_value().parse::<u64>().expect("expect u64 number in value filed");
       }
+*/
       let length = node.get_bits()/8;
       for i in 0..length {
         let offset = node.get_index() + i;
@@ -54,7 +57,7 @@ pub fn map_args(node: &mut AstNode,
           arg_index = input_args.len();
           local_map.insert(offset,arg_index as u32);
           input_args.push((true,0));
-          inputs.push((offset, iv as u8 & 0xff));
+          inputs.push((offset, buf[offset as usize]));
         } else {
           arg_index = *local_map.get(&offset).unwrap() as usize;
         }

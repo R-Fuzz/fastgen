@@ -91,10 +91,12 @@ pub fn grading_loop(
 
 
 pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>,
-    dedup: Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>, branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>) {
+    dedup: Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>,
+    branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>,
+    buf: &Vec<u8>) {
   let labels = read_pipe();
   let mut tasks = Vec::new();
-  scan_nested_tasks(&labels, &mut tasks, table, 400, &dedup, &branch_hitcount);
+  scan_nested_tasks(&labels, &mut tasks, table, 400, &dedup, &branch_hitcount, buf);
   for task in tasks {
     //println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
     //print_task(&task);
@@ -136,12 +138,13 @@ pub fn fuzz_loop(
   while running.load(Ordering::Relaxed) {
     if id < depot.get_num_inputs() {
       let buf = depot.get_input_buf(id);
+      let buf_cloned = buf.clone();
       //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
       let gtasks = global_tasks.clone();
       let gdedup = dedup.clone();
       let gbranch_hitcount = branch_hitcount.clone();
       let handle = thread::spawn(move || {
-          dispatcher(table, gtasks, gdedup, gbranch_hitcount);
+          dispatcher(table, gtasks, gdedup, gbranch_hitcount, &buf_cloned);
           });
 
       let t_start = time::Instant::now();
