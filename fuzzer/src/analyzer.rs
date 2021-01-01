@@ -45,6 +45,7 @@ pub fn map_args(node: &mut AstNode,
     Some(RGD::Read) => {
 /*
       let mut iv = 0;
+
       if !node.get_value().is_empty() {
         iv = node.get_value().parse::<u64>().expect("expect u64 number in value filed");
       }
