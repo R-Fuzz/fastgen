@@ -42,13 +42,12 @@
 #include <assert.h>
 #include <fcntl.h>
 
-#include <z3++.h>
+#include <string.h>
 
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <sw/redis++/redis++.h>
 #define XXH_STATIC_LINKING_ONLY
 #include "xxhash.h"
 
@@ -64,9 +63,7 @@ struct shmseg {
 };
 
 using namespace __dfsan;
-using namespace sw::redis;
 
-auto redis = Redis("tcp://127.0.0.1:6379");
 typedef atomic_uint32_t atomic_dfsan_label;
 static const dfsan_label kInitializingLabel = -1;
 static const std::string PROGRAM="sqlite";
@@ -89,8 +86,6 @@ u32 __session_id;
 static u32 __current_index = 0;
 static u32 __solver_select = 0;
 static u32 __tid = 0;
-static z3::context __z3_context;
-static z3::solver __z3_solver(__z3_context, "QF_BV");
 int mypipe;
 void* shmp;
 
@@ -130,34 +125,6 @@ struct expr_equal1 {
   }
 };
 
-// dependencies
-struct expr_hash {
-  std::size_t operator()(const z3::expr &expr) const {
-    return expr.hash();
-  }
-};
-struct expr_equal {
-  bool operator()(const z3::expr &lhs, const z3::expr &rhs) const {
-    return lhs.id() == rhs.id();
-  }
-};
-
-#if RESTRICT_CONSTRAINT
-typedef struct {
-  std::unordered_set<z3::expr,expr_hash,expr_equal> exprs;
-  std::unordered_set<dfsan_label> deps;
-} branch_dep_t;
-#else
-typedef std::unordered_set<z3::expr, expr_hash, expr_equal> branch_dep_t;
-#endif
-typedef struct {
-  //std::unordered_set<std::tuple<dfsan_label,dfsan_label, u32, u32>,expr_hash1,expr_equal1> exprs;
-  std::unordered_set<std::tuple<dfsan_label,u32>,expr_hash1,expr_equal1> exprs;
-  std::unordered_set<dfsan_label> deps;
-} branch_dep_shadow_t;
-
-static std::vector<branch_dep_t*> *__branch_deps;
-static std::vector<branch_dep_shadow_t*> *__branch_deps_shadow;
 
 Flags __dfsan::flags_data;
 
@@ -622,374 +589,8 @@ dfsan_dump_labels(int fd) {
   }
 }
 
-static z3::expr read_concrete(u64 addr, u8 size) {
-  u8 *ptr = reinterpret_cast<u8*>(addr);
-  if (ptr == nullptr) {
-    throw z3::exception("invalid concrete address");
-  }
-
-  z3::expr val = __z3_context.bv_val(*ptr++, 8);
-  for (u8 i = 1; i < size; i++) {
-    val = z3::concat(__z3_context.bv_val(*ptr++, 8), val);
-  }
-  return val;
-}
-
-static z3::expr get_cmd(z3::expr const &lhs, z3::expr const &rhs, u32 predicate) {
-  switch (predicate) {
-    case bveq:  return lhs == rhs;
-    case bvneq: return lhs != rhs;
-    case bvugt: return z3::ugt(lhs, rhs);
-    case bvuge: return z3::uge(lhs, rhs);
-    case bvult: return z3::ult(lhs, rhs);
-    case bvule: return z3::ule(lhs, rhs);
-    case bvsgt: return lhs > rhs;
-    case bvsge: return lhs >= rhs;
-    case bvslt: return lhs < rhs;
-    case bvsle: return lhs <= rhs;
-    default:
-                Printf("FATAL: unsupported predicate: %u\n", predicate);
-                throw z3::exception("unsupported predicate");
-                break;
-  }
-  // should never reach here
-  Die();
-}
-
-static inline z3::expr cache_expr(dfsan_label_info *info, z3::expr const &e, std::unordered_set<u32> &deps) {
-  info->expr = new z3::expr(e);
-  info->deps = new std::unordered_set<u32>(deps);
-  return e;
-}
-
-static z3::expr serialize(dfsan_label label, std::unordered_set<u32> &deps) {
-  if (label < CONST_OFFSET || label == kInitializingLabel) {
-    Report("WARNING: invalid label: %d\n", label);
-    throw z3::exception("invalid label");
-  }
-
-  dfsan_label_info *info = get_label_info(label);
-  printf("%u = (l1:%u, l2:%u, op:%u, size:%u, op1:%llu, op2:%llu)\n",
-      label, info->l1, info->l2, info->op, info->size, info->op1, info->op2);
-
-  if (info->expr) {
-    auto d = reinterpret_cast<std::unordered_set<u32>*>(info->deps);
-    deps.insert(d->begin(), d->end());
-    return *reinterpret_cast<z3::expr*>(info->expr);
-  }
-
-  // special ops
-  if (info->op == 0) {
-    // input
-    z3::symbol symbol = __z3_context.int_symbol(info->op1);
-    z3::sort sort = __z3_context.bv_sort(8);
-    info->tree_size = 1; // lazy init
-    deps.insert(info->op1);
-    // caching is not super helpful
-    return __z3_context.constant(symbol, sort);
-  } else if (info->op == Load) {
-    u64 offset = get_label_info(info->l1)->op1;
-    z3::symbol symbol = __z3_context.int_symbol(offset);
-    z3::sort sort = __z3_context.bv_sort(8);
-    z3::expr out = __z3_context.constant(symbol, sort);
-    deps.insert(offset);
-    for (u32 i = 1; i < info->l2; i++) {
-      symbol = __z3_context.int_symbol(offset + i);
-      out = z3::concat(__z3_context.constant(symbol, sort), out);
-      deps.insert(offset + i);
-    }
-    info->tree_size = 1; // lazy init
-    return cache_expr(info, out, deps);
-  } else if (info->op == ZExt) {
-    z3::expr base = serialize(info->l1, deps);
-    if (base.is_bool()) // dirty hack since llvm lacks bool
-      base = z3::ite(base, __z3_context.bv_val(1, 1),
-          __z3_context.bv_val(0, 1));
-    u32 base_size = base.get_sort().bv_size();
-    info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
-    return cache_expr(info, z3::zext(base, info->size - base_size), deps);
-  } else if (info->op == SExt) {
-    z3::expr base = serialize(info->l1, deps);
-    u32 base_size = base.get_sort().bv_size();
-    info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
-    return cache_expr(info, z3::sext(base, info->size - base_size), deps);
-  } else if (info->op == Trunc) {
-    z3::expr base = serialize(info->l1, deps);
-    info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
-    return cache_expr(info, base.extract(info->size - 1, 0), deps);
-  } else if (info->op == Extract) {
-    z3::expr base = serialize(info->l1, deps);
-    info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
-    return cache_expr(info, base.extract((info->op2 + info->size) - 1, info->op2), deps);
-  } else if (info->op == Not) {
-    if (info->l2 == 0 || info->size != 1) {
-      throw z3::exception("invalid Not operation");
-    }
-    z3::expr e = serialize(info->l2, deps);
-    info->tree_size = get_label_info(info->l2)->tree_size; // lazy init
-    if (!e.is_bool()) {
-      throw z3::exception("Only LNot should be recorded");
-    }
-    return cache_expr(info, !e, deps);
-  } else if (info->op == Neg) {
-    if (info->l2 == 0) {
-      throw z3::exception("invalid Neg predicate");
-    }
-    z3::expr e = serialize(info->l2, deps);
-    info->tree_size = get_label_info(info->l2)->tree_size; // lazy init
-    return cache_expr(info, -e, deps);
-  }
-  // higher-order
-  else if (info->op == fmemcmp) {
-    z3::expr op1 = (info->l1 >= CONST_OFFSET) ? serialize(info->l1, deps) :
-      read_concrete(info->op1, info->size); // memcmp size in bytes
-    if (info->l2 < CONST_OFFSET) {
-      throw z3::exception("invalid memcmp operand2");
-    }
-    z3::expr op2 = serialize(info->l2, deps);
-    info->tree_size = 1; // lazy init
-    // don't cache becaue of read_concrete?
-    return z3::ite(op1 == op2, __z3_context.bv_val(0, 32),
-        __z3_context.bv_val(1, 32));
-  } else if (info->op == fsize) {
-    // file size
-    z3::symbol symbol = __z3_context.str_symbol("fsize");
-    z3::sort sort = __z3_context.bv_sort(info->size);
-    z3::expr base = __z3_context.constant(symbol, sort);
-    info->tree_size = 1; // lazy init
-    // don't cache because of deps
-    if (info->op1) {
-      // minus the offset stored in op1
-      z3::expr offset = __z3_context.bv_val((uint64_t)info->op1, info->size);
-      return base - offset;
-    } else {
-      return base;
-    }
-  }
-
-  // common ops
-  u8 size = info->size;
-  // size for concat is a bit complicated ...
-  if (info->op == Concat && info->l1 == 0) {
-    assert(info->l2 >= CONST_OFFSET);
-    size = info->size - get_label_info(info->l2)->size;
-  }
-  z3::expr op1 = __z3_context.bv_val((uint64_t)info->op1, size);
-  if (info->l1 >= CONST_OFFSET) {
-    op1 = serialize(info->l1, deps).simplify();
-  } else if (info->size == 1) {
-    op1 = __z3_context.bool_val(info->op1 == 1);
-  }
-  if (info->op == Concat && info->l2 == 0) {
-    assert(info->l1 >= CONST_OFFSET);
-    size = info->size - get_label_info(info->l1)->size;
-  }
-  z3::expr op2 = __z3_context.bv_val((uint64_t)info->op2, size);
-  if (info->l2 >= CONST_OFFSET) {
-    std::unordered_set<u32> deps2;
-    op2 = serialize(info->l2, deps2).simplify();
-    deps.insert(deps2.begin(),deps2.end());
-  } else if (info->size == 1) {
-    op2 = __z3_context.bool_val(info->op2 == 1);
-  }
-  // update tree_size
-  info->tree_size = get_label_info(info->l1)->tree_size +
-    get_label_info(info->l2)->tree_size;
-
-  switch((info->op & 0xff)) {
-    // llvm doesn't distinguish between logical and bitwise and/or/xor
-    case And:     return cache_expr(info, info->size != 1 ? (op1 & op2) : (op1 && op2), deps);
-    case Or:      return cache_expr(info, info->size != 1 ? (op1 | op2) : (op1 || op2), deps);
-    case Xor:     return cache_expr(info, op1 ^ op2, deps);
-    case Shl:     return cache_expr(info, z3::shl(op1, op2), deps);
-    case LShr:    return cache_expr(info, z3::lshr(op1, op2), deps);
-    case AShr:    return cache_expr(info, z3::ashr(op1, op2), deps);
-    case Add:     return cache_expr(info, op1 + op2, deps);
-    case Sub:     return cache_expr(info, op1 - op2, deps);
-    case Mul:     return cache_expr(info, op1 * op2, deps);
-    case UDiv:    return cache_expr(info, z3::udiv(op1, op2), deps);
-    case SDiv:    return cache_expr(info, op1 / op2, deps);
-    case URem:    return cache_expr(info, z3::urem(op1, op2), deps);
-    case SRem:    return cache_expr(info, z3::srem(op1, op2), deps);
-                  // relational
-    case ICmp:    return cache_expr(info, get_cmd(op1, op2, info->op >> 8), deps);
-                  // concat
-    case Concat:  return cache_expr(info, z3::concat(op2, op1), deps); // little endian
-    default:
-                  Printf("FATAL: unsupported op: %u\n", info->op);
-                  throw z3::exception("unsupported operator");
-                  break;
-  }
-  // should never reach here
-  Die();
-}
-
-static void generate_input(z3::model &m) {
-  char path[PATH_MAX];
-
-  internal_snprintf(path, PATH_MAX, "%s/id-%08d", __output_dir,__current_index++);
-  //  internal_snprintf(path, PATH_MAX, "%s/id-%d-%d-%d", __output_dir,
-  //                   __instance_id, __session_id, __current_index++);
-  fd_t fd = OpenFile(path, WrOnly);
-  if (fd == kInvalidFd) {
-    throw z3::exception("failed to open new input file for write");
-  }
-
-  if (!tainted.is_stdin) {
-    if (!WriteToFile(fd, tainted.buf, tainted.size)) {
-      throw z3::exception("failed to copy original input\n");
-    }
-  } else {
-    // FIXME: input is stdin
-    throw z3::exception("original input is stdin");
-  }
-  AOUT("generate #%d output\n", __current_index - 1);
-
-  // from qsym
-  unsigned num_constants = m.num_consts();
-  for (unsigned i = 0; i < num_constants; i++) {
-    z3::func_decl decl = m.get_const_decl(i);
-    z3::expr e = m.get_const_interp(decl);
-    z3::symbol name = decl.name();
-
-    if (name.kind() == Z3_INT_SYMBOL) {
-      int offset = name.to_int();
-      u8 value = (u8)e.get_numeral_int();
-      AOUT("offset %lld = %x\n", offset, value);
-      internal_lseek(fd, offset, SEEK_SET);
-      WriteToFile(fd, &value, sizeof(value));
-    } else { // string symbol
-      if (!name.str().compare("fsize")) {
-        off_t size = (off_t)e.get_numeral_int64();
-        if (size > tainted.size) { // grow
-          if (size > 10240) size = 10240;
-          internal_lseek(fd, size, SEEK_SET);
-          u8 dummy = 0;
-          WriteToFile(fd, &dummy, sizeof(dummy));
-        } else {
-          AOUT("truncate file to %lld\n", size);
-          internal_ftruncate(fd, size);
-        }
-        // don't remember size constraints
-        throw z3::exception("skip fsize constraints");
-      }
-    }
-  }
-
-  CloseFile(fd);
-}
-
 SANITIZER_INTERFACE_ATTRIBUTE void
 add_constraints(dfsan_label label) {
-  if ((get_label_info(label)->flags & B_FLIPPED))
-    return;
-
-  try {
-    std::unordered_set<dfsan_label> inputs;
-    z3::expr cond = serialize(label, inputs);
-    //build dependency
-    //add_cons(label,inputs);
-#if 0
-    for (auto off : inputs) {
-      auto c = __branch_deps->at(off);
-      //auto c1 = __branch_deps_jigsaw->at(off);
-      if (c == nullptr) {
-        c = new branch_dep_t();
-        __branch_deps->at(off) = c;
-      }
-      /*
-         if (c1 == nullptr) {
-         c1 = new branch_dep_jigsaw_t();
-         __branch_deps_jigsaw->at(off) = c1;
-         }
-       */
-      c->insert(cond);
-      //			c1->insert(label);
-    }
-#endif
-  } catch (z3::exception e) {
-    Report("WARNING: adding constraints error: %s\n", e.msg());
-  }
-
-  get_label_info(label)->flags |= B_FLIPPED;
-}
-
-static void do_print(dfsan_label label) {
-  dfsan_label_info* info  = &__dfsan_label_info[label];
-  if (info == nullptr) return;
-  std::string name;
-  switch (info->op) {
-    case 0: name="read";break;
-    case __dfsan::Load: name="load";break;
-    case __dfsan::ZExt: name="zext";break;
-    case __dfsan::SExt: name="sext";break;
-    case __dfsan::Trunc: name="trunc";break;
-    case __dfsan::Extract: name="extract";break;
-    case __dfsan::Not: name="not";break;
-    case __dfsan::fmemcmp: name="fmemcmp";break;
-    case __dfsan::fsize: name="fsize";break;
-    case __dfsan::fcrc32: name="fcrc3";break;
-    default: break;
-  }
-
-  switch (info->op & 0xff) {
-
-    case __dfsan::And: {if (info->size) name="and"; else name="land";break;}
-    case __dfsan::Or: {if (info->size) name="or"; else name="lor";break;}
-    case __dfsan::Xor: name="xor";break;
-    case __dfsan::Shl: name="shl";break;
-    case __dfsan::LShr: name="lshr";break;
-    case __dfsan::Add: name="add";break;
-    case __dfsan::Sub: name="sub";break;
-    case __dfsan::Mul: name="mul";break;
-    case __dfsan::UDiv:name="udiv";break;
-    case __dfsan::SDiv:name="sdiv";break;
-    case __dfsan::URem:name="urem";break;
-    case __dfsan::SRem:name="srem";break;
-    case __dfsan::ICmp: {
-                          switch (info->op >> 8) {
-                            case __dfsan::bveq:  name="bveq";break;
-                            case __dfsan::bvneq: name="bvneq";break;
-                            case __dfsan::bvugt: name="bvugt";break;
-                            case __dfsan::bvuge: name="bvuge";break;
-                            case __dfsan::bvult: name="bvult";break;
-                            case __dfsan::bvule: name="bvule";break;
-                            case __dfsan::bvsgt: name="bvsgt";break;
-                            case __dfsan::bvsge: name="bvsge";break;
-                            case __dfsan::bvslt: name="bvslt";break;
-                            case __dfsan::bvsle: name="bvsle";break;
-                          }
-                          break;
-                        }
-    case __dfsan::Concat:name="concat";break;
-    default: break;
-  }
-  std::cerr << name << "(size=" << (int)info->size << ", " << "label=" << label << ", ";
-  if (info->op == 0) {
-    std::cerr << info->op1;
-  } else if (info->op == __dfsan::Load) {
-    std::cerr << __dfsan_label_info[info->l1].op1; //offset
-    std::cerr << ", ";
-    std::cerr << info->l2;   //length
-  } else {
-    if (info->l1 >= CONST_OFFSET) {
-      do_print(info->l1);
-    } else {
-      std::cerr << (uint64_t)info->op1;
-    }
-    std::cerr << ", ";
-    if (info->l2 >= CONST_OFFSET) {
-      do_print(info->l2);
-    } else {
-      std::cerr << (uint64_t)info->op2;
-    }
-  }
-  std::cerr << ")";
-}
-
-static void printLabel(dfsan_label label) {
-  do_print(label);
-  std::cerr<<std::endl;
 }
 
 static bool do_reject(dfsan_label label,
@@ -1034,8 +635,7 @@ static bool rejectBranch(dfsan_label label) {
 }
 
 
-#if 1
-static void __solve_cond(dfsan_label label, z3::expr &result, 
+static void __solve_cond(dfsan_label label,
     void *addr, uint64_t ctx, int order, int skip, dfsan_label label1, dfsan_label label2, u8 r, u32 predicate) {
   char content[100];
   //session id, label, direction
@@ -1055,72 +655,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result,
     get_label_info(label)->flags |= B_FLIPPED;
     return;
   }
-  static int dismatch = 0;
-  printf("__solve_cond %d\n",++count);
-
-  bool pushed = false;
-  try {
-    std::unordered_set<dfsan_label> inputs;
-    z3::expr cond = serialize(label, inputs);
-
-    uint64_t addv = (uint64_t)addr;
-    __z3_solver.reset();
-    std::unordered_set<z3::expr,expr_hash,expr_equal> added;
-    for (auto off : inputs) {
-      auto c = __branch_deps->at(off);
-      if (c) {
-        for (auto &expr : c->exprs) {
-          if (added.insert(expr).second) {
-            __z3_solver.add(expr);
-          }
-        }
-      }
-    }
-    __z3_solver.add(cond != result);
-    z3::check_result res = __z3_solver.check();
-    if (res == z3::sat) {
-      z3::model m = __z3_solver.get_model();
-      generate_input(m);
-    } else if (res == z3::unsat) {
-      z3::solver solver = z3::solver(__z3_context, "QF_BV");
-      solver.set("timeout", 5000U);
-      solver.add(cond != result);
-      if (solver.check() == z3::sat) {
-        z3::model m = solver.get_model();
-        generate_input(m);
-      }
-    }
-    // nested branch
-    branch_dep_t* the_tree = nullptr;
-    for (auto off : inputs) {
-      auto c = __branch_deps->at(off);
-      if (c == nullptr) {
-        c = new branch_dep_t();
-      }
-      if (the_tree == nullptr) {
-        the_tree = c;
-      }
-      else  {
-        the_tree->exprs.insert(c->exprs.begin(),c->exprs.end());
-        the_tree->deps.insert(c->deps.begin(),c->deps.end());
-        for (auto &idx : c->deps) {
-          __branch_deps->at(idx) = the_tree;
-        }
-      }
-      __branch_deps->at(off) = the_tree;
-    }
-    if (the_tree != nullptr) {
-      auto ok = the_tree->exprs.insert(cond == result);
-    }
-    for (auto off : inputs) {
-      the_tree->deps.insert(off);
-    }
-    get_label_info(label)->flags |= B_FLIPPED;
-  } catch (z3::exception e) {
-    Report("WARNING: solving error: %s @%p\n", e.msg(), addr);
-  }
 }
-#endif
 
 uint8_t get_const_result(uint64_t c1, uint64_t c2, uint32_t predicate) {
   switch (predicate) {
@@ -1213,11 +748,8 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
 
   dfsan_label temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
 
-  z3::expr bv_c1 = __z3_context.bv_val((uint64_t)c1, size);
-  z3::expr bv_c2 = __z3_context.bv_val((uint64_t)c2, size);
-  z3::expr result = get_cmd(bv_c1, bv_c2, predicate).simplify();
 
-  __solve_cond(temp, result, addr, __taint_trace_callstack,order,skip,op1,op2,r,predicate);
+  __solve_cond(temp, addr, __taint_trace_callstack,order,skip,op1,op2,r,predicate);
 }
 
 extern "C" void
@@ -1294,8 +826,7 @@ __taint_trace_cond(dfsan_label label, u8 r) {
 
   AOUT("solving cond: %u %u %u %p %u\n", label, r, __taint_trace_callstack, addr, itr->second);
 
-  z3::expr result = __z3_context.bool_val(r);
-  __solve_cond(label, result, addr, __taint_trace_callstack, order, skip, label,0, r,0);
+  __solve_cond(label, addr, __taint_trace_callstack, order, skip, label,0, r,0);
 }
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
@@ -1340,103 +871,6 @@ __taint_trace_gep(dfsan_label label, u64 r) {
     get_label_info(label)->flags |= B_FLIPPED;
     return;
   }
-
-
-  AOUT("tainted GEP index: %d = %lld\n", label, r);
-
-  bool pushed = false;
-  u8 size = get_label_info(label)->size;
-  try {
-    std::unordered_set<dfsan_label> inputs;
-    z3::expr index = serialize(label, inputs);
-    z3::expr result = __z3_context.bv_val((uint64_t)r, size);
-    if (!__solver_select) {
-      //add_cons_gep(label,r,inputs);
-    } else {
-#if 0
-
-      __z3_solver.reset();
-      // add dependencies
-      branch_dep_t added;
-      for (auto off : inputs) {
-        auto c = __branch_deps->at(off);
-        if (c) {
-          for (auto &expr : *c) {
-            if (added.insert(expr).second) {
-              __z3_solver.add(expr);
-            }
-          }
-        }
-      }
-      __z3_solver.add(index > result);
-      z3::check_result res = __z3_solver.check();
-
-      //AOUT("\n%s\n", __z3_solver.to_smt2().c_str());
-      if (res == z3::sat) {
-        AOUT("\tindex > %lld solved\n", r);
-        z3::model m = __z3_solver.get_model();
-        generate_input(m);
-      } else if (res == z3::unsat) {
-        AOUT("\tindex > %lld not possible\n", r);
-
-        // optimistic?
-#if OPTIMISTIC
-        z3::solver solver = z3::solver(__z3_context, "QF_BV");
-        solver.set("timeout", 5000U);
-        solver.add(index > result);
-        if (solver.check() == z3::sat) {
-          z3::model m = solver.get_model();
-          generate_input(m);
-        }
-#endif
-      }
-
-#endif
-      // preserve
-#if RESTRICT_CONSTRAINT
-      // nested branch
-      branch_dep_t* the_tree = nullptr;
-      for (auto off : inputs) {
-        printf("build tree at %d\n",off);
-        auto c = __branch_deps->at(off);
-        if (c == nullptr) {
-          c = new branch_dep_t();
-        }
-        if (the_tree == nullptr) {
-          the_tree = c;
-        }
-        else  {
-          the_tree->exprs.insert(c->exprs.begin(),c->exprs.end());
-          the_tree->deps.insert(c->deps.begin(),c->deps.end());
-          for (auto &idx : c->deps) {
-            __branch_deps->at(idx) = the_tree;
-          }
-        }
-        __branch_deps->at(off) = the_tree;
-      }
-      if (the_tree) {
-        the_tree->exprs.insert(index == result);
-      }
-      for (auto off : inputs) {
-        the_tree->deps.insert(off);
-      }
-#else
-      for (auto off : inputs) {
-        auto c = __branch_deps->at(off);
-        if (c == nullptr) {
-          c = new branch_dep_t();
-          __branch_deps->at(off) = c;
-        }
-        c->insert(index == result);
-      }
-#endif
-    }
-    // mark as visited
-    get_label_info(label)->flags |= B_FLIPPED;
-  } catch (z3::exception e) {
-    Report("WARNING: index solving error: %s @%p\n", e.msg(), __builtin_return_address(0));
-  }
-
 }
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
@@ -1452,8 +886,6 @@ taint_set_file(const char *filename, int fd) {
   if (internal_strcmp(tainted.filename, path) == 0) {
     tainted.fd = fd;
     AOUT("fd:%d created\n", fd);
-
-    __z3_solver.set("timeout", 5000U);
   }
 }
 
@@ -1591,10 +1023,6 @@ static void InitializeTaintFile() {
     }
   }
 
-  // create branch dependencies
-  __branch_deps = new std::vector<branch_dep_t*>(tainted.size);
-  __branch_deps_shadow = new std::vector<branch_dep_shadow_t*>(tainted.size);
-  //__branch_deps_jigsaw = new std::vector<branch_dep_jigsaw_t*>(tainted.size);
 }
 
 static void InitializeFlags() {

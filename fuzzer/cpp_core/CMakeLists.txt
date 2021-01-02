@@ -4,11 +4,11 @@ project(rgd C CXX)
 
 ## set up test
 set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 -std=c++14 -mcx16 -march=native")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 -std=c++14 -fPIC -mcx16 -march=native -L/usr/local/lib")
 
 enable_testing()
-set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test) 
-set(CMAKE_TEST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}) 
+set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test)
+set(CMAKE_TEST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 find_package(LLVM 9 REQUIRED CONFIG)
 
@@ -56,7 +56,7 @@ add_library(gd
 
 target_link_libraries(gd
   LLVM
-  tcmalloc
+  #tcmalloc
   pthread)
 
 add_subdirectory(self_test)

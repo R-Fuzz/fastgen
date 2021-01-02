@@ -6,9 +6,9 @@
 using namespace rgd;
 using namespace pbbs;
 #define DEBUG 0
-static std::atomic_uint64_t uuid;
-static std::atomic_uint64_t miss;
-static std::atomic_uint64_t hit;
+static std::atomic_ullong uuid;
+static std::atomic_ullong miss;
+static std::atomic_ullong hit;
 extern bool USE_CODECACHE;
 
 bool recursive_equal(const AstNode& lhs, const AstNode& rhs) {
@@ -180,7 +180,7 @@ void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_op
   static int miss = 0;
 
 
-  std::tuple<uint64_t,uint64_t,uint32_t,uint64_t> bid = {task->addr(),task->ctx(),task->order(), task->direction()};
+  std::tuple<uint64_t,uint64_t,uint32_t,uint64_t> bid{task->addr(),task->ctx(),task->order(), task->direction()};
   struct taskKV *res = TaskCache.find(bid);
 
   if (res == nullptr) {
