@@ -66,6 +66,8 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
       get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     }
 
+    if inputs.is_empty() { warn!("Skip constraint!"); continue; }
+
     //Step 1: collect additional input deps
     let mut work_list = Vec::new();
     for &v in inputs.iter() {

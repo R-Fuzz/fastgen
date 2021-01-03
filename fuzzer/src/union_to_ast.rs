@@ -446,11 +446,11 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
   let mut cache = HashMap::new();
-  assert!(op == DFSAN_BVEQ || op == DFSAN_BVNEQ ||
+  if (op == DFSAN_BVEQ || op == DFSAN_BVNEQ ||
           op == DFSAN_BVULT || op == DFSAN_BVULE ||
           op == DFSAN_BVUGT || op == DFSAN_BVUGE ||
           op == DFSAN_BVSLT || op == DFSAN_BVSLE ||
-          op == DFSAN_BVSGT || op == DFSAN_BVSGE, "the operator is not relational {}", info.op); 
+          op == DFSAN_BVSGT || op == DFSAN_BVSGE) { 
 
   let mut src = AstNode::new();
   do_uta(label, &mut src, table, &mut cache);
@@ -461,6 +461,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
     deps.insert(v);
   }
   simplify(&mut src, dst);
+	}
 }
 
 
