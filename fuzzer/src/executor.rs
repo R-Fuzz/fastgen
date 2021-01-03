@@ -155,7 +155,9 @@ impl Executor {
     pub fn run_sync(&mut self, buf: &Vec<u8>) -> bool  {
         self.run_init();
         let status = self.run_inner(buf);
-        self.do_if_has_new(buf, status)
+        let ret = self.do_if_has_new(buf, status);
+	self.check_timeout(status);
+	ret
     }
 
     pub fn run_norun(&mut self, buf: &Vec<u8>)  {
