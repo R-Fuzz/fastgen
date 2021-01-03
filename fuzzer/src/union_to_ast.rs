@@ -47,14 +47,14 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.set_label(label);
                     cache.insert(label, deps);
                     depth.insert(label, 1);
-                    return 0;
+                    return;
                   },
     DFSAN_ZEXT => {
                     ret.set_kind(RGD::ZExt as u32);
                     ret.set_bits(size as u32);
                     ret.set_name("zext".to_string());
                     let mut c = AstNode::new();
-                    do_uta(info.l1, &mut c, table, cache); 
+                    do_uta(info.l1, &mut c, table, cache, depth); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
@@ -66,7 +66,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.set_bits(size as u32);
                     ret.set_name("sext".to_string());
                     let mut c = AstNode::new();
-                    do_uta(info.l1, &mut c, table, cache); 
+                    do_uta(info.l1, &mut c, table, cache, depth); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
@@ -79,7 +79,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.set_name("extract".to_string());
                     ret.set_index(0 as u32);
                     let mut c = AstNode::new();
-                    do_uta(info.l1, &mut c, table, cache); 
+                    do_uta(info.l1, &mut c, table, cache, depth); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
@@ -92,7 +92,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.set_name("extract".to_string());
                     ret.set_index(info.op2 as u32);
                     let mut c = AstNode::new();
-                    do_uta(info.l1, &mut c, table, cache); 
+                    do_uta(info.l1, &mut c, table, cache,depth); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
@@ -105,7 +105,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.set_name("not".to_string());
                     ret.set_index(info.op2 as u32);
                     let mut c = AstNode::new();
-                    do_uta(info.l2, &mut c, table, cache); 
+                    do_uta(info.l2, &mut c, table, cache,depth); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
@@ -118,7 +118,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.set_name("neg".to_string());
                     ret.set_index(info.op2 as u32);
                     let mut c = AstNode::new();
-                    do_uta(info.l2, &mut c, table, cache); 
+                    do_uta(info.l2, &mut c, table, cache,depth); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
@@ -131,7 +131,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
   let mut right = AstNode::new();
   let mut size1: u32 = info.size as u32;
   if info.l1 >= CONST_OFFSET {
-    do_uta(info.l1, &mut left, table, cache);
+    do_uta(info.l1, &mut left, table, cache, depth);
   } else {
     if info.op as u32 == DFSAN_CONCAT {
       size1 = info.size as u32 - table[info.l2 as usize].size as u32;
@@ -143,7 +143,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
     left.set_label(0);
   }
   if info.l2 >= CONST_OFFSET {
-    do_uta(info.l2, &mut right, table, cache);
+    do_uta(info.l2, &mut right, table, cache, depth);
   } else {
     if info.op as u32 == DFSAN_CONCAT {
       size1 = info.size as u32 - table[info.l1 as usize].size as u32;
@@ -159,7 +159,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
 
   //TODO merge cache
   let mut merged = HashSet::new();
-  let mut larget;
+  let mut largest = 0;
   if info.l1 >= CONST_OFFSET {
     for &v in &cache[&info.l1] {
       merged.insert(v);
