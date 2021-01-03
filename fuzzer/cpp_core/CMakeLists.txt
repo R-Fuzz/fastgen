@@ -56,7 +56,7 @@ add_library(gd
 
 target_link_libraries(gd
   LLVM
-  #tcmalloc
+  tcmalloc
   pthread)
 
 add_subdirectory(self_test)
