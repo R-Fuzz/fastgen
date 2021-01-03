@@ -23,19 +23,25 @@ mkdir -p ${PREFIX2}/lib
 cp target/release/*.a ${PREFIX2}/lib
 
 
-cd llvm_mode
+pushd llvm_mode
 rm -rf build
 mkdir -p build
-cd build
+pushd build
+export CC=clang-6.0
+export CXX=clang++-6.0
+unset CXXFLAGS
 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX1} -DCMAKE_BUILD_TYPE=Release ..
 make -j
 make install
-cd ../../
+popd
+popd
 
-cd llvm_mode_angora
+pushd llvm_mode_angora
 mkdir -p build
-cd build
+pushd build
 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX2} -DCMAKE_BUILD_TYPE=Release ..
 make -j
 make install
+popd
+popd
 
