@@ -105,7 +105,7 @@ impl Executor {
     pub fn track(&mut self, id: usize, buf: &Vec<u8>) {
         //FIXME
         //let e = format!("taint_file=output/tmp/cur_input_2 solver_select=1 tid={}",id);
-        let e = format!("taint_file=output/angora/tmp/cur_input_2 tid={}",id);
+        let e = format!("taint_file=corpus/angora/tmp/cur_input_2 tid={}",id);
         info!("Track {}", &id);
         self.envs.insert(
             defs::TAINT_OPTIONS.to_string(),
