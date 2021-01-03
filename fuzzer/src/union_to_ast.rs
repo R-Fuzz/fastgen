@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use num_traits::FromPrimitive;
 use protobuf::Message;
 
-fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap<u32, HashSet<u32>>)  {
+fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap<u32, HashSet<u32>>, depth: &mut HashMap<u32, u32>) {
   if label==0 {
     return;
   }
@@ -32,6 +32,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     deps.insert(info.op1 as u32);
                     ret.set_label(label);
                     cache.insert(label, deps);
+                    depth.insert(label, 1);
                     return;
                   },
     DFSAN_LOAD => {
@@ -45,7 +46,8 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     }
                     ret.set_label(label);
                     cache.insert(label, deps);
-                    return;
+                    depth.insert(label, 1);
+                    return 0;
                   },
     DFSAN_ZEXT => {
                     ret.set_kind(RGD::ZExt as u32);
@@ -56,6 +58,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
+                    depth.insert(label, depth[&info.l1] + 1);
                     return;
                   },
     DFSAN_SEXT => {
@@ -67,6 +70,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
+                    depth.insert(label, depth[&info.l1] + 1);
                     return;
                   },
     DFSAN_TRUNC => {
@@ -79,6 +83,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
+                    depth.insert(label, depth[&info.l1] + 1);
                     return;
                   },
     DFSAN_EXTRACT => {
@@ -91,6 +96,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
+                    depth.insert(label, depth[&info.l1] + 1);
                     return;
                   },
     DFSAN_NOT => {
@@ -103,6 +109,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
+                    depth.insert(label, depth[&info.l1] + 1);
                     return;
                   },
     DFSAN_NEG => {
@@ -115,6 +122,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
+                    depth.insert(label, depth[&info.l1] + 1);
                     return;
                   },
     _ => (),
@@ -151,17 +159,23 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
 
   //TODO merge cache
   let mut merged = HashSet::new();
+  let mut larget;
   if info.l1 >= CONST_OFFSET {
     for &v in &cache[&info.l1] {
       merged.insert(v);
     }
+    largest = depth[&info.l1];
   }
   if info.l2 >= CONST_OFFSET {
     for &v in &cache[&info.l2] {
       merged.insert(v);
     }
+    if depth[&info.l2] > largest {
+      largest = depth[&info.l2];
+    }
   }
   cache.insert(label, merged);
+  depth.insert(label, largest);
   
   match (info.op & 0xff) as u32 {
     DFSAN_AND => {
@@ -446,6 +460,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
   let mut cache = HashMap::new();
+  let mut depth = HashMap::new();
   if (op == DFSAN_BVEQ || op == DFSAN_BVNEQ ||
           op == DFSAN_BVULT || op == DFSAN_BVULE ||
           op == DFSAN_BVUGT || op == DFSAN_BVUGE ||
@@ -453,7 +468,11 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
           op == DFSAN_BVSGT || op == DFSAN_BVSGE) { 
 
   let mut src = AstNode::new();
-  do_uta(label, &mut src, table, &mut cache);
+  do_uta(label, &mut src, table, &mut cache, &mut depth);
+  if depth[&label] > 90  {
+    warn!("large tree skipped!");
+    return;
+  }
   if direction == 1 {
     flip_op(&mut src);
   }
@@ -471,7 +490,12 @@ pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &U
   let mut left = AstNode::new();
   let mut right = AstNode::new();
   let mut src = AstNode::new();
-  do_uta(label, &mut left, table, &mut cache);
+  let mut depth = HashMap::new();
+  do_uta(label, &mut left, table, &mut cache, &mut depth);
+
+  if depth[&label] > 90  {
+    return;
+  }
 
   //build left != result
   src.set_bits(left.get_bits() as u32);
@@ -487,6 +511,7 @@ pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &U
 
   
   for &v in &cache[&label] {
+    warn!("large tree skipped!");
     deps.insert(v);
   }
   simplify(&mut src, dst);
