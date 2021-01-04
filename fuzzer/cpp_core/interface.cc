@@ -155,7 +155,7 @@ extern "C" {
     s.SetRecursionLimit(10000);
     std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
     task->ParseFromCodedStream(&s);
-    //printTask(task.get());
+    printTask(task.get());
 
     if (expect_future)
       gresults.emplace_back(pool->push(handle_task, task));

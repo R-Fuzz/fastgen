@@ -236,7 +236,7 @@ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
 
   struct dfsan_label_info label_info = {
     .l1 = l1, .l2 = l2, .op1 = op1, .op2 = op2, .op = op, .size = size,
-    .flags = 0, .tree_size = 0, .hash = 0, .expr = nullptr, .deps = nullptr};
+     .flags=0, .tree_size = 0, .hash = 0, .depth=0};
 
   __taint::option res = __union_table.lookup(label_info);
   if (res != __taint::none()) {
@@ -593,6 +593,46 @@ SANITIZER_INTERFACE_ATTRIBUTE void
 add_constraints(dfsan_label label) {
 }
 
+void serialize(dfsan_label label) {
+  if (label < CONST_OFFSET || label == kInitializingLabel) {
+    return;
+  }
+
+  dfsan_label_info *info = get_label_info(label);
+  //AOUT("%u = (l1:%u, l2:%u, op:%u, size:%u, op1:%llu, op2:%llu)\n",
+     //  label, info->l1, info->l2, info->op, info->size, info->op1, info->op2);
+
+  if (info->tree_size) {
+    return;
+  }
+
+  // special ops
+  if (info->op == 0 || info->op == Load || info->op == fsize || info->op == fmemcmp) {
+    // input
+    info->tree_size = 1; // lazy init
+    info->depth = 1; // lazy init
+    return;
+  } else if (info->op == ZExt || info->op == SExt || info->op == Trunc || info->op == Extract) {
+    info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
+    info->depth = get_label_info(info->l1)->depth; // lazy init
+    return;
+  } else if (info->op == Neg || info->op == Not) {
+    info->depth = get_label_info(info->l2)->depth; // lazy init
+    return;
+  }
+  
+  if (info->l1 >= CONST_OFFSET) {
+    serialize(info->l1);
+  }
+  if (info->l2 >= CONST_OFFSET) {
+    serialize(info->l2);
+  }
+  info->tree_size = get_label_info(info->l1)->tree_size + get_label_info(info->l2)->tree_size;
+  u32 left_depth = get_label_info(info->l1)->depth;
+  u32 right_depth = get_label_info(info->l2)->depth;
+  info->depth = left_depth > right_depth ? left_depth+1 : right_depth+1;
+}
+
 static bool do_reject(dfsan_label label,
     std::unordered_map<uint32_t,bool> &expr_cache) {
   if (label<1) return false;
@@ -650,6 +690,7 @@ static void __solve_cond(dfsan_label label,
   if (__solver_select != 1) {
     if (rejectBranch(label)) return;
     //printLabel(label);
+    serialize(label);
     sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 0\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order);
     write(mypipe,content,strlen(content));
     get_label_info(label)->flags |= B_FLIPPED;
@@ -866,6 +907,7 @@ __taint_trace_gep(dfsan_label label, u64 r) {
   if (__solver_select != 1) {
     if (rejectBranch(label)) return;
     //printLabel(label);
+    serialize(label);
     sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 1\n",  __tid, label, r, (uint64_t)addr, callstack, (uint32_t)order);
     write(mypipe,content,strlen(content));
     get_label_info(label)->flags |= B_FLIPPED;
