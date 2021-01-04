@@ -601,7 +601,6 @@ void serialize(dfsan_label label) {
   dfsan_label_info *info = get_label_info(label);
   //AOUT("%u = (l1:%u, l2:%u, op:%u, size:%u, op1:%llu, op2:%llu)\n",
      //  label, info->l1, info->l2, info->op, info->size, info->op1, info->op2);
-
   if (info->tree_size) {
     return;
   }
@@ -613,11 +612,14 @@ void serialize(dfsan_label label) {
     info->depth = 1; // lazy init
     return;
   } else if (info->op == ZExt || info->op == SExt || info->op == Trunc || info->op == Extract) {
+    serialize(info->l1);
     info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
-    info->depth = get_label_info(info->l1)->depth; // lazy init
+    info->depth = get_label_info(info->l1)->depth + 1; // lazy init
     return;
   } else if (info->op == Neg || info->op == Not) {
-    info->depth = get_label_info(info->l2)->depth; // lazy init
+    serialize(info->l2);
+    info->tree_size = get_label_info(info->l2)->tree_size; // lazy init
+    info->depth = get_label_info(info->l2)->depth + 1; // lazy init
     return;
   }
   
@@ -630,7 +632,9 @@ void serialize(dfsan_label label) {
   info->tree_size = get_label_info(info->l1)->tree_size + get_label_info(info->l2)->tree_size;
   u32 left_depth = get_label_info(info->l1)->depth;
   u32 right_depth = get_label_info(info->l2)->depth;
+  
   info->depth = left_depth > right_depth ? left_depth+1 : right_depth+1;
+  return;
 }
 
 static bool do_reject(dfsan_label label,
