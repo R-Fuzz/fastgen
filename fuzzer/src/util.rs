@@ -31,7 +31,6 @@ fn get_name(op: u32) -> String {
     Some(RGD::Ult) => "ult".to_string(),
     Some(RGD::Ule) => "ule".to_string(),
     Some(RGD::Bool) => "bool".to_string(),
-    Some(RGD::Constant) => "constant".to_string(),
     Some(RGD::Read) => "read".to_string(),
     Some(RGD::Concat) => "concat".to_string(),
     Some(RGD::Extract) => "extract".to_string(),

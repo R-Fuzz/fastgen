@@ -9,8 +9,7 @@ pub struct dfsan_label_info {
   pub flags: u8,
   pub tree_size: u32,
   pub hash: u32,
-  pub unused1: u64, //this is *expr 
-  pub unused2: u64,
+  pub depth: u32,
 }
 
 pub type UnionTable = [dfsan_label_info; 50331648];

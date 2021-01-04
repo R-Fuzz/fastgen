@@ -1,8 +1,6 @@
 //===-- dfsan.h -------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure //
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+//                     The LLVM Compiler Infrastructure // // This file is distributed under the University of Illinois Open Source // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -48,8 +46,7 @@ struct dfsan_label_info {
   u8 flags;
   u32 tree_size;
   u32 hash;
-  void* expr;
-  void* deps;
+  u32 depth;
 } __attribute__((aligned (8)));
 
 #define B_FLIPPED 0x1

@@ -504,9 +504,9 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
 
   let mut src = AstNode::new();
   do_uta(label, &mut src, table, &mut cache, &mut depth);
-  println!("get one constraint depth is {}", depth[&label]);
+  println!("get one constraint depth is {}, frontend depth is {}", depth[&label], info.depth);
   if depth[&label] > 32  {
-    warn!("large tree skipped!");
+    warn!("large tree skipped! depth is {} front end depth is {}", depth[&label], info.depth);
     return;
   }
   if direction == 1 {
@@ -523,14 +523,16 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
 pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
   let mut cache = HashMap::new();
 
+  let info = &table[label as usize];
   let mut left = AstNode::new();
   let mut right = AstNode::new();
   let mut src = AstNode::new();
   let mut depth = HashMap::new();
   do_uta(label, &mut left, table, &mut cache, &mut depth);
 
+  println!("get one constraint depth is {}, frontend depth is {}", depth[&label], info.depth);
   if depth[&label] > 32  {
-    warn!("large tree skipped!");
+    warn!("large tree skipped! depth is {} front end depth is {}", depth[&label], info.depth);
     return;
   }
 
@@ -548,7 +550,6 @@ pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &U
 
   
   for &v in &cache[&label] {
-    warn!("large tree skipped!");
     deps.insert(v);
   }
   simplify(&mut src, dst);
