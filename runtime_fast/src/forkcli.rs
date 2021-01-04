@@ -60,7 +60,7 @@ pub fn start_forkcli() {
             }
         },
         Err(_) => {
-             eprintln!("Could not find socket path");
+             //eprintln!("Could not find socket path");
         },
     }
 }

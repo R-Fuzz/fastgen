@@ -469,7 +469,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
 
   let mut src = AstNode::new();
   do_uta(label, &mut src, table, &mut cache, &mut depth);
-  if depth[&label] > 90  {
+  if depth[&label] > 32  {
     warn!("large tree skipped!");
     return;
   }
@@ -493,7 +493,8 @@ pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &U
   let mut depth = HashMap::new();
   do_uta(label, &mut left, table, &mut cache, &mut depth);
 
-  if depth[&label] > 90  {
+  if depth[&label] > 32  {
+    warn!("large tree skipped!");
     return;
   }
 

@@ -1088,19 +1088,19 @@ static void dfsan_init(int argc, char **argv, char **envp) {
 
   InitializePlatformEarly();
   MmapFixedNoReserve(ShadowAddr(), UnionTableAddr() - ShadowAddr());
-  printf("unsued addr %p and shadow addr %p and uniton addr %p\n", UnusedAddr(),ShadowAddr(),UnionTableAddr());
-  printf("mapping %lx bytes\n",UnusedAddr() - ShadowAddr());
+  //printf("unsued addr %p and shadow addr %p and uniton addr %p\n", UnusedAddr(),ShadowAddr(),UnionTableAddr());
+  //printf("mapping %lx bytes\n",UnusedAddr() - ShadowAddr());
   __dfsan_label_info = (dfsan_label_info *)UnionTableAddr();
   int shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
   //  void* ret = shmat(shmid, (void *)ShadowAddr(), 0); 
   if (shmid == -1) {
-    perror("Shared mmoery");
+    //perror("Shared mmoery");
   } else {
     shmp = shmat(shmid, (void *)UnionTableAddr(), 0);
     if (shmp == (void*) -1) {
-      perror("error shared memory attach");
+      //perror("error shared memory attach");
     }  else {
-      printf("address mappped to shared mem\n");
+      //printf("address mappped to shared mem\n");
     }
   }
   //mypipe = open("/tmp/wp", O_WRONLY | O_NONBLOCK);
