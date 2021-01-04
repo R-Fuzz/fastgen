@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::collections::HashMap;
 use num_traits::FromPrimitive;
 use protobuf::Message;
+use protobuf::CodedInputStream;
 
 fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap<u32, HashSet<u32>>, depth: &mut HashMap<u32, u32>) {
   if label==0 {
@@ -418,7 +419,10 @@ fn simplify(src: &mut AstNode, dst: &mut AstNode) {
       left = c0;
       right = c1;
     } else {
-      dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
+      let bytes = src.write_to_bytes().unwrap();
+      let mut stream = CodedInputStream::from_bytes(&bytes);
+      stream.set_recursion_limit(1000);
+      dst.merge_from(&mut stream).expect("merge failed");
       return;
     }
 
@@ -429,30 +433,61 @@ fn simplify(src: &mut AstNode, dst: &mut AstNode) {
         if src.get_kind() == RGD::Distinct as u32 {
           if cv == 0 {
             // != 0 => true => keep the same
-            dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
+
+      let bytes = c00.write_to_bytes().unwrap();
+      let mut stream = CodedInputStream::from_bytes(&bytes);
+      stream.set_recursion_limit(1000);
+      dst.merge_from(&mut stream).expect("merge failed");
+            //dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
           } else {
             // != 1 => false => negate
-            dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
+      let bytes = c00.write_to_bytes().unwrap();
+      let mut stream = CodedInputStream::from_bytes(&bytes);
+      stream.set_recursion_limit(1000);
+      dst.merge_from(&mut stream).expect("merge failed");
+      //      dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
             flip_op(dst);
           }
         } else { // RGD::Equal
           if cv == 0 {
             // == 0 => false => negate
-            dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
+      let bytes = c00.write_to_bytes().unwrap();
+      let mut stream = CodedInputStream::from_bytes(&bytes);
+      stream.set_recursion_limit(1000);
+      dst.merge_from(&mut stream).expect("merge failed");
+       //     dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
             flip_op(dst);
           } else {
             // == 1 => true => keep the same
-            dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
+      let bytes = c00.write_to_bytes().unwrap();
+      let mut stream = CodedInputStream::from_bytes(&bytes);
+      stream.set_recursion_limit(1000);
+      dst.merge_from(&mut stream).expect("merge failed");
+      //      dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
           }
         }
       } else {
-        dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
+
+      let bytes = src.write_to_bytes().unwrap();
+      let mut stream = CodedInputStream::from_bytes(&bytes);
+      stream.set_recursion_limit(1000);
+      dst.merge_from(&mut stream).expect("merge failed");
+      //  dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
       }
-    } else {
-      dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
+
+      let bytes = src.write_to_bytes().unwrap();
+      let mut stream = CodedInputStream::from_bytes(&bytes);
+      stream.set_recursion_limit(1000);
+      dst.merge_from(&mut stream).expect("merge failed");
+      //dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
     } 
   } else {
-      dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
+
+      let bytes = src.write_to_bytes().unwrap();
+      let mut stream = CodedInputStream::from_bytes(&bytes);
+      stream.set_recursion_limit(1000);
+      dst.merge_from(&mut stream).expect("merge failed");
+      //dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
   }
 }
 
@@ -469,6 +504,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
 
   let mut src = AstNode::new();
   do_uta(label, &mut src, table, &mut cache, &mut depth);
+  println!("get one constraint depth is {}", depth[&label]);
   if depth[&label] > 32  {
     warn!("large tree skipped!");
     return;
