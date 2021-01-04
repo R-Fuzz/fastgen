@@ -632,7 +632,6 @@ void serialize(dfsan_label label) {
   info->tree_size = get_label_info(info->l1)->tree_size + get_label_info(info->l2)->tree_size;
   u32 left_depth = get_label_info(info->l1)->depth;
   u32 right_depth = get_label_info(info->l2)->depth;
-  
   info->depth = left_depth > right_depth ? left_depth+1 : right_depth+1;
   return;
 }
