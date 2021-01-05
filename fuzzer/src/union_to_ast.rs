@@ -477,30 +477,56 @@ fn simplify(src: &mut AstNode, dst: &mut AstNode) {
   }
 }
 
+fn is_relational_by_dfsan(op: u32) -> bool {
+  if op == DFSAN_BVEQ || op == DFSAN_BVNEQ ||
+    op == DFSAN_BVULT || op == DFSAN_BVULE ||
+      op == DFSAN_BVUGT || op == DFSAN_BVUGE ||
+      op == DFSAN_BVSLT || op == DFSAN_BVSLE ||
+      op == DFSAN_BVSGT || op == DFSAN_BVSGE
+  {
+    true
+  } else {
+    false
+  }
+}
+
 pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
   let mut cache = HashMap::new();
-  if (op == DFSAN_BVEQ || op == DFSAN_BVNEQ ||
-          op == DFSAN_BVULT || op == DFSAN_BVULE ||
-          op == DFSAN_BVUGT || op == DFSAN_BVUGE ||
-          op == DFSAN_BVSLT || op == DFSAN_BVSLE ||
-          op == DFSAN_BVSGT || op == DFSAN_BVSGE) { 
-
-  let mut src = AstNode::new();
-  if info.depth > 50  {
-    warn!("large tree skipped depth is {}", info.depth);
-    return;
+  if is_relational_by_dfsan(op) {
+    let mut src = AstNode::new();
+    if info.depth > 50  {
+      warn!("large tree skipped depth is {}", info.depth);
+      return;
+    }
+    do_uta(label, &mut src, table, &mut cache);
+    if direction == 1 {
+      flip_op(&mut src);
+    }
+    for &v in &cache[&label] {
+      deps.insert(v);
+    }
+    simplify(&mut src, dst);
+  } else if info.op as u32 == DFSAN_NOT {
+    let info1 = &table[info.l2 as usize];
+    let op1 = (info1.op >> 8) as u32;
+    if is_relational_by_dfsan(op1) {
+      let mut src = AstNode::new();
+      if info.depth > 50  {
+        warn!("large tree skipped depth is {}", info.depth);
+        return;
+      }
+      do_uta(info.l2, &mut src, table, &mut cache);
+      if direction == 0 {
+        flip_op(&mut src);
+      }
+      for &v in &cache[&label] {
+        deps.insert(v);
+      }
+      simplify(&mut src, dst);
+    }
   }
-  do_uta(label, &mut src, table, &mut cache);
-  if direction == 1 {
-    flip_op(&mut src);
-  }
-  for &v in &cache[&label] {
-    deps.insert(v);
-  }
-  simplify(&mut src, dst);
-	}
 }
 
 
