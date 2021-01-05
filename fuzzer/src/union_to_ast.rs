@@ -521,7 +521,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
       if direction == 0 {
         flip_op(&mut src);
       }
-      for &v in &cache[&label] {
+      for &v in &cache[&info.l2] {
         deps.insert(v);
       }
       simplify(&mut src, dst);
