@@ -163,7 +163,7 @@ void init(bool saving_whole, bool use_codecache) {
   pool = new ctpl::thread_pool(THREAD_POOL_SIZE,0);
   SAVING_WHOLE = saving_whole;
   USE_CODECACHE = use_codecache;
-  //initZ3Solver();
+  initZ3Solver();
 }
 
 
