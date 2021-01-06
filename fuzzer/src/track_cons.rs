@@ -66,7 +66,6 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
     } else if label.6 == 0 {
       get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     } else if label.6 == 2 {
-      println!("handle memcmp!!");
       unsafe { submit_fmemcmp(label.2, label.3, label.4); }
     }
 
