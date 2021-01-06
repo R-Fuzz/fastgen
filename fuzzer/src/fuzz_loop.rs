@@ -71,7 +71,7 @@ pub fn grading_loop(
         let new_path = executor.run_sync(&buf);
         if new_path {
           let mut count = 1;
-          if branch_gencount.read().unwrap().contains_key(&(addr, ctx, order)) {
+          if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order)) {
             count = *branch_gencount.read().unwrap().get(&(addr,ctx, order)).unwrap();
             count += 1;
             //info!("gencount is {}",count);

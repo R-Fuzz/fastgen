@@ -2,8 +2,10 @@
 #[link(name = "protobuf")]
 #[link(name = "LLVM")]
 #[link(name = "stdc++")]
+#[link(name = "z3")]
 extern {
   pub fn submit_task(input: *const u8, input_length: u32, expect_future: bool);
+  pub fn submit_fmemcmp(data: u64, index: u64, size: u64);
   pub fn init_core(save_whole: bool, use_codecache: bool);
   pub fn aggregate_results();
   pub fn get_input_buf(input: *mut u8);

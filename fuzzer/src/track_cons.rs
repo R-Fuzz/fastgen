@@ -6,6 +6,7 @@ use crate::analyzer::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::{RwLock,Arc};
+use crate::cpp_interface::*;
 
 //each input offset has a coresspdoing slot
 pub struct BranchDep {
@@ -62,8 +63,11 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
     let mut inputs = HashSet::new();
     if label.6 == 1 {
       get_gep_constraint(label.1, label.2, &mut node, table, &mut inputs);
-    } else {
+    } else if label.6 == 0 {
       get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
+    } else if label.6 == 2 {
+      println!("handle memcmp!!");
+      unsafe { submit_fmemcmp(label.2, label.3, label.4); }
     }
 
     if inputs.is_empty() { warn!("Skip constraint!"); continue; }
@@ -196,6 +200,7 @@ mod tests {
     let ptr = unsafe { libc::shmat(id, std::ptr::null(), 0) as *mut UnionTable};
     let table = unsafe { & *ptr };
 
+    unsafe { init_core(true,true); }
     let mut tasks = Vec::new();
     let labels = read_pipe();
     println!("labels len is {}", labels.len());
@@ -205,7 +210,6 @@ mod tests {
     buf.resize(2000, 0);
     scan_nested_tasks(&labels, &mut tasks, table, 2000, &dedup, &branch_hit, &buf);
 //    scan_tasks(&labels, &mut tasks, table);
-    unsafe { init_core(true,true); }
     for task in tasks {
       println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
       print_task(&task);

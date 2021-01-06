@@ -41,7 +41,7 @@
 #include <sys/types.h>
 #include <assert.h>
 #include <fcntl.h>
-
+#include <iostream>
 #include <string.h>
 
 #include <unordered_map>
@@ -636,47 +636,150 @@ void serialize(dfsan_label label) {
   return;
 }
 
-static bool do_reject(dfsan_label label,
+static void read_data(u64 *data, u8 size, u64 addr) {
+  u8 *ptr = reinterpret_cast<u8*>(addr);
+  if (ptr == nullptr) return;
+  memcpy(data, ptr, size);
+}
+
+static void do_print(dfsan_label label) {
+  dfsan_label_info* info  = &__dfsan_label_info[label];
+  u64 data = 0;
+  if (info == nullptr) return;
+  std::string name;
+  switch (info->op) {
+    case 0: name="read";break;
+    case __dfsan::Load: name="load";break;
+    case __dfsan::ZExt: name="zext";break;
+    case __dfsan::SExt: name="sext";break;
+    case __dfsan::Trunc: name="trunc";break;
+    case __dfsan::Extract: name="extract";break;
+    case __dfsan::Not: name="not";break;
+    case __dfsan::fmemcmp: name="fmemcmp"; read_data(&data, info->size, info->op1); break;
+    case __dfsan::fsize: name="fsize";break;
+    case __dfsan::fcrc32: name="fcrc3";break;
+    default: break;
+  }
+
+  switch (info->op & 0xff) {
+    case __dfsan::And: {if (info->size) name="and"; else name="land";break;}
+    case __dfsan::Or: {if (info->size) name="or"; else name="lor";break;}
+    case __dfsan::Xor: name="xor";break;
+    case __dfsan::Shl: name="shl";break;
+    case __dfsan::LShr: name="lshr";break;
+    case __dfsan::Add: name="add";break;
+    case __dfsan::Sub: name="sub";break;
+    case __dfsan::Mul: name="mul";break;
+    case __dfsan::UDiv:name="udiv";break;
+    case __dfsan::SDiv:name="sdiv";break;
+    case __dfsan::URem:name="urem";break;
+    case __dfsan::SRem:name="srem";break;
+    case __dfsan::ICmp: {
+                          switch (info->op >> 8) {
+                            case __dfsan::bveq:  name="bveq";break;
+                            case __dfsan::bvneq: name="bvneq";break;
+                            case __dfsan::bvugt: name="bvugt";break;
+                            case __dfsan::bvuge: name="bvuge";break;
+                            case __dfsan::bvult: name="bvult";break;
+                            case __dfsan::bvule: name="bvule";break;
+                            case __dfsan::bvsgt: name="bvsgt";break;
+                            case __dfsan::bvsge: name="bvsge";break;
+                            case __dfsan::bvslt: name="bvslt";break;
+                            case __dfsan::bvsle: name="bvsle";break;
+                          }
+                          break;
+                        }
+    case __dfsan::Concat:name="concat";break;
+    default: break;
+  }
+  std::cerr << name << "(size=" << (int)info->size << ", " << "label=" << label << ", ";
+  if (info->op == 0) {
+    std::cerr << info->op1;
+  } else if (info->op == __dfsan::Load) {
+    std::cerr << __dfsan_label_info[info->l1].op1; //offset
+    std::cerr << ", ";
+    std::cerr << info->l2;   //length
+  } else {
+    if (info->l1 >= CONST_OFFSET) {
+      do_print(info->l1);
+    } else {
+      std::cerr << (uint64_t)info->op1;
+    }
+    std::cerr << ", ";
+    if (info->l2 >= CONST_OFFSET) {
+      do_print(info->l2);
+    } else {
+      std::cerr << (uint64_t)info->op2;
+    }
+  }
+  std::cerr << ")";
+}
+
+static void printLabel(dfsan_label label) {
+  do_print(label);
+  std::cerr<<std::endl;
+}
+
+static dfsan_label do_reject(dfsan_label label,
     std::unordered_map<uint32_t,bool> &expr_cache) {
-  if (label<1) return false;
+  if (label<1) return 0;
   auto itr = expr_cache.find(label);
   if (label != 0 && itr != expr_cache.end()) {
     return itr->second;
   }
 
+  static int count =0;
+  int ret = 0;
   dfsan_label_info* info  = &__dfsan_label_info[label];
   if (info==NULL || info->op == 0)  {//if invalid or read
     expr_cache[label]=false;
-    return false;
+    return 0;
   } if (info->op == __dfsan::fmemcmp) {
+    //printf("reject branch fmemcmp %d\n",++count);
     expr_cache[label]=true;
-    return true;
+    return label;
   } if (info->op == __dfsan::fcrc32) {
+    //printf("reject branch crc32 %d\n",++count);
     expr_cache[label]=true;
-    return true;
+    return 1;
   } if (info->op == __dfsan::fsize) {
+    //printf("reject branch fsize %d\n",++count);
     expr_cache[label]=true;
-    return true;
+    return 2;
   } if (((info->l1 == 0 && info->op1 > 1) || (info->l2 == 0 && info->op2 > 1)) && info->size == 0) { // FIXME
     //std::cout << "do_reject for abnormal size" << std::endl;
-    expr_cache[label]=true;
+    expr_cache[label]=4;
     return true;
-  } if (do_reject(info->l1,expr_cache)) {
+  } if (ret = do_reject(info->l1,expr_cache)) {
     expr_cache[label]=true;
-    return true;
-  } if (do_reject(info->l2,expr_cache)) {
+    return ret;
+  } if (ret = do_reject(info->l2,expr_cache)) {
     expr_cache[label]=true;
-    return true;
+    return ret;
   }
-  expr_cache[label]=false;
-  return false;
+  expr_cache[label]=0;
+  return 0;
 }
 
-static bool rejectBranch(dfsan_label label) {
+static dfsan_label rejectBranch(dfsan_label label) {
   std::unordered_map<uint32_t,bool> expr_cache;
   return do_reject(label,expr_cache);
 }
 
+
+static bool get_fmemcmp(dfsan_label label, u64* index, u64* size, u64* data) {
+  dfsan_label_info *info = get_label_info(label); 
+  //we only support const == Load
+  if (info->l1 >= CONST_OFFSET || info->l2 < CONST_OFFSET)
+    return false; 
+  dfsan_label_info *info2 = get_label_info(info->l2);
+  if (info2->op != Load)
+    return false;
+  *index = get_label_info(info2->l1)->op1;
+  *size = info->size;
+  read_data(data, (u8)*size, info->op1);
+  return true;
+}
 
 static void __solve_cond(dfsan_label label,
     void *addr, uint64_t ctx, int order, int skip, dfsan_label label1, dfsan_label label2, u8 r, u32 predicate) {
@@ -689,9 +792,25 @@ static void __solve_cond(dfsan_label label,
       return;
   }
 
-  printf("__solve_cond %d and solver_select is %d\n",++count, __solver_select);
+  printf("__solve_cond %d and solver_select is %d and r is %u\n",++count, __solver_select, r);
   if (__solver_select != 1) {
-    if (rejectBranch(label)) return;
+    u32 reason  = rejectBranch(label);
+    //printf("reject branch reason is %d\n", reason);
+    if (reason) { 
+        //printLabel(label);
+        //sending fmemcmp special 
+        if (reason > 2) { //fmemcmp 
+          u64 index = 0;
+          u64 size = 0;
+          u64 data = 0; 
+          get_fmemcmp(reason, &index, &size, &data);
+          //printf("get_fmemp index: %lu, size: %lu, data: %lu\n",index,size,data);
+          sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, 0, data, index, size, 0);
+          write(mypipe,content,strlen(content));
+          get_label_info(label)->flags |= B_FLIPPED;
+        }
+        return; 
+    }
     //printLabel(label);
     serialize(label);
     sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 0\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order);
@@ -908,7 +1027,9 @@ __taint_trace_gep(dfsan_label label, u64 r) {
   static int count = 0;
   printf("__trace_gep %d and solver_select is %d\n",++count, __solver_select);
   if (__solver_select != 1) {
-    if (rejectBranch(label)) return;
+    if (rejectBranch(label)) { 
+        printLabel(label); 
+      return; }
     //printLabel(label);
     serialize(label);
     sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 1\n",  __tid, label, r, (uint64_t)addr, callstack, (uint32_t)order);
