@@ -132,8 +132,8 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
 */
   } else {
     std::string old_string = std::to_string(task->fid());
-    //std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-    std::string input_file = "/home/cju/debug/seed.png";
+    std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+   // std::string input_file = "/home/cju/debug/seed.png";
     for (auto rgd_solution : rgd_solutions) {
       generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
     }
@@ -237,8 +237,8 @@ extern "C" {
      // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
     if(solution_queue.try_dequeue(item)) {
       std::string old_string = std::to_string(item.fid);
-     // std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-      std::string input_file = "/home/cju/debug/seed.png";
+      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      //std::string input_file = "/home/cju/debug/seed.png";
       uint32_t size = load_input(input_file, input);
       for(auto it = item.sol.begin(); it != item.sol.end(); ++it)
         input[it->first] = it->second;
