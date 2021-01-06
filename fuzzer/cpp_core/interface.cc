@@ -36,8 +36,8 @@ static std::atomic<uint64_t> fid;
 ctpl::thread_pool* pool;
 bool SAVING_WHOLE; 
 bool USE_CODECACHE;
-bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu);
-void initZ3Solver();
+//bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu);
+//void initZ3Solver();
 //moodycamel::ConcurrentQueue<std::pair<uint32_t, std::unordered_map<uint32_t,uint8_t>>> solution_queue;
 std::vector<std::future<bool>> gresults;
 
@@ -68,15 +68,15 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
 
   bool n_solvable = false;
   bool s_solvable = false;
-  bool z3n_solvable = false;
-  bool z3s_solvable = false;
+  //bool z3n_solvable = false;
+  //bool z3s_solvable = false;
 
   lookup_or_construct(task.get(), &fut, &fut_opt);
 
   std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions;
   std::vector<std::unordered_map<uint32_t, uint8_t>> partial_solutions;
   std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions_opt;
-  std::unordered_map<uint32_t, uint8_t> z3_solution;
+  //std::unordered_map<uint32_t, uint8_t> z3_solution;
   fut->rgd_solutions = &rgd_solutions;
   fut->partial_solutions = &partial_solutions;
   fut_opt->rgd_solutions = &rgd_solutions_opt;
@@ -91,13 +91,13 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
     n_solvable = true;
   }
 
-
+/*
   if (!n_solvable) {
     bool ret = sendZ3Solver(false, task.get(), z3_solution);
     if (!ret && !s_solvable)
       sendZ3Solver(true, task.get(), z3_solution);
   }
-
+*/
 
   if (!SAVING_WHOLE) {
     for (auto rgd_solution :  rgd_solutions) {
@@ -124,10 +124,12 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
         printf("queue item is about %u\n", solution_queue.size_approx());
 #endif
     }
+/*
     if (z3_solution.size() != 0) {
       RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order()};
       solution_queue.enqueue(sol);
     }
+*/
   } else {
     std::string old_string = std::to_string(task->fid());
     //std::string input_file = "/home/cju/fastgen/test/output/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
@@ -141,13 +143,16 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
     for (auto rgd_solution : partial_solutions) {
       generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
     }
+/*
     if (z3_solution.size() != 0)
       generate_input(z3_solution, input_file, "/home/cju/test", fid++);
+*/
   }
 
   //delete fut;
   //delete fut_opt;
-  return n_solvable || s_solvable || z3n_solvable || z3s_solvable ;
+  //return n_solvable || s_solvable || z3n_solvable || z3s_solvable ;
+  return n_solvable || s_solvable ;
 }
 
 void init(bool saving_whole, bool use_codecache) {

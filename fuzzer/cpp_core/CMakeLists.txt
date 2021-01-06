@@ -51,14 +51,14 @@ add_library(gd
   gd.cc
   input.cc
   grad.cc
-  z3solver.cc
+  #z3solver.cc
   ${rgd_proto_srcs}
 )
 
 target_link_libraries(gd
   LLVM
   tcmalloc
-  z3
+  #z3
   pthread)
 
 add_subdirectory(self_test)
