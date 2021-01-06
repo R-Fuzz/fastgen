@@ -67,6 +67,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
       get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     } else if label.6 == 2 {
       unsafe { submit_fmemcmp(label.2, label.3, label.4); }
+      continue;
     }
 
     if inputs.is_empty() { warn!("Skip constraint!"); continue; }
