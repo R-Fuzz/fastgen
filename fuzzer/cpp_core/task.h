@@ -102,5 +102,13 @@ struct FUT {
     ctx = new SContext(inputs.size(), constraints.size());
 	}
 
+  void load_hint(std::unordered_map<uint32_t,uint8_t> &hint_solution) {// load hint
+    for(auto itr = inputs.begin(); itr!=inputs.end();itr++) {
+      auto got = hint_solution.find(itr->first);
+      if (got != hint_solution.end())
+        itr->second = got->second;
+    }
+  }
+
 };
 #endif

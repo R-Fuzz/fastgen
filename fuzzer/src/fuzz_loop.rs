@@ -162,6 +162,7 @@ pub fn fuzz_loop(
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
+      return;
       no_more_seeds = no_more_seeds + 1;
       thread::sleep(time::Duration::from_millis(10));
       if no_more_seeds > 100 {
@@ -203,17 +204,17 @@ pub fn fuzz_loop(
             if_quota = true;
           }
           branch_quota.insert((task.get_addr(), task.get_ctx(), task.get_order()), quota);
-/*
+
           let hitcount = match cloned_branchhit.get(&(task.get_addr(), task.get_ctx(), task.get_order())) {
             Some(&x) => x,
             None => 0,
           };
-*/
+
           let gencount = match cloned_branchgen.get(&(task.get_addr(), task.get_ctx(), task.get_order())) {
             Some(&x) => x,
             None => 0,
           };
-          if if_quota || (!if_quota && gencount > 1) {
+          if if_quota || (!if_quota && (gencount > 1 || hitcount < 5)) {
           //if hitcount < 5 || gencount > 1 {
             scheduled_count += 1;
             let task_ser = task.write_to_bytes().unwrap();

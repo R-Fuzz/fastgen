@@ -81,21 +81,13 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   fut->partial_solutions = &partial_solutions;
   fut_opt->rgd_solutions = &rgd_solutions_opt;
 
-  gd_search(fut);
-  if (rgd_solutions.size() == 0) {
-    gd_search(fut_opt);
-    if (rgd_solutions_opt.size() != 0) {
+  gd_search(fut_opt);
+  if (rgd_solutions_opt.size() != 0) {
       s_solvable = true;
-    }
+      fut->load_hint(rgd_solutions_opt[0]);
+      gd_search(fut);
   } else {
-    n_solvable = true;
-  }
-
-
-  if (!n_solvable) {
-    bool ret = sendZ3Solver(false, task.get(), z3_solution);
-    if (!ret && !s_solvable)
-      sendZ3Solver(true, task.get(), z3_solution);
+      s_solvable = false;
   }
 
 
