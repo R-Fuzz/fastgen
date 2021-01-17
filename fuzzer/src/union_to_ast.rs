@@ -529,6 +529,41 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
   }
 }
 
+//we do not have direction
+pub fn get_addcons_constraint(label: u32, direction: u32, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
+  let info = &table[label as usize];
+  let op = (info.op >> 8) as u32;
+  let mut cache = HashMap::new();
+  if is_relational_by_dfsan(op) {
+    let mut src = AstNode::new();
+    if info.depth > 50  {
+      warn!("large tree skipped depth is {}", info.depth);
+      return;
+    }
+    do_uta(label, &mut src, table, &mut cache);
+    
+    for &v in &cache[&label] {
+      deps.insert(v);
+    }
+    simplify(&mut src, dst);
+  } else if info.op as u32 == DFSAN_NOT {
+    let info1 = &table[info.l2 as usize];
+    let op1 = (info1.op >> 8) as u32;
+    if is_relational_by_dfsan(op1) {
+      let mut src = AstNode::new();
+      if info.depth > 50  {
+        warn!("large tree skipped depth is {}", info.depth);
+        return;
+      }
+      do_uta(info.l2, &mut src, table, &mut cache);
+      for &v in &cache[&info.l2] {
+        deps.insert(v);
+      }
+      simplify(&mut src, dst);
+    }
+  }
+}
+
 
 pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
   let mut cache = HashMap::new();

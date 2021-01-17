@@ -82,12 +82,10 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   fut_opt->rgd_solutions = &rgd_solutions_opt;
 
 #if 1
-    printf("solved by Z#\n");
     bool ret = sendZ3Solver(false, task.get(), z3_solution);
     if (!ret)
       sendZ3Solver(true, task.get(), z3_solution);
 #else
-    printf("solved by JIGSAW\n");
   gd_search(fut_opt);
   if (rgd_solutions_opt.size() != 0) {
       s_solvable = true;

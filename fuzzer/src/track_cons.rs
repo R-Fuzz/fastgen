@@ -68,7 +68,32 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
     } else if label.6 == 2 {
       unsafe { submit_fmemcmp(label.2, label.3, label.4); }
       continue;
+    } else if label.6 == 3 {
+      get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     }
+
+    if (label.6==3) {
+      //add to constraint for add_cons
+      for &off in inputs.iter() {
+        let mut is_empty = false;
+        {
+          let deps_opt = &branch_deps[off as usize];
+          if deps_opt.is_none() {
+            is_empty = true;
+          }
+        }
+        if is_empty {
+          branch_deps[off as usize] =  Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()});
+        }
+        let deps_opt = &mut branch_deps[off as usize];
+        let deps = deps_opt.as_mut().unwrap(); 
+        for &off1 in inputs.iter() {
+          deps.input_deps.insert(off1);
+        }
+        deps.expr_labels.insert(label.1);
+      }
+    }
+
 
     if inputs.is_empty() { warn!("Skip constraint!"); continue; }
 

@@ -30,8 +30,7 @@
 #include "dfsan.h"
 #include "taint_allocator.h"
 #include "union_util.h"
-#include "union_hashtable.h"
-
+#include "union_hashtable.h" 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -89,7 +88,6 @@ static u32 __tid = 0;
 int mypipe;
 void* shmp;
 
-
 static XXH64_state_t state;
 static XXH64_state_t state_sym;
 static unsigned long long path_prefix_hash;
@@ -105,7 +103,6 @@ struct context_hash {
 static std::unordered_map<trace_context, u16, context_hash> __branches;
 static const u16 MAX_BRANCH_COUNT = 16;
 static const u64 MAX_GEP_INDEX = 0x10000;
-
 
 struct expr_hash1 {
   std::size_t operator()(const std::tuple<dfsan_label,u32> &expr) const {
@@ -589,9 +586,7 @@ dfsan_dump_labels(int fd) {
   }
 }
 
-SANITIZER_INTERFACE_ATTRIBUTE void
-add_constraints(dfsan_label label) {
-}
+
 
 void serialize(dfsan_label label) {
   if (label < CONST_OFFSET || label == kInitializingLabel) {
@@ -1001,6 +996,22 @@ __taint_trace_indcall(dfsan_label label) {
 }
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+add_constraints(dfsan_label label) {
+  void *addr = __builtin_return_address(0);
+  uint64_t callstack = __taint_trace_callstack;
+  char content[100];
+  printf("__add_constraint %d and solver_select is %d\n", __solver_select);
+  if (__solver_select != 1) {
+    if (rejectBranch(label)) {  return; }
+    serialize(label);
+    sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 3\n",  __tid, label, 0, (uint64_t)addr, callstack, 0);
+    write(mypipe,content,strlen(content));
+    get_label_info(label)->flags |= B_FLIPPED;
+    return;
+  }
+}
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
 __taint_trace_gep(dfsan_label label, u64 r) {
   char content[100];
   if (label == 0)
@@ -1028,7 +1039,7 @@ __taint_trace_gep(dfsan_label label, u64 r) {
   printf("__trace_gep %d and solver_select is %d\n",++count, __solver_select);
   if (__solver_select != 1) {
     if (rejectBranch(label)) { 
-        printLabel(label); 
+        //printLabel(label); 
       return; }
     //printLabel(label);
     serialize(label);

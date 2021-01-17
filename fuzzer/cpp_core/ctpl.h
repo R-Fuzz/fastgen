@@ -219,9 +219,9 @@ namespace ctpl {
                 }
             };
             this->threads[i].reset(new std::thread(f));  // compiler may not support std::make_unique()
-						CPU_ZERO(&cpuset);
-						CPU_SET(i+core_start_,&cpuset);
-						pthread_setaffinity_np(this->threads[i]->native_handle(),sizeof(cpu_set_t), &cpuset);
+						//CPU_ZERO(&cpuset);
+						//CPU_SET(i+core_start_,&cpuset);
+						//pthread_setaffinity_np(this->threads[i]->native_handle(),sizeof(cpu_set_t), &cpuset);
         }
 
         void init() { this->nWaiting = 0; this->isStop = false; this->isDone = false; }
