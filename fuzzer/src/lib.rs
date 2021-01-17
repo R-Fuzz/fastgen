@@ -26,3 +26,4 @@ pub mod file;
 pub mod fuzz_main;
 pub mod sync;
 pub mod fuzz_loop;
+pub mod afl;

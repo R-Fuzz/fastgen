@@ -16,6 +16,7 @@ use crate::cpp_interface::*;
 use crate::track_cons::*;
 use crate::union_table::*;
 use crate::file::*;
+use crate::afl::*;
 use fastgen_common::config;
 use std::path::{Path};
 use crate::rgd::*;
@@ -162,6 +163,8 @@ pub fn fuzz_loop(
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
+      let mut buf = depot.get_input_buf(depot.next_random());
+      run_afl_mutator(&mut executor,&mut buf);
       continue;
       no_more_seeds = no_more_seeds + 1;
       thread::sleep(time::Duration::from_millis(10));
