@@ -162,7 +162,7 @@ pub fn fuzz_loop(
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
-      return;
+      continue;
       no_more_seeds = no_more_seeds + 1;
       thread::sleep(time::Duration::from_millis(10));
       if no_more_seeds > 100 {
