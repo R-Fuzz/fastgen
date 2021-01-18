@@ -92,19 +92,19 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
       }
     }
 
-    //step 2: add constraints
-    let mut added = HashSet::new();
-    for &off in inputs.iter() {
-      let deps_opt = &branch_deps[off as usize];
-      if let Some(deps) = deps_opt {
-        for &l in deps.expr_labels.iter() {
-          added.insert(l);
+    if label.6 != 3 {
+      //step 2: add constraints
+      let mut added = HashSet::new();
+      for &off in inputs.iter() {
+        let deps_opt = &branch_deps[off as usize];
+        if let Some(deps) = deps_opt {
+          for &l in deps.expr_labels.iter() {
+            added.insert(l);
+          }
         }
       }
-    }
 
-    //we dont solve add_cons
-    if label.6 != 3 {
+      //we dont solve add_cons
       // add constraints
       cons.set_node(node);
       analyze_meta(&mut cons, buf);
