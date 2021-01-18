@@ -47,8 +47,6 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
   let mut nbranches = 0;
   for &label in labels {
-    nbranches = nbranches + 1;
-    if (nbranches > 2000) {break ;}
     let mut count = 1;
     if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5)) {
       count = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5)).unwrap();
@@ -71,32 +69,8 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
       unsafe { submit_fmemcmp(label.2, label.3, label.4); }
       continue;
     } else if label.6 == 3 {
-     // get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
+      get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     }
-/*
-    if (label.6==3) {
-      //add to constraint for add_cons
-      for &off in inputs.iter() {
-        let mut is_empty = false;
-        {
-          let deps_opt = &branch_deps[off as usize];
-          if deps_opt.is_none() {
-            is_empty = true;
-          }
-        }
-        if is_empty {
-          branch_deps[off as usize] =  Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()});
-        }
-        let deps_opt = &mut branch_deps[off as usize];
-        let deps = deps_opt.as_mut().unwrap(); 
-        for &off1 in inputs.iter() {
-          deps.input_deps.insert(off1);
-        }
-        deps.expr_labels.insert(label.1);
-      }
-      continue;
-    }
-*/
 
 
     if inputs.is_empty() { warn!("Skip constraint!"); continue; }
@@ -129,23 +103,26 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
       }
     }
 
-    // add constraints
-    cons.set_node(node);
-    analyze_meta(&mut cons, buf);
-    cons_table.insert(label.1, cons.clone());
-    let mut task = SearchTask::new();
-    task.mut_constraints().push(cons);
-    for l in added.iter() {
-      let mut c = cons_table[l].clone();
-      flip_op(c.mut_node());
-      task.mut_constraints().push(c);
+    //we dont solve add_cons
+    if label.6 != 3 {
+      // add constraints
+      cons.set_node(node);
+      analyze_meta(&mut cons, buf);
+      cons_table.insert(label.1, cons.clone());
+      let mut task = SearchTask::new();
+      task.mut_constraints().push(cons);
+      for l in added.iter() {
+        let mut c = cons_table[l].clone();
+        flip_op(c.mut_node());
+        task.mut_constraints().push(c);
+      }
+      task.set_fid(label.0);
+      task.set_addr(label.3);
+      task.set_ctx(label.4);
+      task.set_order(label.5);
+      task.set_direction(label.2);
+      tasks.push(task);
     }
-    task.set_fid(label.0);
-    task.set_addr(label.3);
-    task.set_ctx(label.4);
-    task.set_order(label.5);
-    task.set_direction(label.2);
-    tasks.push(task);
 
     //step 3: nested branch
     for &off in inputs.iter() {
