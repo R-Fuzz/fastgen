@@ -45,8 +45,10 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
   branch_deps.resize_with(tainted_size, || None);
   let mut cons_table = HashMap::new();
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
+  let mut nbranches = 0;
   for &label in labels {
-
+    nbranches = nbranches + 1;
+    if (nbranches > 2000) {break ;}
     let mut count = 1;
     if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5)) {
       count = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5)).unwrap();
@@ -69,9 +71,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
       unsafe { submit_fmemcmp(label.2, label.3, label.4); }
       continue;
     } else if label.6 == 3 {
-      get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
+     // get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     }
-
+/*
     if (label.6==3) {
       //add to constraint for add_cons
       for &off in inputs.iter() {
@@ -92,7 +94,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
         }
         deps.expr_labels.insert(label.1);
       }
+      continue;
     }
+*/
 
 
     if inputs.is_empty() { warn!("Skip constraint!"); continue; }

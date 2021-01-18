@@ -81,7 +81,7 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   fut->partial_solutions = &partial_solutions;
   fut_opt->rgd_solutions = &rgd_solutions_opt;
 
-#if 1
+#if 0
     bool ret = sendZ3Solver(false, task.get(), z3_solution);
     if (!ret)
       sendZ3Solver(true, task.get(), z3_solution);
