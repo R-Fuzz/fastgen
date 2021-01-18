@@ -69,7 +69,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
       unsafe { submit_fmemcmp(label.2, label.3, label.4); }
       continue;
     } else if label.6 == 3 {
-      get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
+     // get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     }
 
 
@@ -92,7 +92,6 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
       }
     }
 
-    if label.6 != 3 {
       //step 2: add constraints
       let mut added = HashSet::new();
       for &off in inputs.iter() {
@@ -122,7 +121,6 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
       task.set_order(label.5);
       task.set_direction(label.2);
       tasks.push(task);
-    }
 
     //step 3: nested branch
     for &off in inputs.iter() {
