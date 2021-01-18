@@ -783,7 +783,7 @@ static void __solve_cond(dfsan_label label,
   static int count = 0;
 
   if ((get_label_info(label)->flags & B_FLIPPED)) {
-    if (skip == 1)
+    //if (skip == 1)
       return;
   }
 
@@ -880,7 +880,7 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
     order = itr->second;
   } else {
     skip += 1;
-   // return;
+    return;
   }
 
 #if CTX_FILTER
@@ -960,7 +960,7 @@ __taint_trace_cond(dfsan_label label, u8 r) {
     order = itr->second;
   } else {
     skip += 1;
-    //return;
+    return;
   }
 
 #if CTX_FILTER

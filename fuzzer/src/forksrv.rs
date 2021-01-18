@@ -28,6 +28,7 @@ pub struct Forksrv {
     pub socket: UnixStream,
     uses_asan: bool,
     is_stdin: bool,
+    child: std::process::Child,
 }
 
 impl Forksrv {
@@ -53,7 +54,7 @@ impl Forksrv {
         let mut envs_fk = envs.clone();
         envs_fk.insert(ENABLE_FORKSRV.to_string(), String::from("TRUE"));
         envs_fk.insert(FORKSRV_SOCKET_PATH_VAR.to_string(), socket_path.to_owned());
-        match Command::new(&target.0)
+        let c = Command::new(&target.0)
             .args(&target.1)
             .stdin(Stdio::null())
             .envs(&envs_fk)
@@ -62,15 +63,7 @@ impl Forksrv {
             .mem_limit(mem_limit.clone())
             .setsid()
             .pipe_stdin(fd, is_stdin)
-            .spawn()
-        {
-            Ok(_) => (),
-            Err(e) => {
-                error!("FATAL: Failed to spawn child. Reason: {}", e);
-                panic!();
-            }
-        };
-
+            .spawn().expect("FATAL to spawn child");
         // FIXME: block here if client doesn't exist.
         let (socket, _) = match listener.accept() {
             Ok(a) => a,
@@ -94,6 +87,7 @@ impl Forksrv {
             socket,
             uses_asan,
             is_stdin,
+            child: c,     
         }
     }
 
@@ -179,5 +173,6 @@ impl Drop for Forksrv {
                 warn!("Fail to remove socket file!!  FIN ");
             }
         }
+        self.child.wait();
     }
 }

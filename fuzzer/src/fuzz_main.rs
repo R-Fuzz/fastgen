@@ -65,7 +65,6 @@ pub fn fuzz_main(
     error!("Please ensure that seed directory - {:?} has ang file", depot.dirs.seeds_dir);
   }
 
-
   unsafe { init_core(config::SAVING_WHOLE, config::USE_CODECACHE); }
   let mut handlers = vec![];
   {

@@ -231,9 +231,11 @@ mod tests {
     println!("labels len is {}", labels.len());
     let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32,u64)>::new()));
     let branch_hit = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
-    let mut buf: Vec<u8> = Vec::with_capacity(2000);
-    buf.resize(2000, 0);
-    scan_nested_tasks(&labels, &mut tasks, table, 2000, &dedup, &branch_hit, &buf);
+    let mut buf: Vec<u8> = Vec::with_capacity(15000);
+    buf.resize(15000, 0);
+    println!("before scanning\n");
+    scan_nested_tasks(&labels, &mut tasks, table, 15000, &dedup, &branch_hit, &buf);
+    println!("after scanning\n");
 //    scan_tasks(&labels, &mut tasks, table);
     for task in tasks {
       println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
