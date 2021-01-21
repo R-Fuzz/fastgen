@@ -129,7 +129,7 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
 
   } else {
     std::string old_string = std::to_string(task->fid());
-    std::string input_file = "/home/cju/fastgen/fstream/i";
+    std::string input_file = "/home/cju/fastgen/test/i";
     for (auto rgd_solution : rgd_solutions) {
       generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
     }

@@ -23,6 +23,7 @@ message SearchTask {
 message Constraint {
   AstNode node = 1;
   NodeMeta meta = 2;
+  uint32 label = 3; //deduplication
 }
 
 message NodeMeta {

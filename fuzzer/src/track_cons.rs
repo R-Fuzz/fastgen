@@ -43,7 +43,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
           , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>, buf: &Vec<u8>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
   branch_deps.resize_with(tainted_size, || None);
-  let mut cons_table = HashMap::new();
+  //let mut cons_table = HashMap::new();
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
   let mut nbranches = 0;
   for &label in labels {
@@ -107,12 +107,14 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
       // add constraints
       cons.set_node(node);
       analyze_meta(&mut cons, buf);
-      cons_table.insert(label.1, cons.clone());
+      cons.set_label(label.1);
       let mut task = SearchTask::new();
       task.mut_constraints().push(cons);
-      for l in added.iter() {
-        let mut c = cons_table[l].clone();
-        flip_op(c.mut_node());
+      for &l in added.iter() {
+        //let mut c = cons_table[l].clone();
+        //flip_op(c.mut_node());
+        let mut c = Constraint::new();
+        c.set_label(l);
         task.mut_constraints().push(c);
       }
       task.set_fid(label.0);
@@ -132,7 +134,8 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
         }
       }
       if is_empty {
-        branch_deps[off as usize] =  Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()});
+        branch_deps[off as usize] =
+            Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()});
       }
       let deps_opt = &mut branch_deps[off as usize];
       let deps = deps_opt.as_mut().unwrap(); 
@@ -191,7 +194,7 @@ mod tests {
   use protobuf::Message;
   use crate::fifo::*;
   use crate::util::*;
-
+  use fastgen_common::config;
 #[test]
   fn test_scan() {
     let id = unsafe {

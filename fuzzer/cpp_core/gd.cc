@@ -15,6 +15,23 @@ void dumpResults(MutInput &input, struct FUT* fut) {
   }
 }
 
+static uint32_t flip(uint32_t op) {
+  switch (op) {
+    case rgd::Equal: return rgd::Distinct;
+    case rgd::Distinct: return rgd::Equal;
+    case rgd::Sge: return rgd::Slt;
+    case rgd::Sgt:  return rgd::Sle;
+    case rgd::Sle:  return rgd::Sgt;
+    case rgd::Slt:  return rgd::Sge;
+    case rgd::Uge:  return rgd::Ult;
+    case rgd::Ugt:  return rgd::Ule;
+    case rgd::Ule:  return rgd::Ugt;
+    case rgd::Ult:  return rgd::Uge;
+    assert(false && "Non-relational op!");
+  };
+}
+
+
 void addResults(MutInput &input, struct FUT* fut) {
   int i = 0;
   std::unordered_map<uint32_t, uint8_t> sol;
@@ -123,7 +140,10 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
       ++arg_idx;
     }
     cur = (uint64_t)c->fn(fut->scratch_args);
-    uint64_t dis = getDistance(c->comparison,fut->scratch_args[0],fut->scratch_args[1]);
+    uint32_t comparison = c->comparison;
+    if (i != 0) comparison = flip(comparison);
+    //printf("i is %d comparison is %u\n", i, comparison);
+    uint64_t dis = getDistance(comparison,fut->scratch_args[0],fut->scratch_args[1]);
     fut->ctx->distances[i] = dis;
     // *partial_found = true;
     if (dis>0) {

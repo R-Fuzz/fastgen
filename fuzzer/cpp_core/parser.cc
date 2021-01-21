@@ -76,7 +76,7 @@ struct myHash {
   bool replaceQ(eType, eType) {return 0;}
   eType update(eType v, eType) {return v;}
   bool cas(eType* p, eType o, eType n) {return atomic_compare_and_swap(p, o, n);}
-};
+  };
 
 
 struct taskKV {
@@ -84,8 +84,8 @@ struct taskKV {
   FUT* fut;
   FUT* fut_opt;
   taskKV(std::tuple<uint64_t,uint64_t,uint32_t, uint64_t> abranch,
-        FUT* afut,
-        FUT* afut_opt)
+      FUT* afut,
+      FUT* afut_opt)
     : branch(abranch), fut(afut), fut_opt(afut_opt) {}
 };
 
@@ -101,7 +101,7 @@ struct taskHash {
   bool replaceQ(eType, eType) {return 0;}
   eType update(eType v, eType) {return v;}
   bool cas(eType* p, eType o, eType n) {return atomic_compare_and_swap(p, o, n);}
-};
+  };
 
 static pbbs::Table<myHash> Expr2Func(8000016, myHash(), 1.3);
 pbbs::Table<taskHash> TaskCache(8000016, taskHash(), 1.3);
@@ -121,51 +121,66 @@ static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
   cons->const_num = c->meta().const_num(); 
 }
 
+std::vector<std::shared_ptr<Cons>> per_session_cache(15000);
+void start_new_session() {
+  per_session_cache.resize(15000, nullptr);
+}
+
+
 void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
   int i = 0;
   for (auto c : task->constraints()) {
+    printf("node kind is %u\n",c.node().kind());
     assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
-    std::shared_ptr<Cons> cons = std::make_shared<Cons>();
-    append_meta(cons, &c);
-    if (USE_CODECACHE) {
-      std::shared_ptr<AstNode> req = std::make_shared<AstNode>();
-      req->CopyFrom(c.node());
-      struct myKV *res = Expr2Func.find(req);
-      //   struct myKV *res = nullptr;
-
-      if ( res == nullptr) {
-        ++miss;
-        uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
-        addFunction(&c.node(), cons->local_map, id);
-        auto fn = performJit(id);
-
-        res = new struct myKV(req, fn);
-        if (!Expr2Func.insert(res)) {
-          // if the function has already been inserted during this time
-          delete res;
-          res = nullptr;
-        }
-        cons->fn = fn; // fn could be duplicated, but that's fine
-      } else {
-        ++hit;
-#if DEBUG
-        if (hit % 1000 == 0) {
-          std::cout << "hit/miss is " << hit << "/" << miss << std::endl;
-        }
-#endif
-        cons->fn = res->fn;
-      }
-
+    std::shared_ptr<Cons> cons;
+    printf("label is %u\n", c.label());
+    if (per_session_cache[c.label()] != nullptr) {
+      printf("label is %u hit the cache\n", c.label());
+      cons = per_session_cache[c.label()];
     } else {
+      cons = std::make_shared<Cons>();
+      append_meta(cons, &c);
+      if (USE_CODECACHE) {
+        std::shared_ptr<AstNode> req = std::make_shared<AstNode>();
+        req->CopyFrom(c.node());
+        struct myKV *res = Expr2Func.find(req);
+        //   struct myKV *res = nullptr;
+
+        if ( res == nullptr) {
+          ++miss;
+          uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
+          addFunction(&c.node(), cons->local_map, id);
+          auto fn = performJit(id);
+
+          res = new struct myKV(req, fn);
+          if (!Expr2Func.insert(res)) {
+            // if the function has already been inserted during this time
+            delete res;
+            res = nullptr;
+          }
+          cons->fn = fn; // fn could be duplicated, but that's fine
+        } else {
+          ++hit;
+#if DEBUG
+          if (hit % 1000 == 0) {
+            std::cout << "hit/miss is " << hit << "/" << miss << std::endl;
+          }
+#endif
+          cons->fn = res->fn;
+        }
+
+      } else {
         uint64_t id = uuid.fetch_add(1, std::memory_order_relaxed);
         addFunction(&c.node(), cons->local_map, id);
         auto fn = performJit(id);
         cons->fn = fn; // fn could be duplicated, but that's fine
+      }
     }
     (*fut)->constraints.push_back(cons);
     if ( i == 0)
       (*fut_opt)->constraints.push_back(cons);
     i++;
+    per_session_cache[c.label()] = cons;
   }
 
   (*fut)->finalize();
@@ -184,7 +199,7 @@ void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_op
   struct taskKV *res = TaskCache.find(bid);
 
   if (res == nullptr) {
-   // printf("miss count %d\n", ++miss);
+    // printf("miss count %d\n", ++miss);
     *fut = new FUT();
     *fut_opt = new FUT();
     construct_task(task,fut,fut_opt);
