@@ -189,7 +189,7 @@ static void edit_params(u32 argc, char **argv) {
     char *cur = *(++argv);
     // FIXME
     if (!strcmp(cur, "-O1") || !strcmp(cur, "-O2") || !strcmp(cur, "-O3")) {
-      //continue;
+      continue;
     }
     if (!strcmp(cur, "-m32"))
       bit_mode = 32;
