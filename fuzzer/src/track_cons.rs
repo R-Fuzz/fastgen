@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::{RwLock,Arc};
 use crate::cpp_interface::*;
+use protobuf::Message;
 
 //each input offset has a coresspdoing slot
 pub struct BranchDep {
@@ -38,7 +39,7 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
   }
 }
 
-pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mut Vec<SearchTask>,
+pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, 
           table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>
           , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>, buf: &Vec<u8>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
@@ -122,7 +123,10 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, tasks: &mu
       task.set_ctx(label.4);
       task.set_order(label.5);
       task.set_direction(label.2);
-      tasks.push(task);
+      //tasks.push(task);
+
+      let task_ser = task.write_to_bytes().unwrap();
+      unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
 
     //step 3: nested branch
     for &off in inputs.iter() {
@@ -208,7 +212,6 @@ mod tests {
     let table = unsafe { & *ptr };
 
     unsafe { init_core(true,true); }
-    let mut tasks = Vec::new();
     let labels = read_pipe();
     println!("labels len is {}", labels.len());
     let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32,u64)>::new()));
@@ -216,15 +219,17 @@ mod tests {
     let mut buf: Vec<u8> = Vec::with_capacity(15000);
     buf.resize(15000, 0);
     println!("before scanning\n");
-    scan_nested_tasks(&labels, &mut tasks, table, 15000, &dedup, &branch_hit, &buf);
+    scan_nested_tasks(&labels, table, 15000, &dedup, &branch_hit, &buf);
     println!("after scanning\n");
 //    scan_tasks(&labels, &mut tasks, table);
+/*
     for task in tasks {
       println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
       print_task(&task);
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
     }
+*/
     unsafe { aggregate_results(); }
     unsafe { fini_core(); }
   }

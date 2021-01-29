@@ -98,8 +98,8 @@ pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>
     branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>,
     buf: &Vec<u8>) {
   let labels = read_pipe();
-  let mut tasks = Vec::new();
-  scan_nested_tasks(&labels, &mut tasks, table, config::MAX_INPUT_LEN, &dedup, &branch_hitcount, buf);
+  scan_nested_tasks(&labels, table, config::MAX_INPUT_LEN, &dedup, &branch_hitcount, buf);
+/*
   for task in tasks {
     //println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
     //print_task(&task);
@@ -107,6 +107,7 @@ pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>
     global_tasks.write().unwrap().push(task);
     unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
   }
+*/
 }
 
 pub fn fuzz_loop(
