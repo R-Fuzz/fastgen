@@ -19,7 +19,7 @@ else()
   message(FATAL_ERROR "You haven't install LLVM !")
 endif()
 
-include_directories(${LLVM_INCLUDE_DIRS})
+include_directories(${LLVM_INCLUDE_DIRS} "/out/include")
 add_definitions(${LLVM_DEFINITIONS})
 
 # Proto file
@@ -57,7 +57,7 @@ add_library(gd
 
 target_link_libraries(gd
   LLVM
-  tcmalloc
+  #tcmalloc
   z3
   pthread)
 
