@@ -3,6 +3,8 @@ use std::{
     io::prelude::*,
     path::{Path, PathBuf},
 };
+use std::time;
+use std::thread;
 
 pub fn get_file_name(dir: &Path, id: usize) -> PathBuf {
     let file_name = format!("id:{:06}", id);
@@ -24,7 +26,8 @@ pub fn read_from_file(path: &Path) -> Vec<u8> {
         };
         i += 1;
         if i == 10 {
-            panic!();
+            thread::sleep(time::Duration::from_millis(10));
+           // panic!();
         }
     }
 

@@ -121,22 +121,17 @@ static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
   cons->const_num = c->meta().const_num(); 
 }
 
-std::vector<std::shared_ptr<Cons>> per_session_cache(15000);
-void start_new_session() {
-  per_session_cache.resize(15000, nullptr);
-}
+std::unordered_map<uint64_t,std::shared_ptr<Cons>> cons_cache(1000000);
 
 
 void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
   int i = 0;
+  static uint32_t old_fid = -1;
   for (auto c : task->constraints()) {
-    printf("node kind is %u\n",c.node().kind());
     assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
     std::shared_ptr<Cons> cons;
-    printf("label is %u\n", c.label());
-    if (per_session_cache[c.label()] != nullptr) {
-      printf("label is %u hit the cache\n", c.label());
-      cons = per_session_cache[c.label()];
+    if (cons_cache.find(task->fid()*100000 + c.label()) != cons_cache.end()) {
+      cons = cons_cache[task->fid()*100000 + c.label()];
     } else {
       cons = std::make_shared<Cons>();
       append_meta(cons, &c);
@@ -175,12 +170,12 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
         auto fn = performJit(id);
         cons->fn = fn; // fn could be duplicated, but that's fine
       }
+      cons_cache.insert({task->fid() * 100000 + c.label(), cons});
     }
     (*fut)->constraints.push_back(cons);
     if ( i == 0)
       (*fut_opt)->constraints.push_back(cons);
     i++;
-    per_session_cache[c.label()] = cons;
   }
 
   (*fut)->finalize();

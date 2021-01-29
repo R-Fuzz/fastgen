@@ -496,7 +496,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
   let mut cache = HashMap::new();
   if is_relational_by_dfsan(op) {
     let mut src = AstNode::new();
-    if info.depth > 50  {
+    if info.depth > 80  {
       warn!("large tree skipped depth is {}", info.depth);
       return;
     }
@@ -513,7 +513,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
     let op1 = (info1.op >> 8) as u32;
     if is_relational_by_dfsan(op1) {
       let mut src = AstNode::new();
-      if info.depth > 50  {
+      if info.depth > 80  {
         warn!("large tree skipped depth is {}", info.depth);
         return;
       }
@@ -536,7 +536,7 @@ pub fn get_addcons_constraint(label: u32, direction: u32, dst: &mut AstNode,  ta
   let mut cache = HashMap::new();
   if is_relational_by_dfsan(op) {
     let mut src = AstNode::new();
-    if info.depth > 50  {
+    if info.depth > 80  {
       warn!("large tree skipped depth is {}", info.depth);
       return;
     }
@@ -551,7 +551,7 @@ pub fn get_addcons_constraint(label: u32, direction: u32, dst: &mut AstNode,  ta
     let op1 = (info1.op >> 8) as u32;
     if is_relational_by_dfsan(op1) {
       let mut src = AstNode::new();
-      if info.depth > 50  {
+      if info.depth > 80  {
         warn!("large tree skipped depth is {}", info.depth);
         return;
       }
@@ -573,7 +573,7 @@ pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &U
   let mut right = AstNode::new();
   let mut src = AstNode::new();
 
-  if info.depth > 32  {
+  if info.depth > 80  {
     warn!("large tree skipped  depth is {}", info.depth);
     return;
   }
