@@ -123,7 +123,6 @@ static void add_runtime() {
   cc_params[cc_par_cnt++] = "-ldl";
   cc_params[cc_par_cnt++] = "-lpthread";
   cc_params[cc_par_cnt++] = "-lm";
-  cc_params[cc_par_cnt++] = "-lz3";
   if (!getenv("KO_NO_NATIVE_ZLIB")) {
     cc_params[cc_par_cnt++] = "-lz";
   }

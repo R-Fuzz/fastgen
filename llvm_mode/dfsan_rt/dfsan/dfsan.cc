@@ -40,8 +40,8 @@
 #include <sys/types.h>
 #include <assert.h>
 #include <fcntl.h>
-#include <iostream>
-#include <string.h>
+//#include <iostream>
+//#include <string.h>
 
 #include <unordered_map>
 #include <unordered_set>
@@ -65,7 +65,6 @@ using namespace __dfsan;
 
 typedef atomic_uint32_t atomic_dfsan_label;
 static const dfsan_label kInitializingLabel = -1;
-static const std::string PROGRAM="sqlite";
 
 static atomic_dfsan_label __dfsan_last_label;
 dfsan_label_info *__dfsan_label_info;
@@ -338,7 +337,7 @@ dfsan_label __taint_union_load(const dfsan_label *ls, uptr n) {
       }
       offset += info->size;
     }
-    if (get_label_info(parent)->size == offset) {
+    if (get_label_info(parent)->size == offset && offset == n * 8) {
       AOUT("Fast path (2): all labels are extracts: %u\n", parent);
       return parent;
     }
@@ -636,7 +635,7 @@ static void read_data(u64 *data, u8 size, u64 addr) {
   if (ptr == nullptr) return;
   memcpy(data, ptr, size);
 }
-
+/*
 static void do_print(dfsan_label label) {
   dfsan_label_info* info  = &__dfsan_label_info[label];
   u64 data = 0;
@@ -714,6 +713,7 @@ static void printLabel(dfsan_label label) {
   do_print(label);
   std::cerr<<std::endl;
 }
+*/
 
 static dfsan_label do_reject(dfsan_label label,
     std::unordered_map<uint32_t,bool> &expr_cache) {
@@ -1306,8 +1306,6 @@ static void dfsan_init(int argc, char **argv, char **envp) {
   AddDieCallback(dfsan_fini);
   //const char *taint_file = GetEnv("TAINT_FILE");
   //std::string r(taint_file);
-  std::string r(flags().taint_file);
-  std::string s = r+ ".data";
   //initRGDProxy(s.c_str(),r.c_str(), tainted.size);
 }
 
