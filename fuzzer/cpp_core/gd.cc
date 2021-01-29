@@ -31,7 +31,6 @@ static uint32_t flip(uint32_t op) {
   };
 }
 
-
 void addResults(MutInput &input, struct FUT* fut) {
   int i = 0;
   std::unordered_map<uint32_t, uint8_t> sol;
@@ -142,7 +141,6 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
     cur = (uint64_t)c->fn(fut->scratch_args);
     uint32_t comparison = c->comparison;
     if (i != 0) comparison = flip(comparison);
-    //printf("i is %d comparison is %u\n", i, comparison);
     uint64_t dis = getDistance(comparison,fut->scratch_args[0],fut->scratch_args[1]);
     fut->ctx->distances[i] = dis;
     // *partial_found = true;
@@ -158,14 +156,13 @@ bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *s
 
   bool found = false;
   uint8_t orig_val = orig_input.get(index);
+  std::vector<uint64_t> plus_distances;
+  std::vector<uint64_t> minus_distances;
   orig_input.update(index,true,1);
 
   uint64_t f_plus = distance(orig_input,fut);
+  plus_distances = fut->ctx->distances;
 
-  for(int i=0; i< fut->ctx->distances.size(); i++) {
-    if (fut->ctx->orig_distances[i] == 0  && fut->ctx->distances[i] != 0)
-        orig_input.setDisable(index);
-  }
   if (f_plus == 0) {
     addResults(orig_input, fut);
     found = true;
@@ -175,10 +172,7 @@ bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *s
   orig_input.update(index,false,1);
 
   uint64_t f_minus = distance(orig_input,fut);
-  for(int i=0; i< fut->ctx->distances.size(); i++) {
-    if (fut->ctx->orig_distances[i] == 0  && fut->ctx->distances[i] != 0)
-        orig_input.setDisable(index);
-  }
+  minus_distances = fut->ctx->distances;
   if (f_minus == 0) {
     addResults(orig_input, fut);
     found = true;
@@ -213,6 +207,29 @@ bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *s
       *val = 0;
     }
   }
+
+
+  if (*val == 0) found; 
+
+  if (sign) {
+    for(int i=0; i< fut->ctx->distances.size(); i++) {
+      if (plus_distances[i] !=0  && fut->ctx->orig_distances[i] == 0) {
+        orig_input.setDisable(index);
+        *val = 0;
+        return found;
+      }
+    }
+  } else {
+    for(int i=0; i< fut->ctx->distances.size(); i++) {
+      if (minus_distances[i] != 0  && fut->ctx->orig_distances[i] == 0) {
+        orig_input.setDisable(index);
+        *val = 0;
+        return found;
+      }
+    }
+  }
+  
+
   return found;
 }
 
