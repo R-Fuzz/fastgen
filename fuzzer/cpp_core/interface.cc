@@ -90,11 +90,13 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
       s_solvable = false;
   }
 
+
   if (rgd_solutions.size() == 0) {
     bool ret = sendZ3Solver(false, task.get(), z3_solution);
     if (!ret && !s_solvable)
       sendZ3Solver(true, task.get(), z3_solution);
   }
+
 
   if (!SAVING_WHOLE) {
     for (auto rgd_solution :  rgd_solutions) {

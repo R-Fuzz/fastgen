@@ -121,7 +121,7 @@ static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
   cons->const_num = c->meta().const_num(); 
 }
 
-//std::unordered_map<uint64_t,std::shared_ptr<Cons>> cons_cache(1000000);
+std::unordered_map<uint64_t,std::shared_ptr<Cons>> cons_cache(1000000);
 
 
 void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
@@ -130,9 +130,9 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
   for (auto c : task->constraints()) {
     assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
     std::shared_ptr<Cons> cons;
-    //if (cons_cache.find(task->fid()*100000 + c.label()) != cons_cache.end()) {
-    if (0) {
-      //cons = cons_cache[task->fid()*100000 + c.label()];
+    if (cons_cache.find(task->fid()*100000 + c.label()) != cons_cache.end()) {
+    //if (0) {
+      cons = cons_cache[task->fid()*100000 + c.label()];
     } else {
       cons = std::make_shared<Cons>();
       append_meta(cons, &c);
@@ -171,7 +171,7 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
         auto fn = performJit(id);
         cons->fn = fn; // fn could be duplicated, but that's fine
       }
-      //cons_cache.insert({task->fid() * 100000 + c.label(), cons});
+      cons_cache.insert({task->fid() * 100000 + c.label(), cons});
     }
     (*fut)->constraints.push_back(cons);
     if ( i == 0)

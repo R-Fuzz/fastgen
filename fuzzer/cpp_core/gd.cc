@@ -140,7 +140,7 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
     }
     cur = (uint64_t)c->fn(fut->scratch_args);
     uint32_t comparison = c->comparison;
-    //if (i != 0) comparison = flip(comparison);
+    if (i != 0) comparison = flip(comparison);
     uint64_t dis = getDistance(comparison,fut->scratch_args[0],fut->scratch_args[1]);
     fut->ctx->distances[i] = dis;
     // *partial_found = true;

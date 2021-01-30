@@ -281,6 +281,8 @@ z3::expr Solver::serialize(const AstNode* req,
   }
 }
 
+
+std::unordered_map<uint64_t,z3::expr>  session_cache(1000000);
 bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu) {
   g_solver->reset();
   int num_expr = 0;
@@ -293,10 +295,20 @@ bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint
     const AstNode *req = &task->constraints(i).node();
     //printExpression(req);
     try {
-      z3::expr z3expr = g_solver->serialize(req,expr_cache);
+       auto itr = session_cache.find(task->fid() * 100000 + task->constraints(i).label()); 
+       if (itr != session_cache.end()) {
+        z3::expr z3expr = itr->second; 
+        if (i != 0)
+        g_solver->add(!z3expr);
+        else
+        g_solver->add(z3expr);
+       } else {
+        z3::expr z3expr = g_solver->serialize(req,expr_cache);
+        g_solver->add(z3expr);
+        session_cache.insert({task->fid() * 100000 + task->constraints(i).label(),z3expr});
+       }
       //std::cout << "z3: " << z3expr.to_string() << std::endl;
       //std::cout << "z3 simplified: " << z3expr.simplify().to_string() << std::endl;
-      g_solver->add(z3expr);
     } catch (z3::exception e) {
       //std::cout << "z3 alert: " << e.msg() << std::endl;
       return false;
