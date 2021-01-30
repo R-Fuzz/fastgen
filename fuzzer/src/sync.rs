@@ -101,7 +101,7 @@ fn sync_one_afl_dir(
                         if file_len < config::MAX_INPUT_LEN {
                             info!("sync {:?}", path);
                             let buf = read_from_file(path);
-                            executor.run_sync(&buf);
+                            executor.run_norun(&buf);
                         }
                         if id > max_id {
                             max_id = id;
