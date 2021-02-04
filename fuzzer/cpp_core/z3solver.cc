@@ -116,7 +116,12 @@ z3::expr Solver::serialize(const AstNode* req,
     case rgd::Read: {
                       z3::symbol symbol = context_.int_symbol(req->index());
                       z3::sort sort = context_.bv_sort(8);
-                      return cache_expr(req->label(),context_.constant(symbol,sort),expr_cache);
+                      z3::expr out = context_.constant(symbol,sort);
+		       for(uint32_t i=1; i<req->bits()/8; i++) {
+                            symbol = context_.int_symbol(req->index()+i);
+			    out = z3::concat(context_.constant(symbol,sort),out);
+		      }
+		     return cache_expr(req->label(),out,expr_cache);
                     }
     case rgd::Concat: {
                         z3::expr c1 = serialize(&req->children(0),expr_cache);
