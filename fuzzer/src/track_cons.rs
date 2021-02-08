@@ -110,6 +110,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
       analyze_meta(&mut cons, buf);
       cons.set_label(label.1);
       let mut task = SearchTask::new();
+     // cons_table.insert(label.1, cons.clone());
       task.mut_constraints().push(cons);
       for &l in added.iter() {
         //let mut c = cons_table[l].clone();
