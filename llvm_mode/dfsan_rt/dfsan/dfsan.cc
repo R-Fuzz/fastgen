@@ -630,7 +630,7 @@ void serialize(dfsan_label label) {
   return;
 }
 
-static void read_data(u64 *data, u8 size, u64 addr) {
+static void read_data(u8 *data, u8 size, u64 addr) {
   u8 *ptr = reinterpret_cast<u8*>(addr);
   if (ptr == nullptr) return;
   memcpy(data, ptr, size);
@@ -762,16 +762,20 @@ static dfsan_label rejectBranch(dfsan_label label) {
 }
 
 
-static bool get_fmemcmp(dfsan_label label, u64* index, u64* size, u64* data) {
+static bool get_fmemcmp(dfsan_label label, u64* index, u64* size, u8* data) {
   dfsan_label_info *info = get_label_info(label); 
   //we only support const == Load
+  printf("l1 is %u and l2 is %u\n",info->l1,info->l2);
   if (info->l1 >= CONST_OFFSET || info->l2 < CONST_OFFSET)
     return false; 
   dfsan_label_info *info2 = get_label_info(info->l2);
-  if (info2->op != Load)
-    return false;
+  printf("l1 is %u and l2 is %u 1\n",info->l1,info->l2);
+  //if (info2->op != Load)
+   // return false;
+  printf("l1 is %u and l2 is %u 2\n",info->l1,info->l2);
   *index = get_label_info(info2->l1)->op1;
   *size = info->size;
+  if (*size<=1024)
   read_data(data, (u8)*size, info->op1);
   return true;
 }
@@ -797,19 +801,32 @@ static void __solve_cond(dfsan_label label,
         if (reason > 2) { //fmemcmp 
           u64 index = 0;
           u64 size = 0;
-          u64 data = 0; 
-          get_fmemcmp(reason, &index, &size, &data);
+          u8 data[1024];
+          get_fmemcmp(reason, &index, &size, data);
+          if (size <=  1024) {
           //printf("get_fmemp index: %lu, size: %lu, data: %lu\n",index,size,data);
-          sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, 0, data, index, size, 0);
-          write(mypipe,content,strlen(content));
-          get_label_info(label)->flags |= B_FLIPPED;
+            printf("get fmemcp index %lu, size %lu, data: %u %u %u %u %u %u %u %u %u\n", index, size, data[0],data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8]);
+            sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, 0, 0, index, size, 0);
+            write(mypipe,content,strlen(content));
+            fsync(mypipe);
+            char fmemcmpdata[10000];
+            for(int i=0;i<size;i++) {
+              sprintf(fmemcmpdata+4*i,"%03u,", data[i]);
+            }
+            sprintf(fmemcmpdata+4*size,"0\n");
+            write(mypipe,fmemcmpdata,strlen(fmemcmpdata));
+            fsync(mypipe);
+            get_label_info(label)->flags |= B_FLIPPED;
+          }
         }
         return; 
     }
     //printLabel(label);
     serialize(label);
     sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 0\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order);
+    printf("write pipe and solver_select is %d and r is %u\n",++count, __solver_select, r);
     write(mypipe,content,strlen(content));
+          fsync(mypipe);
     get_label_info(label)->flags |= B_FLIPPED;
     return;
   }
@@ -915,7 +932,8 @@ __unfold_branch_fn(u32 r) {}
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
 __taint_trace_cond(dfsan_label label, u8 r) {
-
+  static int count = 0;
+  printf("trace cond label is %u, %d\n",label,++count);
   int order = 0;
   int skip = 0;
   void *addr = __builtin_return_address(0);
@@ -1256,7 +1274,7 @@ static void dfsan_fini() {
     *(reinterpret_cast<u32*>(trace_id)) = __current_index;
     shmdt(trace_id);
   }
-  close(mypipe);
+  //close(mypipe);
   shmdt(shmp);
 }
 

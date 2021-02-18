@@ -22,7 +22,7 @@ extern std::vector<std::future<bool>> gresults;
 
 int main() {
   init(false , true);
-  int fd = open("../test.data",O_RDONLY);
+  int fd = open("../regression.data",O_RDONLY);
   ZeroCopyInputStream* rawInput = new google::protobuf::io::FileInputStream(fd);
   bool suc = false;
   int fid = 1;

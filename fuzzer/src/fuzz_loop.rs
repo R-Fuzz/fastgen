@@ -53,8 +53,8 @@ pub fn grading_loop(
         continue;
       }
       //info!("grading {:?} and length is {}", &fpath, &buf.len());
-      //executor.run_norun(&buf);
-      executor.run_sync(&buf);
+      executor.run_norun(&buf);
+     // executor.run_sync(&buf);
       //std::fs::remove_file(fpath).unwrap();
       fid = fid + 1;
     }
@@ -70,6 +70,7 @@ pub fn grading_loop(
       if len != 0 {
         buf.resize(len as usize, 0);
         let new_path = executor.run_sync(&buf);
+        info!("grading result {}",new_path);
         if new_path {
           let mut count = 1;
           if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order)) {
@@ -97,8 +98,9 @@ pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>
     dedup: Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>,
     branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>,
     buf: &Vec<u8>) {
-  let labels = read_pipe();
-  scan_nested_tasks(&labels, table, config::MAX_INPUT_LEN, &dedup, &branch_hitcount, buf);
+
+  let (labels,mut memcmp_data) = read_pipe();
+  scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &dedup, &branch_hitcount, buf);
 /*
   for task in tasks {
     //println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
@@ -141,34 +143,41 @@ pub fn fuzz_loop(
   let mut no_more_seeds = 0;
   while running.load(Ordering::Relaxed) {
     if id < depot.get_num_inputs() {
+      //thread::sleep(time::Duration::from_millis(10));
       let buf = depot.get_input_buf(id);
       let buf_cloned = buf.clone();
       //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
       let gtasks = global_tasks.clone();
       let gdedup = dedup.clone();
       let gbranch_hitcount = branch_hitcount.clone();
-      let handle = thread::spawn(move || {
-          dispatcher(table, gtasks, gdedup, gbranch_hitcount, &buf_cloned);
-          });
+     // let handle = thread::spawn(move || {
+
+      //    });
 
       let t_start = time::Instant::now();
 
-      executor.track(id, &buf);
+      println!("start track");
+      let mut child = executor.track_async(id, &buf);
 
-      if handle.join().is_err() {
-        error!("Error happened in listening thread!");
-      }
+      println!("end track");
+     // if handle.join().is_err() {
+     //   error!("Error happened in listening thread!");
+     // }
+
+      dispatcher(table, gtasks, gdedup, gbranch_hitcount, &buf_cloned);
+      child.wait(); 
+      println!("end dispatch");
+      println!("wait for the child");
 
       let used_t1 = t_start.elapsed();
       let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
-      let mut buf = depot.get_input_buf(depot.next_random());
-      run_afl_mutator(&mut executor,&mut buf);
+      //let mut buf = depot.get_input_buf(depot.next_random());
+      //run_afl_mutator(&mut executor,&mut buf);
       continue;
       no_more_seeds = no_more_seeds + 1;
-      thread::sleep(time::Duration::from_millis(10));
       if no_more_seeds > 100 {
 
         no_more_seeds = 0;
@@ -255,10 +264,10 @@ mod tests {
   fn test_grading() {
     let angora_out_dir = PathBuf::from("output");
     let seeds_dir = PathBuf::from("input");
-    let args = vec!["./objdump.fast".to_string(), "-D".to_string(), "@@".to_string()];
+    let args = vec!["./cmp.fast".to_string(), "-D".to_string()];
     fs::create_dir(&angora_out_dir).expect("Output directory has existed!");
 
-    let cmd_opt = command::CommandOpt::new("./objdump.track", args, &angora_out_dir, 200, 1);
+    let cmd_opt = command::CommandOpt::new("./cmp.track", args, &angora_out_dir, 200, 1);
 
     let depot = Arc::new(depot::Depot::new(seeds_dir, &angora_out_dir));
 
@@ -271,18 +280,20 @@ mod tests {
         );
 
     let t_start = time::Instant::now();
-    let mut fid = 1;
+    let mut fid = 0;
     let dirpath = Path::new("/home/cju/test");
     let mut count = 0;
     loop {
       let file_name = format!("id-{:08}", fid);
+      println!("file name is {:?}",file_name);
       let fpath = dirpath.join(file_name);
       if !fpath.exists() {
         break;
       }
       trace!("grading {:?}", &fpath);
       let buf = read_from_file(&fpath);
-      executor.run_sync(&buf);
+      let newpath = executor.run_sync(&buf);
+      println!("grading {}",newpath);
       fid = fid + 1;
       count = count + 1;
     }

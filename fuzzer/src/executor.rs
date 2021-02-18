@@ -102,6 +102,31 @@ impl Executor {
         self.forksrv = Some(fs);
     }
 
+    pub fn track_async(&mut self, id: usize, buf: &Vec<u8>) -> std::process::Child {
+        //FIXME
+        //let e = format!("taint_file=output/tmp/cur_input_2 solver_select=1 tid={}",id);
+        let e = format!("taint_file=corpus/angora/tmp/cur_input_2 tid={}",id);
+        info!("Track async {}", &id);
+        self.envs.insert(
+            defs::TAINT_OPTIONS.to_string(),
+            e,
+        );
+
+
+        self.write_test(buf);
+
+        compiler_fence(Ordering::SeqCst);
+        let mut child = self.run_target_async(
+            &self.cmd.track,
+            config::MEM_LIMIT_TRACK,
+            //self.cmd.time_limit *
+            config::TIME_LIMIT_TRACK,
+        );
+        compiler_fence(Ordering::SeqCst);
+        return child;
+    }
+
+
     pub fn track(&mut self, id: usize, buf: &Vec<u8>) {
         //FIXME
         //let e = format!("taint_file=output/tmp/cur_input_2 solver_select=1 tid={}",id);
@@ -219,6 +244,29 @@ impl Executor {
             self.fd.rewind();
         }
     }
+
+    fn run_target_async(
+        &self,
+        target: &(String, Vec<String>),
+        mem_limit: u64,
+        time_limit: u64,
+    ) -> std::process::Child {
+        let mut cmd = Command::new(&target.0);
+        let mut child = cmd
+            .args(&target.1)
+          //  .stdin(Stdio::null())
+            .env_clear()
+            .envs(&self.envs)
+        //    .stdout(Stdio::null())
+            .stderr(Stdio::null())
+         //   .mem_limit(mem_limit.clone())
+            .setsid()
+            .pipe_stdin(self.fd.as_raw_fd(), self.cmd.is_stdin)
+            .spawn()
+            .expect("Could not run target");
+        return child;
+    }
+
 
     fn run_target(
         &self,

@@ -35,7 +35,7 @@ impl Depot {
         num: &AtomicUsize,
         dir: &Path,
     ) -> usize {
-        let id = num.fetch_add(1, Ordering::Relaxed);
+        let mut id = num.load(Ordering::Relaxed);
         trace!(
             "Find {} th new {:?} input",
             id,
@@ -46,6 +46,8 @@ impl Depot {
         f.write_all(buf)
             .expect("Could not write seed buffer to file.");
         f.flush().expect("Could not flush file I/O.");
+        id = id + 1;
+        num.store(id, Ordering::Relaxed);
         id
     }
 

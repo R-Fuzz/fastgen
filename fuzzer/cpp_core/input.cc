@@ -41,7 +41,7 @@ void MutInput::flip(size_t index, size_t bit_index) {
 	value[index] = val^mask;
 }
 
-void MutInput::set(size_t index, uint8_t val)
+void MutInput::set(size_t index, uint64_t val)
 {
 	value[index] = val;
 }
@@ -76,13 +76,13 @@ void MutInput::randomize() {
 	}
 }
 
-uint8_t MutInput::get(size_t i) {
+uint64_t MutInput::get(size_t i) {
 	return value[i];
 }
 
 MutInput::MutInput(size_t size)  {
   r_idx = 0;
-	value = (uint8_t*)malloc(size);
+	value = (uint64_t*)malloc(size*sizeof(uint64_t));
   disables = (uint8_t*)malloc(size);
   memset(disables, 0, size);
 	size_ = size;

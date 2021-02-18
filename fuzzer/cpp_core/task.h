@@ -52,6 +52,9 @@ public:
 	std::vector<std::pair<bool, uint64_t>> input_args;
 	//map the offset to iv
 	std::unordered_map<uint32_t,uint8_t> inputs;
+  
+  //map the offset to it starting offset for shape
+	std::unordered_map<uint32_t,uint32_t> shape;
 	uint32_t const_num;
 };
 
@@ -63,6 +66,7 @@ struct FUT {
 
 	// offset and input value
 	std::vector<std::pair<uint32_t,uint8_t>> inputs;
+	std::unordered_map<uint32_t,uint32_t> shape;
 
   //Context
   SContext *ctx;
@@ -85,6 +89,7 @@ struct FUT {
 				if (gitr == sym_map.end()) {
 					gidx = inputs.size();
 					sym_map[itr.first] = gidx;
+					shape[itr.first] = constraints[i]->shape[itr.first];
 					inputs.push_back(std::make_pair(itr.first,constraints[i]->inputs[itr.first]));
 				} else {
 					gidx = gitr->second;

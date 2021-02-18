@@ -30,7 +30,8 @@ message NodeMeta {
   repeated Mapping map = 1;
   repeated Arg args = 2;
   repeated Input inputs = 3;
-  uint32 const_num = 4;
+  repeated Shape shape = 4;
+  uint32 const_num = 5;
 }
 
 message Mapping {
@@ -47,6 +48,12 @@ message Input {
   uint32 offset = 1;
   uint32 iv = 2; //this should be u8, but protobuf does not support
 }
+
+message Shape {
+  uint32 offset = 1;
+  uint32 start = 2; //this should be u8, but protobuf does not support
+}
+
 
 message AstNode {
   // operator

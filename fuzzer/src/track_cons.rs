@@ -5,9 +5,12 @@ use crate::union_to_ast::*;
 use crate::analyzer::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::sync::{RwLock,Arc};
 use crate::cpp_interface::*;
 use protobuf::Message;
+use crate::util::*;
+use crate::file::*;
 
 //each input offset has a coresspdoing slot
 pub struct BranchDep {
@@ -39,14 +42,15 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
   }
 }
 
-pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, 
+pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_data: &mut VecDeque<[u8;1024]>,
           table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>
           , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>, buf: &Vec<u8>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
   branch_deps.resize_with(tainted_size, || None);
-  //let mut cons_table = HashMap::new();
+  let mut cons_table = HashMap::new();
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
   let mut nbranches = 0;
+  println!("labels length is {}",labels.len());
   for &label in labels {
     let mut count = 1;
     if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5)) {
@@ -56,7 +60,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
     branch_hitcount.write().unwrap().insert((label.3,label.4,label.5), count);
 
     if dedup.read().unwrap().contains(&(label.3,label.4,label.5, label.2)) {
-      continue;
+//      continue;
     }
     dedup.write().unwrap().insert((label.3,label.4,label.5, label.2));
     let mut node = AstNode::new();
@@ -67,7 +71,8 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
     } else if label.6 == 0 {
       get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     } else if label.6 == 2 {
-      unsafe { submit_fmemcmp(label.2, label.3, label.4); }
+      let data = memcmp_data.pop_front().unwrap();
+      unsafe { submit_fmemcmp(data.as_ptr(), label.3, label.4, label.0); }
       continue;
     } else if label.6 == 3 {
      // get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
@@ -110,13 +115,13 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
       analyze_meta(&mut cons, buf);
       cons.set_label(label.1);
       let mut task = SearchTask::new();
-     // cons_table.insert(label.1, cons.clone());
+      cons_table.insert(label.1, cons.clone());
       task.mut_constraints().push(cons);
-      for &l in added.iter() {
-        //let mut c = cons_table[l].clone();
-        //flip_op(c.mut_node());
-        let mut c = Constraint::new();
-        c.set_label(l);
+      for l in added.iter() {
+        let mut c = cons_table[l].clone();
+        flip_op(c.mut_node());
+       // let mut c = Constraint::new();
+       // c.set_label(l);
         task.mut_constraints().push(c);
       }
       task.set_fid(label.0);
@@ -125,6 +130,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
       task.set_order(label.5);
       task.set_direction(label.2);
       //tasks.push(task);
+      println!("before printing task");
+      print_task(&task);
+      println!("after printing task");
 
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
@@ -154,6 +162,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
 
 fn append_meta(cons: &mut Constraint, 
               local_map: &HashMap<u32,u32>, 
+              shape: &HashMap<u32,u32>, 
               input_args: &Vec<(bool,u64)>,
               inputs: &Vec<(u32,u8)>,
               const_num: u32) {
@@ -163,6 +172,12 @@ fn append_meta(cons: &mut Constraint,
     amap.set_k(k);
     amap.set_v(v);
     meta.mut_map().push(amap);
+  }
+  for (&k,&v) in shape.iter() {
+    let mut ashape = Shape::new();
+    ashape.set_offset(k);
+    ashape.set_start(v);
+    meta.mut_shape().push(ashape);
   }
   for arg in input_args {
     let mut aarg = Arg::new();
@@ -183,12 +198,13 @@ fn append_meta(cons: &mut Constraint,
 
 fn analyze_meta(cons: &mut Constraint, buf: &Vec<u8>) {
   let mut local_map = HashMap::new();
+  let mut shape = HashMap::new();
   let mut input_args = Vec::new();
   let mut inputs = Vec::new();
   let mut visited = HashSet::new();
   let mut const_num = 0;
-  map_args(cons.mut_node(), &mut local_map, &mut input_args, &mut inputs, &mut visited, &mut const_num, buf);
-  append_meta(cons, &local_map, &input_args, &inputs, const_num);
+  map_args(cons.mut_node(), &mut local_map, &mut shape, &mut input_args, &mut inputs, &mut visited, &mut const_num, buf);
+  append_meta(cons, &local_map, &shape, &input_args, &inputs, const_num);
 }
 
 
@@ -200,6 +216,7 @@ mod tests {
   use crate::fifo::*;
   use crate::util::*;
   use fastgen_common::config;
+  use std::path::Path;
 #[test]
   fn test_scan() {
     let id = unsafe {
@@ -213,14 +230,16 @@ mod tests {
     let table = unsafe { & *ptr };
 
     unsafe { init_core(true,true); }
-    let labels = read_pipe();
+    let (labels,mut fmemcmpdata) = read_pipe();
     println!("labels len is {}", labels.len());
     let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32,u64)>::new()));
     let branch_hit = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
-    let mut buf: Vec<u8> = Vec::with_capacity(15000);
-    buf.resize(15000, 0);
+    //let mut buf: Vec<u8> = Vec::with_capacity(15000);
+    //buf.resize(15000, 0);
+    let file_name = Path::new("/home/cju/fastgen/tests/call_fn3/input_call/i");
+    let buf = read_from_file(&file_name);
     println!("before scanning\n");
-    scan_nested_tasks(&labels, table, 15000, &dedup, &branch_hit, &buf);
+    scan_nested_tasks(&labels, &mut fmemcmpdata, table, 15000, &dedup, &branch_hit, &buf);
     println!("after scanning\n");
 //    scan_tasks(&labels, &mut tasks, table);
 /*

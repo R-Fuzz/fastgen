@@ -76,7 +76,7 @@ llvm::Value* codegen(llvm::IRBuilder<> &Builder,
 				idx[0] = llvm::ConstantInt::get(Builder.getInt32Ty(),start+k+RET_OFFSET);
 				llvm::Value* tmp = Builder.CreateLoad(Builder.CreateGEP(arg,idx));
 				tmp = Builder.CreateShl(tmp, 8 * k);
-				ret =Builder.CreateOr(ret,tmp);
+				ret =Builder.CreateAdd(ret,tmp);
 			}
 			ret = Builder.CreateTrunc(ret, llvm::Type::getIntNTy(Builder.getContext(),node->bits()));
 			break;

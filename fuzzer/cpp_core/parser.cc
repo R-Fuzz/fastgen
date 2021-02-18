@@ -117,6 +117,9 @@ static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
   for (auto ainput : c->meta().inputs()) {
     cons->inputs.insert({ainput.offset(), ainput.iv()});
   }
+  for (auto ashape : c->meta().shape()) {
+    cons->shape.insert({ashape.offset(), ashape.start()});
+  }
   cons->comparison = c->node().kind(); 
   cons->const_num = c->meta().const_num(); 
 }
@@ -130,8 +133,8 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
   for (auto c : task->constraints()) {
     assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
     std::shared_ptr<Cons> cons;
-    if (cons_cache.find(task->fid()*100000 + c.label()) != cons_cache.end()) {
-    //if (0) {
+   // if (cons_cache.find(task->fid()*100000 + c.label()) != cons_cache.end()) {
+    if (0) {
       cons = cons_cache[task->fid()*100000 + c.label()];
     } else {
       cons = std::make_shared<Cons>();

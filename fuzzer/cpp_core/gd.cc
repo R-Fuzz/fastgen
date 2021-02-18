@@ -34,9 +34,49 @@ static uint32_t flip(uint32_t op) {
 void addResults(MutInput &input, struct FUT* fut) {
   int i = 0;
   std::unordered_map<uint32_t, uint8_t> sol;
+  std::map<uint32_t,uint64_t> ordered;
+  for (auto it : fut->shape) {
+    printf("shape off %u and value %u\n",it.first,it.second); 
+  }
+
+  
   for (auto it : fut->inputs) {
-    sol[it.first] = input.value[i];
+    printf("insert off %u and value %u\n",it.first,input.value[i]); 
+    ordered.insert({it.first, input.value[i]}); 
     i++;
+  }
+  uint32_t length = 0;
+  uint64_t res = 0;
+  uint32_t position = 0;
+  uint32_t start = 0;
+  for (auto it : ordered) {
+    if (fut->shape[it.first] != 0) {
+      start = it.first;
+      res = it.second;
+      length = fut->shape[it.first]-1;
+      position = 1; 
+    }
+    else {
+      res += it.second << (8*position);
+      length--;
+      position++;
+      if (length == 0) {
+        for(int j=0;j<position;j++) {
+          sol[start+j] = res & 0xFF;
+          printf("insert sol off %u and value %u, res is %lu\n",start+j,res & 0xFF, res); 
+          res = res >> 8;
+        }
+        length = 0xFFFFFFFF;
+      }
+    }
+  }
+
+  if (length == 0) {
+    for(int j=0;j<position;j++) {
+      sol[start+j] = res & 0xFF;
+      printf("insert sol off %u and value %u, res is %lu\n",start+j,res & 0xFF, res); 
+      res = res >> 8;
+    }
   }
   if ((*fut->rgd_solutions).size() < 1)
     (*fut->rgd_solutions).push_back(sol);
@@ -140,7 +180,7 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
     }
     cur = (uint64_t)c->fn(fut->scratch_args);
     uint32_t comparison = c->comparison;
-    if (i != 0) comparison = flip(comparison);
+    //if (i != 0) comparison = flip(comparison);
     uint64_t dis = getDistance(comparison,fut->scratch_args[0],fut->scratch_args[1]);
     fut->ctx->distances[i] = dis;
     // *partial_found = true;
@@ -148,14 +188,15 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
       res = sat_inc(res,dis);
     }
   }
-  //printf("%u %u %u %u => %lu\n", input.value[0], input.value[1], input.value[2], input.value[3], res);
+  printf("%u %u %u %u => %lu = %lu + %lu\n", input.value[0], input.value[1], input.value[2], input.value[3], res, fut->ctx->distances[0], fut->ctx->distances[1]);
   return res;
 }
 
 bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *sign, bool* is_linear, uint64_t *val, struct FUT* fut) {
 
   bool found = false;
-  uint8_t orig_val = orig_input.get(index);
+  uint64_t orig_val = orig_input.get(index);
+  printf("partial derivative for index %d\n",index);
   std::vector<uint64_t> plus_distances;
   std::vector<uint64_t> minus_distances;
   orig_input.update(index,true,1);
@@ -209,11 +250,12 @@ bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *s
   }
 
 
-  if (*val == 0) found; 
-
+   if (*val == 0) return found; 
+#if 1
   if (sign) {
     for(int i=0; i< fut->ctx->distances.size(); i++) {
       if (plus_distances[i] !=0  && fut->ctx->orig_distances[i] == 0) {
+        printf("disabled %d\n",index);
         orig_input.setDisable(index);
         *val = 0;
         return found;
@@ -222,12 +264,14 @@ bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *s
   } else {
     for(int i=0; i< fut->ctx->distances.size(); i++) {
       if (minus_distances[i] != 0  && fut->ctx->orig_distances[i] == 0) {
+        printf("disabled %d\n",index);
         orig_input.setDisable(index);
         *val = 0;
         return found;
       }
     }
   }
+#endif
   
 
   return found;
@@ -271,6 +315,7 @@ void guess_descend(struct FUT* fut) {
   input_scratch = input_min;
   uint64_t vsum = fut->ctx->grad.val_sum();
   uint64_t f_last = fut->ctx->f_last;
+  printf("guess_descend\n");
   if (vsum > 0) {
     auto guess_step = f_last / vsum;
     compute_delta_all(input_scratch,fut->ctx->grad,guess_step);
@@ -281,6 +326,7 @@ void guess_descend(struct FUT* fut) {
       input_scratch = input_min;
     } else {
       input_min = input_scratch;
+      fut->ctx->orig_distances = fut->ctx->distances;
       f_last = f_new;
     }
   }
@@ -300,6 +346,7 @@ void alldimension_descend(struct FUT* fut) {
   MutInput &input_scratch = fut->ctx->scratch_input;
   input_scratch = input_min;
   uint64_t f_last = fut->ctx->f_last;
+  printf("all demension descend\n");
   while (true) {
     compute_delta_all(input_scratch, fut->ctx->grad, fut->ctx->step);
     uint64_t f_new = distance(input_scratch, fut);
@@ -316,14 +363,17 @@ void alldimension_descend(struct FUT* fut) {
     } else if (f_new == 0) {
       fut->ctx->solved = true;
       addResults(input_scratch, fut);
+      fut->ctx->orig_distances = fut->ctx->distances;
       fut->ctx->next_state = 3; //continue to descend
       fut->ctx->f_last = f_last;
+      fut->ctx->orig_distances = fut->ctx->distances;
       f_last = f_new;
       input_min = input_scratch;
       break;
     } else {
       input_min = input_scratch;
       f_last = f_new;
+      fut->ctx->orig_distances = fut->ctx->distances;
       fut->ctx->step *= 2;
     }
   }
@@ -335,6 +385,7 @@ void onedimension_descend(struct FUT* fut) {
   input_scratch = input_min;
   size_t step = fut->ctx->step;
   uint64_t f_last = fut->ctx->f_last;
+  printf("one demension descend\n");
   for (int dimensionIdx=fut->ctx->dimensionIdx; dimensionIdx < fut->ctx->grad.len(); dimensionIdx++) {
     if (fut->ctx->grad.get_value()[dimensionIdx].pct < 0.01)
       continue;
@@ -349,12 +400,15 @@ void onedimension_descend(struct FUT* fut) {
       } else if (f_new == 0) {
         f_last = f_new;
         fut->ctx->solved = true;
+        fut->ctx->orig_distances = fut->ctx->distances;
         addResults(input_scratch, fut);
         fut->ctx->next_state = 4; //continue to one dimension descend
         fut->ctx->dimensionIdx = dimensionIdx;
+        fut->ctx->orig_distances = fut->ctx->distances;
         input_min = input_scratch;
         break;
       } else {
+        fut->ctx->orig_distances = fut->ctx->distances;
         input_min = input_scratch;
         f_last = f_new;
         fut->ctx->step *= 2;
@@ -385,12 +439,9 @@ void repick_start_point(struct FUT* fut) {
 void load_input(struct FUT* fut) {
   MutInput &input_min = fut->ctx->min_input;
   input_min.assign(fut->inputs);
-/*
-  input_min.value[3] = 0xD0;
-  input_min.value[2] = 0xCF;
-  input_min.value[0] = 0x32;
-  input_min.value[6] = 0x00;
-*/
+  for(auto p    : fut->inputs) {
+    printf("load input off: %d as %d\n",p.first,p.second);
+  }
   fut->ctx->f_last = distance(input_min,fut);
   fut->ctx->orig_distances = fut->ctx->distances;
   fut->ctx->next_state = 1;
@@ -403,6 +454,7 @@ void load_input(struct FUT* fut) {
 }
 
 bool gd_search(struct FUT* fut) {
+  printf("gd_search\n");
   while (true) {
     switch (fut->ctx->next_state) {
       //reload

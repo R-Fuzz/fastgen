@@ -58,7 +58,7 @@ void save_task(const unsigned char* input, unsigned int input_length) {
   SearchTask task;
   task.ParseFromCodedStream(&s);
   printTask(&task);
-  saveRequest(task, "test.data");
+  saveRequest(task, "regression.data");
 }
 
 bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
@@ -80,22 +80,23 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   fut->rgd_solutions = &rgd_solutions;
   fut->partial_solutions = &partial_solutions;
   fut_opt->rgd_solutions = &rgd_solutions_opt;
-#if 0
-  gd_search(fut_opt);
-  if (rgd_solutions_opt.size() != 0) {
-      s_solvable = true;
-      fut->load_hint(rgd_solutions_opt[0]);
+#if 1
+ // gd_search(fut_opt);
+ // if (rgd_solutions_opt.size() != 0) {
+     s_solvable = true;
+  //    fut->load_hint(rgd_solutions_opt[0]);
       gd_search(fut);
-  } else {
-      s_solvable = false;
-  }
+ // } else {
+  //    s_solvable = false;
+ // }
 #endif
-
+#if 0
   //if (rgd_solutions.size() == 0) {
     bool ret = sendZ3Solver(false, task.get(), z3_solution);
     if (!ret)
       sendZ3Solver(true, task.get(), z3_solution);
  // }
+#endif
 
 
   if (!SAVING_WHOLE) {
@@ -131,7 +132,8 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
 
   } else {
     std::string old_string = std::to_string(task->fid());
-    std::string input_file = "/home/cju/fastgen/test/i";
+    //std::string input_file = "/home/cju/fastgen/tests/mini/input_mini/i";
+    std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
     for (auto rgd_solution : rgd_solutions) {
       generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
     }
@@ -176,29 +178,34 @@ std::string get_current_dir() {
    return current_working_dir;
 }
 
-void handle_fmemcmp(uint64_t data, uint64_t index, uint64_t size) {
+void handle_fmemcmp(uint8_t* data, uint64_t index, uint64_t size, uint32_t tid) {
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
-  std::string input_file = "/home/cju/debug/seed.png";
+  std::string input_file = "/home/cju/fastgen/tests/cmp/input_cmp/i";
+  //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
   for(uint32_t i=0;i<size;i++) {
-    rgd_solution[(uint32_t)index+i] = (uint8_t) (data & 0xff);
-    data = data >> 8 ;
+    //rgd_solution[(uint32_t)index+i] = (uint8_t) (data & 0xff);
+    rgd_solution[(uint32_t)index+i] = data[i];
+    //data = data >> 8 ;
   }
   if (SAVING_WHOLE) {
     generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
   }
   else {
-    RGDSolution sol = {rgd_solution, 0,0,0,0};
+    RGDSolution sol = {rgd_solution, tid,0,0,0};
     solution_queue.enqueue(sol);
   }
 }
 
 extern "C" {
-  void submit_fmemcmp(uint64_t data, uint64_t index, uint64_t size) {
+  void submit_fmemcmp(uint8_t* data, uint64_t index, uint64_t size, uint32_t tid) {
       //RGDSolution sol = {rgd_solution, 0, 0, 0, 0};
-      handle_fmemcmp(data,index,size);
+      handle_fmemcmp(data,index,size, tid);
   }
+
   void submit_task(const unsigned char* input, unsigned int input_length, bool expect_future) {
-    //save_task(input,input_length);
+    static int i =0;
+    if (++i ==4)
+      save_task(input,input_length);
     CodedInputStream s(input,input_length);
     s.SetRecursionLimit(10000);
     std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();

@@ -17,6 +17,7 @@ use crate::util::*;
 //4, A inputs: index->iv
 pub fn map_args(node: &mut AstNode, 
                 local_map: &mut HashMap<u32,u32>, 
+                shape: &mut HashMap<u32,u32>, 
                 input_args: &mut Vec<(bool,u64)>, 
                 inputs: &mut Vec<(u32,u8)>,
                 visited: &mut HashSet<u32>,
@@ -29,7 +30,7 @@ pub fn map_args(node: &mut AstNode,
       continue;
     }
     visited.insert(label);
-    map_args(c,local_map,input_args,inputs,visited, const_num, buf);
+    map_args(c,local_map,shape, input_args,inputs,visited, const_num, buf);
   }
 
   match FromPrimitive::from_u32(node.get_kind()) {
@@ -59,6 +60,12 @@ pub fn map_args(node: &mut AstNode,
           local_map.insert(offset,arg_index as u32);
           input_args.push((true,0));
           inputs.push((offset, buf[offset as usize]));
+          if i == 0 {
+            shape.insert(offset,length);
+          }
+          else {
+            shape.insert(offset,0);
+          }
         } else {
           arg_index = *local_map.get(&offset).unwrap() as usize;
         }
