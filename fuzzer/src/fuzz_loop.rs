@@ -70,7 +70,6 @@ pub fn grading_loop(
       if len != 0 {
         buf.resize(len as usize, 0);
         let new_path = executor.run_sync(&buf);
-        info!("grading result {}",new_path);
         if new_path {
           let mut count = 1;
           if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order)) {
@@ -156,18 +155,14 @@ pub fn fuzz_loop(
 
       let t_start = time::Instant::now();
 
-      println!("start track");
       let mut child = executor.track_async(id, &buf);
 
-      println!("end track");
      // if handle.join().is_err() {
      //   error!("Error happened in listening thread!");
      // }
 
       dispatcher(table, gtasks, gdedup, gbranch_hitcount, &buf_cloned);
       child.wait(); 
-      println!("end dispatch");
-      println!("wait for the child");
 
       let used_t1 = t_start.elapsed();
       let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;

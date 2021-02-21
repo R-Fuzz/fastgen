@@ -21,7 +21,6 @@ pub fn read_pipe() -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<[u8;1024]>) 
   loop {
     let mut buffer = String::new();
     let num_bytes = reader.read_line(&mut buffer).expect("read pipe failed");
-    info!("read pipe with {}",buffer);
     //if not EOF
     if num_bytes !=0  {
       let tokens: Vec<&str> = buffer.trim().split(',').collect();
@@ -36,7 +35,6 @@ pub fn read_pipe() -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<[u8;1024]>) 
       if isgep == 2 {
         let mut buffer = String::new();
         let num_bytes = reader.read_line(&mut buffer).expect("read pipe failed");
-        info!("read pipe with {}",buffer);
         let size = ctx;
         let mut data = [0;1024];
         if num_bytes !=0 {

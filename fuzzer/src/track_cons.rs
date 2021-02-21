@@ -50,7 +50,6 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
   let mut cons_table = HashMap::new();
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
   let mut nbranches = 0;
-  println!("labels length is {}",labels.len());
   for &label in labels {
     let mut count = 1;
     if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5)) {

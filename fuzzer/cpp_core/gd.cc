@@ -35,13 +35,8 @@ void addResults(MutInput &input, struct FUT* fut) {
   int i = 0;
   std::unordered_map<uint32_t, uint8_t> sol;
   std::map<uint32_t,uint64_t> ordered;
-  for (auto it : fut->shape) {
-    printf("shape off %u and value %u\n",it.first,it.second); 
-  }
-
   
   for (auto it : fut->inputs) {
-    printf("insert off %u and value %u\n",it.first,input.value[i]); 
     ordered.insert({it.first, input.value[i]}); 
     i++;
   }
@@ -63,7 +58,6 @@ void addResults(MutInput &input, struct FUT* fut) {
       if (length == 0) {
         for(int j=0;j<position;j++) {
           sol[start+j] = res & 0xFF;
-          printf("insert sol off %u and value %u, res is %lu\n",start+j,res & 0xFF, res); 
           res = res >> 8;
         }
         length = 0xFFFFFFFF;
@@ -74,7 +68,6 @@ void addResults(MutInput &input, struct FUT* fut) {
   if (length == 0) {
     for(int j=0;j<position;j++) {
       sol[start+j] = res & 0xFF;
-      printf("insert sol off %u and value %u, res is %lu\n",start+j,res & 0xFF, res); 
       res = res >> 8;
     }
   }
@@ -188,7 +181,7 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
       res = sat_inc(res,dis);
     }
   }
-  printf("%u %u %u %u => %lu = %lu + %lu\n", input.value[0], input.value[1], input.value[2], input.value[3], res, fut->ctx->distances[0], fut->ctx->distances[1]);
+  //printf("%u %u %u %u => %lu = %lu + %lu\n", input.value[0], input.value[1], input.value[2], input.value[3], res, fut->ctx->distances[0], fut->ctx->distances[1]);
   return res;
 }
 
@@ -196,7 +189,6 @@ bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *s
 
   bool found = false;
   uint64_t orig_val = orig_input.get(index);
-  printf("partial derivative for index %d\n",index);
   std::vector<uint64_t> plus_distances;
   std::vector<uint64_t> minus_distances;
   orig_input.update(index,true,1);
@@ -255,7 +247,6 @@ bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *s
   if (sign) {
     for(int i=0; i< fut->ctx->distances.size(); i++) {
       if (plus_distances[i] !=0  && fut->ctx->orig_distances[i] == 0) {
-        printf("disabled %d\n",index);
         orig_input.setDisable(index);
         *val = 0;
         return found;
@@ -264,7 +255,6 @@ bool partial_derivative(MutInput &orig_input, size_t index, uint64_t f0, bool *s
   } else {
     for(int i=0; i< fut->ctx->distances.size(); i++) {
       if (minus_distances[i] != 0  && fut->ctx->orig_distances[i] == 0) {
-        printf("disabled %d\n",index);
         orig_input.setDisable(index);
         *val = 0;
         return found;
@@ -315,7 +305,6 @@ void guess_descend(struct FUT* fut) {
   input_scratch = input_min;
   uint64_t vsum = fut->ctx->grad.val_sum();
   uint64_t f_last = fut->ctx->f_last;
-  printf("guess_descend\n");
   if (vsum > 0) {
     auto guess_step = f_last / vsum;
     compute_delta_all(input_scratch,fut->ctx->grad,guess_step);
@@ -346,7 +335,6 @@ void alldimension_descend(struct FUT* fut) {
   MutInput &input_scratch = fut->ctx->scratch_input;
   input_scratch = input_min;
   uint64_t f_last = fut->ctx->f_last;
-  printf("all demension descend\n");
   while (true) {
     compute_delta_all(input_scratch, fut->ctx->grad, fut->ctx->step);
     uint64_t f_new = distance(input_scratch, fut);
@@ -385,7 +373,6 @@ void onedimension_descend(struct FUT* fut) {
   input_scratch = input_min;
   size_t step = fut->ctx->step;
   uint64_t f_last = fut->ctx->f_last;
-  printf("one demension descend\n");
   for (int dimensionIdx=fut->ctx->dimensionIdx; dimensionIdx < fut->ctx->grad.len(); dimensionIdx++) {
     if (fut->ctx->grad.get_value()[dimensionIdx].pct < 0.01)
       continue;
@@ -439,9 +426,6 @@ void repick_start_point(struct FUT* fut) {
 void load_input(struct FUT* fut) {
   MutInput &input_min = fut->ctx->min_input;
   input_min.assign(fut->inputs);
-  for(auto p    : fut->inputs) {
-    printf("load input off: %d as %d\n",p.first,p.second);
-  }
   fut->ctx->f_last = distance(input_min,fut);
   fut->ctx->orig_distances = fut->ctx->distances;
   fut->ctx->next_state = 1;
@@ -454,7 +438,6 @@ void load_input(struct FUT* fut) {
 }
 
 bool gd_search(struct FUT* fut) {
-  printf("gd_search\n");
   while (true) {
     switch (fut->ctx->next_state) {
       //reload

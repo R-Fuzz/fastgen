@@ -765,14 +765,11 @@ static dfsan_label rejectBranch(dfsan_label label) {
 static bool get_fmemcmp(dfsan_label label, u64* index, u64* size, u8* data) {
   dfsan_label_info *info = get_label_info(label); 
   //we only support const == Load
-  printf("l1 is %u and l2 is %u\n",info->l1,info->l2);
   if (info->l1 >= CONST_OFFSET || info->l2 < CONST_OFFSET)
     return false; 
   dfsan_label_info *info2 = get_label_info(info->l2);
-  printf("l1 is %u and l2 is %u 1\n",info->l1,info->l2);
   //if (info2->op != Load)
    // return false;
-  printf("l1 is %u and l2 is %u 2\n",info->l1,info->l2);
   *index = get_label_info(info2->l1)->op1;
   *size = info->size;
   if (*size<=1024)
@@ -791,7 +788,6 @@ static void __solve_cond(dfsan_label label,
       return;
   }
 
-  printf("__solve_cond %d and solver_select is %d and r is %u\n",++count, __solver_select, r);
   if (__solver_select != 1) {
     u32 reason  = rejectBranch(label);
     //printf("reject branch reason is %d\n", reason);
@@ -805,7 +801,6 @@ static void __solve_cond(dfsan_label label,
           get_fmemcmp(reason, &index, &size, data);
           if (size <=  1024) {
           //printf("get_fmemp index: %lu, size: %lu, data: %lu\n",index,size,data);
-            printf("get fmemcp index %lu, size %lu, data: %u %u %u %u %u %u %u %u %u\n", index, size, data[0],data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8]);
             sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, 0, 0, index, size, 0);
             write(mypipe,content,strlen(content));
             fsync(mypipe);
@@ -933,7 +928,6 @@ __unfold_branch_fn(u32 r) {}
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
 __taint_trace_cond(dfsan_label label, u8 r) {
   static int count = 0;
-  printf("trace cond label is %u, %d\n",label,++count);
   int order = 0;
   int skip = 0;
   void *addr = __builtin_return_address(0);
