@@ -819,7 +819,6 @@ static void __solve_cond(dfsan_label label,
     //printLabel(label);
     serialize(label);
     sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 0\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order);
-    printf("write pipe and solver_select is %d and r is %u\n",++count, __solver_select, r);
     write(mypipe,content,strlen(content));
           fsync(mypipe);
     get_label_info(label)->flags |= B_FLIPPED;

@@ -203,9 +203,6 @@ extern "C" {
   }
 
   void submit_task(const unsigned char* input, unsigned int input_length, bool expect_future) {
-    static int i =0;
-    if (++i ==4)
-      save_task(input,input_length);
     CodedInputStream s(input,input_length);
     s.SetRecursionLimit(10000);
     std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();

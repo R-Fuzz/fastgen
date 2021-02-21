@@ -128,10 +128,6 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       task.set_ctx(label.4);
       task.set_order(label.5);
       task.set_direction(label.2);
-      //tasks.push(task);
-      println!("before printing task");
-      print_task(&task);
-      println!("after printing task");
 
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
