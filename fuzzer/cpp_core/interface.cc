@@ -81,14 +81,14 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   fut->partial_solutions = &partial_solutions;
   fut_opt->rgd_solutions = &rgd_solutions_opt;
 #if 1
- // gd_search(fut_opt);
- // if (rgd_solutions_opt.size() != 0) {
+  gd_search(fut_opt);
+  if (rgd_solutions_opt.size() != 0) {
      s_solvable = true;
-  //    fut->load_hint(rgd_solutions_opt[0]);
+      fut->load_hint(rgd_solutions_opt[0]);
       gd_search(fut);
- // } else {
-  //    s_solvable = false;
- // }
+  } else {
+      s_solvable = false;
+  }
 #endif
 #if 0
   //if (rgd_solutions.size() == 0) {
