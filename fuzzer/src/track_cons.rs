@@ -57,7 +57,8 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       count += 1;
     }
     branch_hitcount.write().unwrap().insert((label.3,label.4,label.5), count);
-
+    //we have to continue here, the underlying task lookup with check the redudant as well. If it is redudant, the task will be loaded
+    //without inserting caching 
     if dedup.read().unwrap().contains(&(label.3,label.4,label.5, label.2)) {
       continue;
     }
