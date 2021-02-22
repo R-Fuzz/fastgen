@@ -47,7 +47,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
           , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>, buf: &Vec<u8>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
   branch_deps.resize_with(tainted_size, || None);
-  let mut cons_table = HashMap::new();
+  //let mut cons_table = HashMap::new();
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
   let mut nbranches = 0;
   for &label in labels {
@@ -59,7 +59,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     branch_hitcount.write().unwrap().insert((label.3,label.4,label.5), count);
 
     if dedup.read().unwrap().contains(&(label.3,label.4,label.5, label.2)) {
-//      continue;
+      continue;
     }
     dedup.write().unwrap().insert((label.3,label.4,label.5, label.2));
     let mut node = AstNode::new();
@@ -114,13 +114,13 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       analyze_meta(&mut cons, buf);
       cons.set_label(label.1);
       let mut task = SearchTask::new();
-      cons_table.insert(label.1, cons.clone());
+      //cons_table.insert(label.1, cons.clone());
       task.mut_constraints().push(cons);
-      for l in added.iter() {
-        let mut c = cons_table[l].clone();
-        flip_op(c.mut_node());
-       // let mut c = Constraint::new();
-       // c.set_label(l);
+      for &l in added.iter() {
+       // let mut c = cons_table[l].clone();
+       // flip_op(c.mut_node());
+        let mut c = Constraint::new();
+        c.set_label(l);
         task.mut_constraints().push(c);
       }
       task.set_fid(label.0);

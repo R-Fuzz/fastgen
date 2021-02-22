@@ -133,8 +133,8 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
   for (auto c : task->constraints()) {
     assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
     std::shared_ptr<Cons> cons;
-   // if (cons_cache.find(task->fid()*100000 + c.label()) != cons_cache.end()) {
-    if (0) {
+    if (cons_cache.find(task->fid()*100000 + c.label()) != cons_cache.end()) {
+    //if (0) {
       cons = cons_cache[task->fid()*100000 + c.label()];
     } else {
       cons = std::make_shared<Cons>();
