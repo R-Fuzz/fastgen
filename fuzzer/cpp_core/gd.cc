@@ -33,15 +33,13 @@ static uint32_t flip(uint32_t op) {
 
 void addResults(MutInput &input, struct FUT* fut) {
   int i = 0;
-  std::unordered_map<uint32_t, uint8_t> soll;
+  std::unordered_map<uint32_t, uint8_t> sol;
   std::map<uint32_t,uint64_t> ordered;
   for (auto it : fut->inputs) {
     ordered.insert({it.first, input.value[i]});
-    soll[it.first] = input.value[i];
     i++;
   }
 
-  std::unordered_map<uint32_t, uint8_t> sol;
   std::vector<std::pair<uint32_t,uint64_t>> ordered1;
   for(auto it = ordered.begin(); it != ordered.end(); it++)
     ordered1.push_back(std::make_pair(it->first,it->second));
@@ -55,7 +53,7 @@ void addResults(MutInput &input, struct FUT* fut) {
       res = ordered1[i].second;
       length = fut->shape[ordered1[i].first];
       for(int k=1;k<length;k++) {
-        res += (ordered1[i+k].second) << (8*i) ;
+        res += (ordered1[i+k].second) << (8*k) ;
       }
       for(int j=0;j<length;j++) {
         sol[start+j] = res & 0xFF;
