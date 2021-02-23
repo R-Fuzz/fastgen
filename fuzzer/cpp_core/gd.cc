@@ -33,42 +33,37 @@ static uint32_t flip(uint32_t op) {
 
 void addResults(MutInput &input, struct FUT* fut) {
   int i = 0;
-  std::unordered_map<uint32_t, uint8_t> sol;
+  std::unordered_map<uint32_t, uint8_t> soll;
   std::map<uint32_t,uint64_t> ordered;
-  
   for (auto it : fut->inputs) {
-    ordered.insert({it.first, input.value[i]}); 
+    ordered.insert({it.first, input.value[i]});
+    soll[it.first] = input.value[i];
     i++;
   }
-  uint32_t length = 0;
-  uint64_t res = 0;
-  uint32_t position = 0;
-  uint32_t start = 0;
-  for (auto it : ordered) {
-    if (fut->shape[it.first] != 0) {
-      start = it.first;
-      res = it.second;
-      length = fut->shape[it.first]-1;
-      position = 1; 
-    }
-    else {
-      res += it.second << (8*position);
-      length--;
-      position++;
-      if (length == 0) {
-        for(int j=0;j<position;j++) {
-          sol[start+j] = res & 0xFF;
-          res = res >> 8;
-        }
-        length = 0xFFFFFFFF;
-      }
-    }
-  }
 
-  if (length == 0) {
-    for(int j=0;j<position;j++) {
-      sol[start+j] = res & 0xFF;
-      res = res >> 8;
+  std::unordered_map<uint32_t, uint8_t> sol;
+  std::vector<std::pair<uint32_t,uint64_t>> ordered1;
+  for(auto it = ordered.begin(); it != ordered.end(); it++)
+    ordered1.push_back(std::make_pair(it->first,it->second));
+  uint32_t length = 1;
+  uint64_t res = 0;
+  uint32_t start = 0;
+  for (int i=0; i<ordered1.size(); ) {
+
+    if (fut->shape[ordered1[i].first] != 0) {
+      start = ordered1[i].first;
+      res = ordered1[i].second;
+      length = fut->shape[ordered1[i].first];
+      for(int k=1;k<length;k++) {
+        res += (ordered1[i+k].second) << (8*i) ;
+      }
+      for(int j=0;j<length;j++) {
+        sol[start+j] = res & 0xFF;
+        res = res >> 8;
+      }
+      i += length;
+    } else {
+      i++;
     }
   }
   if ((*fut->rgd_solutions).size() < 1)

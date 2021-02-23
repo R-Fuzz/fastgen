@@ -232,7 +232,7 @@ mod tests {
     let branch_hit = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
     //let mut buf: Vec<u8> = Vec::with_capacity(15000);
     //buf.resize(15000, 0);
-    let file_name = Path::new("/home/cju/fastgen/tests/call_fn3/input_call/i");
+    let file_name = Path::new("/home/cju/fastgen/test/input/small_exec.elf");
     let buf = read_from_file(&file_name);
     println!("before scanning\n");
     scan_nested_tasks(&labels, &mut fmemcmpdata, table, 15000, &dedup, &branch_hit, &buf);

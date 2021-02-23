@@ -132,8 +132,8 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
 
   } else {
     std::string old_string = std::to_string(task->fid());
-    //std::string input_file = "/home/cju/fastgen/tests/mini/input_mini/i";
-    std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+    std::string input_file = "/home/cju/fastgen/test/input/small_exec.elf";
+    //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
     for (auto rgd_solution : rgd_solutions) {
       generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
     }
@@ -180,7 +180,7 @@ std::string get_current_dir() {
 
 void handle_fmemcmp(uint8_t* data, uint64_t index, uint64_t size, uint32_t tid) {
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
-  std::string input_file = "/home/cju/fastgen/tests/cmp/input_cmp/i";
+  std::string input_file = "/home/cju/fastgen/test/input/small_exec.elf";
   //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
   for(uint32_t i=0;i<size;i++) {
     //rgd_solution[(uint32_t)index+i] = (uint8_t) (data & 0xff);
