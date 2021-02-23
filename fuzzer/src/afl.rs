@@ -7,8 +7,116 @@ use super::*;
 use rand::{self, thread_rng, distributions::Uniform, Rng, RngCore};
 use fastgen_common::{config};
 use crate::executor::Executor;
+use crate::interesting_val::*;
 
 static IDX_TO_SIZE: [usize; 4] = [1, 2, 4, 8];
+
+pub fn set_val_in_buf(buf: &mut Vec<u8>, off: usize, size: usize, val: u64) {
+    match size {
+        1 => {
+            let v = &mut buf[off];
+            *v = val as u8;
+        },
+        2 => {
+            let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u16) };
+            *v = val as u16;
+        },
+        4 => {
+            let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u32) };
+            *v = val as u32;
+        },
+        8 => {
+            let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u64) };
+            *v = val as u64;
+        },
+        _ => {
+            panic!("strange arg off and size: {}, {}", off, size);
+        },
+    };
+}
+
+pub fn update_val_in_buf(
+    buf: &mut Vec<u8>,
+    sign: bool,
+    off: usize,
+    size: usize,
+    direction: bool,
+    delta: u64,
+) {
+    match size {
+        1 => {
+            if sign {
+                let v = buf[off] as i8;
+                buf[off] = if direction {
+                    v.wrapping_add(delta as i8) as u8
+                } else {
+                    v.wrapping_sub(delta as i8) as u8
+                };
+            } else {
+                let v = &mut buf[off];
+                if direction {
+                    *v = v.wrapping_add(delta as u8);
+                } else {
+                    *v = v.wrapping_sub(delta as u8);
+                }
+            }
+        },
+        2 => {
+            if sign {
+                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut i16) };
+                if direction {
+                    *v = v.wrapping_add(delta as i16);
+                } else {
+                    *v = v.wrapping_sub(delta as i16);
+                }
+            } else {
+                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u16) };
+                if direction {
+                    *v = v.wrapping_add(delta as u16);
+                } else {
+                    *v = v.wrapping_sub(delta as u16);
+                }
+            }
+        },
+      4 => {
+            if sign {
+                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut i32) };
+                if direction {
+                    *v = v.wrapping_add(delta as i32);
+                } else {
+                    *v = v.wrapping_sub(delta as i32);
+                }
+            } else {
+                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u32) };
+                if direction {
+                    *v = v.wrapping_add(delta as u32);
+                } else {
+                    *v = v.wrapping_sub(delta as u32);
+                }
+            }
+        },
+        8 => {
+            if sign {
+                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut i64) };
+                if direction {
+                    *v = v.wrapping_add(delta as i64);
+                } else {
+                    *v = v.wrapping_sub(delta as i64);
+                }
+            } else {
+                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u64) };
+                if direction {
+                    *v = v.wrapping_add(delta as u64);
+                } else {
+                    *v = v.wrapping_sub(delta as u64);
+                }
+            }
+        },
+        _ => {
+            panic!("strange arg off and size: {}, {}", off, size);
+        },
+    };
+}
 
 
 pub fn run_afl_mutator(executor: &mut Executor, buf: &mut Vec<u8>) {
@@ -35,7 +143,7 @@ pub fn run_afl_mutator(executor: &mut Executor, buf: &mut Vec<u8>) {
     6
   };
 */
-  let max_choice = 5;
+  let max_choice = 8;
 
   let choice_range = Uniform::new(0, max_choice);
 
@@ -109,7 +217,7 @@ fn havoc_flip(buf: &mut Vec<u8>, max_stacking: usize, choice_range: Uniform<u32>
         let bit_idx: u32 = rng.gen_range(0, 8);
         buf[byte_idx as usize] ^= 128 >> bit_idx;
       },
-/*
+
         2 | 3 => {
           //add or sub
           let n: u32 = rng.gen_range(0, 3);
@@ -118,7 +226,7 @@ fn havoc_flip(buf: &mut Vec<u8>, max_stacking: usize, choice_range: Uniform<u32>
             let byte_idx: u32 = rng.gen_range(0, byte_len - size as u32);
             let v: u32 = rng.gen_range(0, config::MUTATE_ARITH_MAX);
             let direction: bool = rng.gen();
-            mut_input::update_val_in_buf(
+            update_val_in_buf(
                 buf,
                 false,
                 byte_idx as usize,
@@ -136,17 +244,17 @@ fn havoc_flip(buf: &mut Vec<u8>, max_stacking: usize, choice_range: Uniform<u32>
             let byte_idx: u32 = rng.gen_range(0, byte_len - size as u32);
             let vals = get_interesting_bytes(size);
             let wh = rng.gen_range(0, vals.len() as u32);
-            mut_input::set_val_in_buf(buf, byte_idx as usize, size, vals[wh as usize]);
+            set_val_in_buf(buf, byte_idx as usize, size, vals[wh as usize]);
           }
         },
-*/
-        2 => {
+
+        5 => {
           // random byte
           let byte_idx: u32 = rng.gen_range(0, byte_len);
           let val: u8 = rng.gen();
           buf[byte_idx as usize] = val;
         },
-        3 => {
+        6 => {
           // delete bytes
           let remove_len: u32 = rng.gen_range(1, 5);
           if byte_len > remove_len {
@@ -158,7 +266,7 @@ fn havoc_flip(buf: &mut Vec<u8>, max_stacking: usize, choice_range: Uniform<u32>
             }
           }
         },
-        4 => {
+        7 => {
           // insert bytes
           let add_len = rng.gen_range(1, 5);
           let new_len = byte_len + add_len;

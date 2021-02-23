@@ -19,3 +19,4 @@ pub const USE_CODECACHE: bool = true;
 pub const MAX_SPLICE_TIMES: usize = 45;
 pub const MAX_HAVOC_FLIP_TIMES: usize = 45;
 pub const RANDOM_LEN_NUM: usize = 30;
+pub const MUTATE_ARITH_MAX: u32 = 30;
