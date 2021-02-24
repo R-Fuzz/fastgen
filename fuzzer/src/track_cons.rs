@@ -11,13 +11,13 @@ use crate::cpp_interface::*;
 use protobuf::Message;
 use crate::util::*;
 use crate::file::*;
+use crate::union_find::*;
 
 //each input offset has a coresspdoing slot
 pub struct BranchDep {
   //the dependent expr labels associated with this input
   pub expr_labels: HashSet<u32>,
   // the dependent input offsets associated with this input offset
-  pub input_deps: HashSet<u32>, 
 }
 
 //label 0: fid  label 1: label  label 2: direction/result label 3: addr, label4: ctx, label5, order label6: is gep
@@ -46,6 +46,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
           table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>
           , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>, buf: &Vec<u8>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
+  let mut uf = UnionFind::new(tainted_size);
   branch_deps.resize_with(tainted_size, || None);
   //let mut cons_table = HashMap::new();
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
@@ -81,26 +82,19 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
     if inputs.is_empty() { warn!("Skip constraint!"); continue; }
 
-    //Step 1: collect additional input deps
-    let mut work_list = Vec::new();
+    let mut init = false;
+    //build union table
+    let mut v0 = 0;
     for &v in inputs.iter() {
-      work_list.push(v);
-    }
-    while !work_list.is_empty() {
-      let off = work_list.pop().unwrap();
-      let deps_opt = &branch_deps[off as usize];
-      if let Some(deps) = deps_opt {
-        for &v in deps.input_deps.iter() {
-          if inputs.insert(v) {
-            work_list.push(v);
-          }
-        }
+      if !init {
+        v0 = v;
+        init = true;
       }
+      uf.union(v as usize, v0 as usize);
     }
-
       //step 2: add constraints
       let mut added = HashSet::new();
-      for &off in inputs.iter() {
+      for off in uf.get_set(v0 as usize) {
         let deps_opt = &branch_deps[off as usize];
         if let Some(deps) = deps_opt {
           for &l in deps.expr_labels.iter() {
@@ -144,13 +138,10 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       }
       if is_empty {
         branch_deps[off as usize] =
-            Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()});
+            Some(BranchDep {expr_labels: HashSet::new()});
       }
       let deps_opt = &mut branch_deps[off as usize];
       let deps = deps_opt.as_mut().unwrap(); 
-      for &off1 in inputs.iter() {
-        deps.input_deps.insert(off1);
-      }
       deps.expr_labels.insert(label.1);
     }
   }
