@@ -57,6 +57,7 @@ pub fn fuzz_main(
       command_option.specify(0),
       global_branches.clone(),
       depot.clone(),
+      0,
       );
 
   sync::sync_depot(&mut executor, running.clone(), &depot.dirs.seeds_dir);
@@ -90,6 +91,18 @@ pub fn fuzz_main(
         });
     handlers.push(handle);
   }
+
+  { 
+    let r = running.clone();
+    let d = depot.clone();
+    let b = global_branches.clone();
+    let cmd = command_option.specify(3);
+    let bg = branch_gencount.clone();
+    let handle = thread::spawn(move || {
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg);
+        });
+    handlers.push(handle);
+  } 
 
   main_thread_sync(
     out_dir,

@@ -13,8 +13,12 @@ pub fn make_pipe() {
   }
 }
 
-pub fn read_pipe() -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<[u8;1024]>) {
-  let f = File::open("/tmp/wp").expect("open pipe failed");
+pub fn read_pipe(pipeid: usize) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<[u8;1024]>) {
+  let f = match pipeid {
+    2 => File::open("/tmp/wp2").expect("open pipe failed"),
+    3 => File::open("/tmp/wp3").expect("open pipe failed"),
+    _ => File::open("/tmp/wp2").expect("open pipe failed"),
+  };
   let mut reader = BufReader::new(f);
   let mut ret = Vec::new();
   let mut retdata = VecDeque::new();

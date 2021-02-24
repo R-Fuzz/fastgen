@@ -131,7 +131,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       task.set_direction(label.2);
 
       let task_ser = task.write_to_bytes().unwrap();
-      unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
+      unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
 
     //step 3: nested branch
     for &off in inputs.iter() {

@@ -84,6 +84,8 @@ u32 __session_id;
 static u32 __current_index = 0;
 static u32 __solver_select = 0;
 static u32 __tid = 0;
+static int __shmid = 0;
+static u32 __pipeid = 0;
 int mypipe;
 void* shmp;
 
@@ -1154,6 +1156,8 @@ static void InitializeSolver() {
   __session_id = flags().session_id;
   __solver_select = flags().solver_select;
   __tid = flags().tid;
+  __shmid = flags().shmid;
+  __pipeid = flags().pipeid;
 }
 
 static void InitializeTaintFile() {
@@ -1273,26 +1277,34 @@ static void dfsan_fini() {
 
 static void dfsan_init(int argc, char **argv, char **envp) {
   InitializeFlags();
+  InitializeSolver();
 
   InitializePlatformEarly();
   MmapFixedNoReserve(ShadowAddr(), UnionTableAddr() - ShadowAddr());
   //printf("unsued addr %p and shadow addr %p and uniton addr %p\n", UnusedAddr(),ShadowAddr(),UnionTableAddr());
   //printf("mapping %lx bytes\n",UnusedAddr() - ShadowAddr());
   __dfsan_label_info = (dfsan_label_info *)UnionTableAddr();
-  int shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
+  //int shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
   //  void* ret = shmat(shmid, (void *)ShadowAddr(), 0); 
-  if (shmid == -1) {
+  //if (shmid == -1) {
     //perror("Shared mmoery");
-  } else {
-    shmp = shmat(shmid, (void *)UnionTableAddr(), 0);
+  //} else {
+    if (__shmid == 0)
+      __shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
+    shmp = shmat(__shmid, (void *)UnionTableAddr(), 0);
     if (shmp == (void*) -1) {
       //perror("error shared memory attach");
     }  else {
       //printf("address mappped to shared mem\n");
     }
-  }
+  //}
   //mypipe = open("/tmp/wp", O_WRONLY | O_NONBLOCK);
-  mypipe = open("/tmp/wp", O_WRONLY);
+  if (__pipeid == 2)
+    mypipe = open("/tmp/wp2", O_WRONLY);
+  else if (__pipeid == 3)
+    mypipe = open("/tmp/wp3", O_WRONLY);
+  else
+    mypipe = open("/tmp/wp", O_WRONLY);
   //else {
   //   printf("segment containts: \n\%s\n", shmp->buf);
   //}
@@ -1309,7 +1321,6 @@ static void dfsan_init(int argc, char **argv, char **envp) {
 
   InitializeTaintFile();
 
-  InitializeSolver();
 
   // Register the fini callback to run when the program terminates successfully
   // or it is killed by the runtime.

@@ -23,6 +23,7 @@ use crate::rgd::*;
 use std::collections::HashSet;
 use std::collections::HashMap;
 //use crate::util::*;
+use wait_timeout::ChildExt;
 
 pub fn grading_loop(
     running: Arc<AtomicBool>,
@@ -35,6 +36,7 @@ pub fn grading_loop(
       cmd_opt,
       global_branches,
       depot.clone(),
+      0,
       );
 
   //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
@@ -96,19 +98,10 @@ pub fn grading_loop(
 pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>,
     dedup: Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>,
     branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>,
-    buf: &Vec<u8>) {
+    buf: &Vec<u8>, id: usize) {
 
-  let (labels,mut memcmp_data) = read_pipe();
+  let (labels,mut memcmp_data) = read_pipe(id);
   scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &dedup, &branch_hitcount, buf);
-/*
-  for task in tasks {
-    //println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
-    //print_task(&task);
-    let task_ser = task.write_to_bytes().unwrap();
-    global_tasks.write().unwrap().push(task);
-    unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
-  }
-*/
 }
 
 pub fn fuzz_loop(
@@ -118,20 +111,37 @@ pub fn fuzz_loop(
     global_branches: Arc<GlobalBranches>,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32),u32>>>,
     ) {
-  let mut executor = Executor::new(
-      cmd_opt,
-      global_branches,
-      depot.clone(),
-      );
-  let mut id: usize = 0;
 
-  let shmid = unsafe {
+  let mut id: usize = 0;
+  let executor_id = cmd_opt.id;
+
+  let shmid = match executor_id { 
+    2 => unsafe {
     libc::shmget(
         0x1234,
         0xc00000000,
         0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
         )
+    },
+    3 => unsafe {
+    libc::shmget(
+        0x2468,
+        0xc00000000,
+        0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+        )
+    },
+    _ => 0,
   };
+
+  info!("start fuzz loop with shmid {}",shmid);
+
+  let mut executor = Executor::new(
+      cmd_opt,
+      global_branches,
+      depot.clone(),
+      shmid,
+      );
+
   let ptr = unsafe { libc::shmat(shmid, std::ptr::null(), 0) as *mut UnionTable};
   let table = unsafe { & *ptr };
   let global_tasks = Arc::new(RwLock::new(Vec::<SearchTask>::new()));
@@ -149,28 +159,24 @@ pub fn fuzz_loop(
       let gtasks = global_tasks.clone();
       let gdedup = dedup.clone();
       let gbranch_hitcount = branch_hitcount.clone();
-     // let handle = thread::spawn(move || {
 
-      //    });
+      let handle = thread::spawn(move || {
+          dispatcher(table, gtasks, gdedup, gbranch_hitcount, &buf_cloned, executor_id);
+      });
 
       let t_start = time::Instant::now();
 
-      let mut child = executor.track_async(id, &buf);
+      executor.track(id, &buf);
 
-     // if handle.join().is_err() {
-     //   error!("Error happened in listening thread!");
-     // }
-
-      dispatcher(table, gtasks, gdedup, gbranch_hitcount, &buf_cloned);
-      child.wait(); 
+      if handle.join().is_err() {
+        error!("Error happened in listening thread!");
+      }
 
       let used_t1 = t_start.elapsed();
       let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
-      let mut buf = depot.get_input_buf(depot.next_random());
-      run_afl_mutator(&mut executor,&mut buf);
       continue;
       no_more_seeds = no_more_seeds + 1;
       if no_more_seeds > 100 {
