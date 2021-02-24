@@ -226,7 +226,7 @@ mod tests {
     let table = unsafe { & *ptr };
 
     unsafe { init_core(true,true); }
-    let (labels,mut fmemcmpdata) = read_pipe();
+    let (labels,mut fmemcmpdata) = read_pipe(2);
     println!("labels len is {}", labels.len());
     let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32,u64)>::new()));
     let branch_hit = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));

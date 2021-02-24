@@ -177,6 +177,8 @@ pub fn fuzz_loop(
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
+      let mut buf = depot.get_input_buf(depot.next_random());
+      run_afl_mutator(&mut executor,&mut buf);
       continue;
       no_more_seeds = no_more_seeds + 1;
       if no_more_seeds > 100 {
@@ -278,7 +280,7 @@ mod tests {
         cmd_opt.specify(1),
         global_branches.clone(),
         depot.clone(),
-        );
+        0);
 
     let t_start = time::Instant::now();
     let mut fid = 0;

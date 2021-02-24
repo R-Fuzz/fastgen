@@ -301,8 +301,8 @@ bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint
     //printExpression(req);
     try {
        auto itr = session_cache.find(task->fid() * 100000 + task->constraints(i).label()); 
-       //if (itr != session_cache.end()) {
-       if (0) {
+       if (itr != session_cache.end()) {
+       //if (0) {
         z3::expr z3expr = itr->second; 
         if (i != 0)
         g_solver->add(!z3expr);

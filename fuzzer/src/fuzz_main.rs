@@ -91,7 +91,7 @@ pub fn fuzz_main(
         });
     handlers.push(handle);
   }
-
+/*
   { 
     let r = running.clone();
     let d = depot.clone();
@@ -103,7 +103,7 @@ pub fn fuzz_main(
         });
     handlers.push(handle);
   } 
-
+*/
   main_thread_sync(
     out_dir,
     sync_afl,

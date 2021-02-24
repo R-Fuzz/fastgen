@@ -69,7 +69,7 @@ mod tests {
 
   #[test]
   fn test_read_pipe() {
-    let (v,w) = read_pipe();
+    let (v,w) = read_pipe(2);
     println!("{:?}", v);
   }
 
