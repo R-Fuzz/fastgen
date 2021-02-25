@@ -12,6 +12,7 @@ use protobuf::Message;
 use crate::util::*;
 use crate::file::*;
 use crate::union_find::*;
+use protobuf::CodedInputStream;
 
 //each input offset has a coresspdoing slot
 pub struct BranchDep {
@@ -44,7 +45,7 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
 
 pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_data: &mut VecDeque<[u8;1024]>,
           table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>
-          , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>, buf: &Vec<u8>) {
+          , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>, global_tasks: &Arc<RwLock<Vec<SearchTask>>>, buf: &Vec<u8>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
   let mut uf = UnionFind::new(tainted_size);
   branch_deps.resize_with(tainted_size, || None);
@@ -66,6 +67,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     dedup.write().unwrap().insert((label.3,label.4,label.5, label.2));
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
+    //let mut cons_reverse = Constraint::new();
     let mut inputs = HashSet::new();
     if label.6 == 1 {
       get_gep_constraint(label.1, label.2, &mut node, table, &mut inputs);
@@ -106,14 +108,22 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       //we dont solve add_cons
       // add constraints
       cons.set_node(node);
+
+
       analyze_meta(&mut cons, buf);
       cons.set_label(label.1);
+/*
+      let bytes = cons.write_to_bytes().unwrap();
+      let mut stream = CodedInputStream::from_bytes(&bytes);
+      stream.set_recursion_limit(1000);
+      cons_reverse.merge_from(&mut stream).expect("merge failed");
+*/
       let mut task = SearchTask::new();
       //cons_table.insert(label.1, cons.clone());
       task.mut_constraints().push(cons);
       for &l in added.iter() {
-       // let mut c = cons_table[l].clone();
-       // flip_op(c.mut_node());
+        //let mut c = cons_table[l].clone();
+        //flip_op(c.mut_node());
         let mut c = Constraint::new();
         c.set_label(l);
         task.mut_constraints().push(c);
@@ -123,10 +133,36 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       task.set_ctx(label.4);
       task.set_order(label.5);
       task.set_direction(label.2);
+      
 
       let task_ser = task.write_to_bytes().unwrap();
       unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
+      global_tasks.write().unwrap().push(task);
+/*
+      if label.2 <= 1 {
+        let mut task_reverse = SearchTask::new();
+        //cons_table.insert(label.1, cons.clone());
+        flip_op(cons_reverse.mut_node());
+        task_reverse.mut_constraints().push(cons_reverse);
+        for &l in added.iter() {
+          // let mut c = cons_table[l].clone();
+          // flip_op(c.mut_node());
+          let mut c = Constraint::new();
+          c.set_label(l);
+          task_reverse.mut_constraints().push(c);
+        }
+        task_reverse.set_fid(label.0);
+        task_reverse.set_addr(label.3);
+        task_reverse.set_ctx(label.4);
+        task_reverse.set_order(label.5);
+        task_reverse.set_direction(1 - label.2);
 
+
+        let task_ser = task_reverse.write_to_bytes().unwrap();
+        unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
+        global_tasks.write().unwrap().push(task_reverse);
+      }
+*/
     //step 3: nested branch
     for &off in inputs.iter() {
       let mut is_empty = false;

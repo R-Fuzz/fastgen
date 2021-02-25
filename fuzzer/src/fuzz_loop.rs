@@ -101,7 +101,7 @@ pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>
     buf: &Vec<u8>, id: usize) {
 
   let (labels,mut memcmp_data) = read_pipe(id);
-  scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &dedup, &branch_hitcount, buf);
+  scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &dedup, &branch_hitcount, &global_tasks, buf);
 }
 
 pub fn fuzz_loop(
@@ -177,9 +177,9 @@ pub fn fuzz_loop(
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
-      let mut buf = depot.get_input_buf(depot.next_random());
-      run_afl_mutator(&mut executor,&mut buf);
-      continue;
+      //let mut buf = depot.get_input_buf(depot.next_random());
+      //run_afl_mutator(&mut executor,&mut buf);
+      //continue;
       no_more_seeds = no_more_seeds + 1;
       if no_more_seeds > 100 {
 
@@ -238,7 +238,7 @@ pub fn fuzz_loop(
           }
         }
         info!("scheduled_count {}", scheduled_count);
-        //thread::sleep(time::Duration::from_secs(scheduled_count/1000));
+        thread::sleep(time::Duration::from_secs(scheduled_count/1000));
         //break;
       }
     }
