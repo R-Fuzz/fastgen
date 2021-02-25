@@ -55,6 +55,12 @@ fn main() {
              .value_name("JOB")
              .help("Sets the number of thread jobs, default is 1")
              .takes_value(true))
+        .arg(Arg::with_name("grader_jobs")
+             .short("g")
+             .long("graders")
+             .value_name("Graders")
+             .help("Sets the number of grader jobs, default is 1")
+             .takes_value(true))
         .arg(Arg::with_name("sync_afl")
              .short("S")
              .long("sync_afl")
@@ -67,6 +73,7 @@ fn main() {
         matches.value_of("track_target").unwrap_or("-"),
         matches.values_of_lossy("pargs").unwrap(),
         value_t!(matches, "thread_jobs", usize).unwrap_or(1),
+        value_t!(matches, "grader_jobs", usize).unwrap_or(1),
         value_t!(matches, "memory_limit", u64).unwrap_or(fastgen_common::config::MEM_LIMIT),
         value_t!(matches, "time_limit", u64).unwrap_or(fastgen_common::config::TIME_LIMIT),
         matches.occurrences_of("sync_afl") > 0,

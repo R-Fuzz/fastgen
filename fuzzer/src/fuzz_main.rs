@@ -26,6 +26,7 @@ pub fn fuzz_main(
     pargs: Vec<String>,
     //TODO jobs
     _num_jobs: usize,
+    _num_graders: usize,
     mem_limit: u64,
     time_limit: u64,
     sync_afl: bool,
@@ -68,11 +69,12 @@ pub fn fuzz_main(
 
   unsafe { init_core(config::SAVING_WHOLE, config::USE_CODECACHE); }
   let mut handlers = vec![];
+  for g in 0.._num_graders
   {
     let r = running.clone();
     let d = depot.clone();
     let b = global_branches.clone();
-    let cmd = command_option.specify(1);
+    let cmd = command_option.specify(4+g);
     let bg = branch_gencount.clone();
     let handle = thread::spawn(move || {
         fuzz_loop::grading_loop(r, cmd, d, b, bg);
