@@ -91,7 +91,7 @@ pub fn fuzz_main(
         });
     handlers.push(handle);
   }
-/*
+  if _num_jobs > 1
   { 
     let r = running.clone();
     let d = depot.clone();
@@ -103,7 +103,7 @@ pub fn fuzz_main(
         });
     handlers.push(handle);
   } 
-*/
+
   main_thread_sync(
     out_dir,
     sync_afl,
