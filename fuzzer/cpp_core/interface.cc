@@ -91,6 +91,21 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
   }
 
 #endif
+#if 1
+  fut_opt->flip();
+  fut->flip();
+  gd_search(fut_opt);
+  if (rgd_solutions_opt.size() != 0) {
+     s_solvable = true;
+      //fut->load_hint(rgd_solutions_opt[0]);
+      gd_search(fut);
+  } else {
+      s_solvable = false;
+  }
+  fut_opt->flip();
+  fut->flip();
+#endif
+
 #if 0
   //if (rgd_solutions.size() == 0) {
     bool ret = sendZ3Solver(false, task.get(), z3_solution);

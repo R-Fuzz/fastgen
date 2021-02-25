@@ -68,6 +68,8 @@ struct FUT {
 	std::vector<std::pair<uint32_t,uint8_t>> inputs;
 	std::unordered_map<uint32_t,uint32_t> shape;
 
+  bool direction_flipped = false;
+
   //Context
   SContext *ctx;
 	uint64_t start; //start time
@@ -79,6 +81,7 @@ struct FUT {
 	std::unordered_map<uint32_t,uint8_t> *opti_solution;
 	uint64_t* scratch_args;
 	//void allocate_scratch_args(int size) {scratch_args = (uint8_t*)aligned_alloc(64,size);}
+  void flip() { if (direction_flipped) direction_flipped = false; else direction_flipped = true; }
 	void finalize() {
 	  //aggregate the contraints, fill input_args's index, build global inputs
 		std::unordered_map<uint32_t,uint32_t> sym_map;
