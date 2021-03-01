@@ -5,7 +5,7 @@
 #[link(name = "z3")]
 extern {
   pub fn submit_task(input: *const u8, input_length: u32, expect_future: bool);
-  pub fn submit_fmemcmp(data: *const u8, index: u64, size: u64, tid: u32);
+  pub fn submit_fmemcmp(data: *const u8, index: u64, size: u32, tid: u32);
   pub fn init_core(save_whole: bool, use_codecache: bool);
   pub fn aggregate_results();
   pub fn get_input_buf(input: *mut u8);

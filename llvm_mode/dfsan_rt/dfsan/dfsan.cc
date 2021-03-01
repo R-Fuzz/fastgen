@@ -803,7 +803,7 @@ static void __solve_cond(dfsan_label label,
           get_fmemcmp(reason, &index, &size, data);
           if (size <=  1024) {
           //printf("get_fmemp index: %lu, size: %lu, data: %lu\n",index,size,data);
-            sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, 0, 0, index, size, 0);
+            sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, size, index, (uint64_t)addr, ctx, (uint32_t)order);
             write(mypipe,content,strlen(content));
             fsync(mypipe);
             char fmemcmpdata[10000];

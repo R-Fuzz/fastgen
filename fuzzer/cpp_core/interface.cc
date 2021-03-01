@@ -90,8 +90,7 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
       s_solvable = false;
   }
 
-#endif
-#if 0
+#else
   //if (rgd_solutions.size() == 0) {
     bool ret = sendZ3Solver(false, task.get(), z3_solution);
     if (!ret)
@@ -133,7 +132,7 @@ bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
 
   } else {
     std::string old_string = std::to_string(task->fid());
-    std::string input_file = "/home/cju/fastgen/test/input/small_exec.elf";
+    std::string input_file = "/home/cju/fastgen/test/input_size/seed";
    // std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
     //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
     for (auto rgd_solution : rgd_solutions) {
@@ -180,9 +179,10 @@ std::string get_current_dir() {
    return current_working_dir;
 }
 
-void handle_fmemcmp(uint8_t* data, uint64_t index, uint64_t size, uint32_t tid) {
+void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid) {
+  printf("handle_fmemcmp %s\n",data);
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
-  std::string input_file = "/home/cju/fastgen/test/input/small_exec.elf";
+  std::string input_file = "/home/cju/fastgen/test/input_size/seed";
   //std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
   //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
   for(uint32_t i=0;i<size;i++) {
@@ -200,7 +200,7 @@ void handle_fmemcmp(uint8_t* data, uint64_t index, uint64_t size, uint32_t tid) 
 }
 
 extern "C" {
-  void submit_fmemcmp(uint8_t* data, uint64_t index, uint64_t size, uint32_t tid) {
+  void submit_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid) {
       //RGDSolution sol = {rgd_solution, 0, 0, 0, 0};
       handle_fmemcmp(data,index,size, tid);
   }
