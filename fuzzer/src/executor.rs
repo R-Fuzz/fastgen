@@ -108,7 +108,7 @@ impl Executor {
     pub fn track(&mut self, id: usize, buf: &Vec<u8>) {
         //FIXME
         let e = format!("taint_file={} tid={} shmid={} pipeid={}", &self.cmd.out_file, &id, &self.shmid, &self.cmd.id);
-        info!("Track {},  e is {}", &id, e);
+        //info!("Track {}, e is {}", &id, e);
         self.envs.insert(
             defs::TAINT_OPTIONS.to_string(),
             e,
@@ -136,15 +136,16 @@ impl Executor {
     }
 
 
-    fn do_if_has_new(&mut self, buf: &Vec<u8>, status: StatusType) -> bool {
+    fn do_if_has_new(&mut self, buf: &Vec<u8>, status: StatusType) -> (bool,usize) {
         // new edge: one byte in bitmap
         let has_new_path = self.branches.has_new(status);
+        let mut new_id = 0;
 
         if has_new_path {
             self.has_new_path = true;
-            self.depot.save(status, &buf);
+            new_id = self.depot.save(status, &buf) - 1;
         }
-        has_new_path
+        (has_new_path,new_id)
     }
 
     pub fn run(&mut self, buf: &Vec<u8>) -> StatusType {
@@ -154,12 +155,12 @@ impl Executor {
         self.check_timeout(status)
     }
 
-    pub fn run_sync(&mut self, buf: &Vec<u8>) -> bool  {
+    pub fn run_sync(&mut self, buf: &Vec<u8>) -> (bool,usize)  {
         self.run_init();
         let status = self.run_inner(buf);
         let ret = self.do_if_has_new(buf, status);
-	self.check_timeout(status);
-	ret
+	      self.check_timeout(status);
+	      ret
     }
 
     pub fn run_norun(&mut self, buf: &Vec<u8>)  {

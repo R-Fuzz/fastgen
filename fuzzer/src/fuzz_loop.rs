@@ -67,12 +67,14 @@ pub fn grading_loop(
     let mut addr: u64 = 0;
     let mut ctx: u64 = 0;
     let mut order: u32 = 0;
+    let mut fid: u32 = 0;
     while running.load(Ordering::Relaxed) {
-      let len = unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order) };
+      let len = unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid) };
       if len != 0 {
         buf.resize(len as usize, 0);
         let new_path = executor.run_sync(&buf);
-        if new_path {
+        if new_path.0 {
+          info!("find new input {} based on input {} at addr {:#01x} ctx {:#01x} order {}", new_path.1, fid, addr, ctx, order);
           let mut count = 1;
           if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order)) {
             count = *branch_gencount.read().unwrap().get(&(addr,ctx, order)).unwrap();

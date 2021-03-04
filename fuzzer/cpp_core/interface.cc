@@ -179,8 +179,7 @@ std::string get_current_dir() {
    return current_working_dir;
 }
 
-void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid) {
-  printf("handle_fmemcmp %s\n",data);
+void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
   std::string input_file = "/home/cju/fastgen/test/input_size/seed";
   //std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
@@ -194,15 +193,15 @@ void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid) 
     generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
   }
   else {
-    RGDSolution sol = {rgd_solution, tid,0,0,0};
+    RGDSolution sol = {rgd_solution, tid, addr, 0, 0};
     solution_queue.enqueue(sol);
   }
 }
 
 extern "C" {
-  void submit_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid) {
+  void submit_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
       //RGDSolution sol = {rgd_solution, 0, 0, 0, 0};
-      handle_fmemcmp(data,index,size, tid);
+      handle_fmemcmp(data,index,size, tid, addr);
   }
 
   void submit_task(const unsigned char* input, unsigned int input_length, bool expect_future) {
@@ -235,7 +234,7 @@ extern "C" {
     }
   }
 
-  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, uint32_t *order ) {
+  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, uint32_t *order, uint32_t *fid ) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
     RGDSolution item;
     //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
@@ -250,6 +249,7 @@ extern "C" {
       *addr = item.addr;
       *ctx = item.ctx;
       *order = item.order;
+      *fid = item.fid;
       return size;
     } else {
       return 0; 
