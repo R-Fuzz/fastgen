@@ -42,7 +42,7 @@ pub fn grading_loop(
   //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
   let t_start = time::Instant::now();
   if config::SAVING_WHOLE {
-    let mut fid = 1;
+    let mut fid = 0;
     let dirpath = Path::new("/home/cju/test");
     while running.load(Ordering::Relaxed) {
       let file_name = format!("id-{:08}", fid);
@@ -50,13 +50,16 @@ pub fn grading_loop(
       if !fpath.exists() {
         continue;
       }
+      //wait untill file fully flushed
+      thread::sleep(time::Duration::from_millis(1));
       let buf = read_from_file(&fpath);
       if buf.len() == 0 {
         continue;
       }
       //info!("grading {:?} and length is {}", &fpath, &buf.len());
-      executor.run_norun(&buf);
-     // executor.run_sync(&buf);
+      //executor.run_norun(&buf);
+      let new_path = executor.run_sync(&buf);
+      info!("grading input {:?} it is a new input {}, saved as input {}", fpath, new_path.0, new_path.1);
       //std::fs::remove_file(fpath).unwrap();
       fid = fid + 1;
     }
@@ -74,7 +77,7 @@ pub fn grading_loop(
         buf.resize(len as usize, 0);
         let new_path = executor.run_sync(&buf);
         if new_path.0 {
-          info!("find new input {} based on input {} at addr {:#01x} ctx {:#01x} order {}", new_path.1, fid, addr, ctx, order);
+          info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {}, it is a new input {}, saved as input #{}", fid, addr, ctx, order, new_path.0, new_path.1);
           let mut count = 1;
           if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order)) {
             count = *branch_gencount.read().unwrap().get(&(addr,ctx, order)).unwrap();
@@ -174,6 +177,7 @@ pub fn fuzz_loop(
         error!("Error happened in listening thread!");
       }
 
+
       let used_t1 = t_start.elapsed();
       let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
       trace!("track time {}", used_us1);
@@ -269,10 +273,10 @@ mod tests {
   fn test_grading() {
     let angora_out_dir = PathBuf::from("output");
     let seeds_dir = PathBuf::from("input");
-    let args = vec!["./cmp.fast".to_string(), "-D".to_string()];
+    let args = vec!["./size.fast".to_string(), "@@".to_string()];
     fs::create_dir(&angora_out_dir).expect("Output directory has existed!");
 
-    let cmd_opt = command::CommandOpt::new("./cmp.track", args, &angora_out_dir, 200, 1);
+    let cmd_opt = command::CommandOpt::new("./size.track", args, &angora_out_dir, 200, 1);
 
     let depot = Arc::new(depot::Depot::new(seeds_dir, &angora_out_dir));
 
@@ -295,10 +299,10 @@ mod tests {
       if !fpath.exists() {
         break;
       }
-      trace!("grading {:?}", &fpath);
       let buf = read_from_file(&fpath);
+      println!("grading {:?}, len {}", &fpath,buf.len() );
       let newpath = executor.run_sync(&buf);
-      println!("grading {}",newpath);
+      println!("grading {}",newpath.0);
       fid = fid + 1;
       count = count + 1;
     }
