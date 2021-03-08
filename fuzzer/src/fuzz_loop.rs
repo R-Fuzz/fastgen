@@ -183,9 +183,9 @@ pub fn fuzz_loop(
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
+      continue;
       let mut buf = depot.get_input_buf(depot.next_random());
       run_afl_mutator(&mut executor,&mut buf);
-      continue;
       no_more_seeds = no_more_seeds + 1;
       if no_more_seeds > 100 {
 
