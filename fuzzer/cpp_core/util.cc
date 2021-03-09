@@ -272,7 +272,7 @@ void generate_input(std::unordered_map<uint32_t,uint8_t> &sol, std::string taint
 	//memset(dst,0,sizeof(dst));
   for (auto it=sol.begin();it!=sol.end();it++) {
 		((uint8_t*)dst)[it->first] = it->second;
-		printf("generate_input index is %u and value is %x and original value is %x\n", it->first,(uint32_t)it->second, ((uint8_t*)src)[it->first]);
+	//	printf("generate_input index is %u and value is %x and original value is %x\n", it->first,(uint32_t)it->second, ((uint8_t*)src)[it->first]);
 	}
 
 

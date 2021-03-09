@@ -405,6 +405,7 @@ void onedimension_descend(struct FUT* fut) {
 void repick_start_point(struct FUT* fut) {
   MutInput &input_min = fut->ctx->min_input;
   input_min.randomize();
+  input_min.resetDisables();
   fut->ctx->f_last = distance(input_min,fut);
   fut->ctx->orig_distances = fut->ctx->distances;
   fut->ctx->next_state = 1;

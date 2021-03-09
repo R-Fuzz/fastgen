@@ -62,6 +62,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     //we have to continue here, the underlying task lookup with check the redudant as well. If it is redudant, the task will be loaded
     //without inserting caching 
     if dedup.read().unwrap().contains(&(label.3,label.4,label.5, label.2)) {
+      if label.6 == 2 {
+        memcmp_data.pop_front().unwrap();
+      }
       continue;
     }
     dedup.write().unwrap().insert((label.3,label.4,label.5, label.2));
@@ -75,7 +78,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     } else if label.6 == 2 {
       let data = memcmp_data.pop_front().unwrap();
-      unsafe { submit_fmemcmp(data.as_ptr(), label.3, label.4, label.0); }
+      unsafe { submit_fmemcmp(data.as_ptr(), label.2, label.1, label.0, label.3); }
       continue;
     } else if label.6 == 3 {
      // get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
@@ -259,11 +262,12 @@ mod tests {
     let branch_hit = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
     //let mut buf: Vec<u8> = Vec::with_capacity(15000);
     //buf.resize(15000, 0);
-    let file_name = Path::new("/home/cju/fastgen/test/input/small_exec.elf");
+    let file_name = Path::new("/home/cju/fastgen/test/seed");
     let buf = read_from_file(&file_name);
     println!("before scanning\n");
     scan_nested_tasks(&labels, &mut fmemcmpdata, table, 15000, &dedup, &branch_hit, &buf);
     println!("after scanning\n");
+
 //    scan_tasks(&labels, &mut tasks, table);
 /*
     for task in tasks {

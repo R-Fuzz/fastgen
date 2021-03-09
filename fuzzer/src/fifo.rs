@@ -39,7 +39,7 @@ pub fn read_pipe(pipeid: usize) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque
       if isgep == 2 {
         let mut buffer = String::new();
         let num_bytes = reader.read_line(&mut buffer).expect("read pipe failed");
-        let size = ctx;
+        let size = label;
         let mut data = [0;1024];
         if num_bytes !=0 {
           let tokens: Vec<&str> = buffer.trim().split(',').collect();
