@@ -183,9 +183,11 @@ pub fn fuzz_loop(
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
-      continue;
-      let mut buf = depot.get_input_buf(depot.next_random());
-      run_afl_mutator(&mut executor,&mut buf);
+      if !config::SAMPLING {
+        continue;
+      }
+      //let mut buf = depot.get_input_buf(depot.next_random());
+      //run_afl_mutator(&mut executor,&mut buf);
       no_more_seeds = no_more_seeds + 1;
       if no_more_seeds > 100 {
 
@@ -240,7 +242,7 @@ pub fn fuzz_loop(
           //if hitcount < 5 || gencount > 1 {
             scheduled_count += 1;
             let task_ser = task.write_to_bytes().unwrap();
-            unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
+            unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, false); }
           }
         }
         info!("scheduled_count {}", scheduled_count);

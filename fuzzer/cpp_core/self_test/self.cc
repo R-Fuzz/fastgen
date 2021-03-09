@@ -31,9 +31,11 @@ int main() {
     std::shared_ptr<SearchTask>  task = std::make_shared<SearchTask>();
 
     suc = readDelimitedFrom(rawInput,task.get());
+/*
     if (suc) {
       gresults.emplace_back(pool->push(handle_task, task));
     }
+*/
   } while (suc);
   for(auto && r: gresults)
     finished += (int)r.get();

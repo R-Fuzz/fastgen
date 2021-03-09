@@ -127,7 +127,7 @@ static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
 std::unordered_map<uint64_t,std::shared_ptr<Cons>> cons_cache(1000000);
 
 
-void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
+void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bool fresh) {
   int i = 0;
   static uint32_t old_fid = -1;
   for (auto c : task->constraints()) {
@@ -189,19 +189,19 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
 }
 
 
-void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_opt) {
+void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bool fresh) {
   static int hit = 0;
   static int miss = 0;
 
 
   std::tuple<uint64_t,uint64_t,uint32_t,uint64_t> bid{task->addr(),task->ctx(),task->order(), task->direction()};
   struct taskKV *res = TaskCache.find(bid);
-
+  //struct taskKV *res = nullptr;
   if (res == nullptr) {
     // printf("miss count %d\n", ++miss);
     *fut = new FUT();
     *fut_opt = new FUT();
-    construct_task(task,fut,fut_opt);
+    construct_task(task,fut,fut_opt, fresh);
     res = new struct taskKV({bid, *fut, *fut_opt});
     if (!TaskCache.insert(res)) {
       delete res;
@@ -212,7 +212,6 @@ void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_op
       *fut_opt = res->fut_opt;
     }
   } else {
-    //printf("hit count %d\n", ++hit);
     *fut = res->fut;
     *fut_opt = res->fut_opt;
   }

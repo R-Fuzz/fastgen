@@ -13,6 +13,7 @@ pub const MAX_INVARIABLE_NUM: usize = 16;
 pub const MAX_INPUT_LEN: usize = 15000;
 pub const SAVING_WHOLE: bool = false;
 pub const USE_CODECACHE: bool = true;
+pub const SAMPLING: bool = true;
 
 
 //AFL

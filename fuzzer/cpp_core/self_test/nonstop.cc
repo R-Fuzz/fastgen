@@ -34,7 +34,7 @@ int main() {
   if (suc) {
     for (int i=0 ;i<100; i++) {
       printf("#%d search\n", i);
-      handle_task(0,task);
+      //handle_task(0,task);
     }
   }
   delete rawInput;
