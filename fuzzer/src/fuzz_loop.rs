@@ -186,11 +186,10 @@ pub fn fuzz_loop(
       if !config::SAMPLING {
         continue;
       }
-      //let mut buf = depot.get_input_buf(depot.next_random());
-      //run_afl_mutator(&mut executor,&mut buf);
       no_more_seeds = no_more_seeds + 1;
-      if no_more_seeds > 100 {
-
+      if no_more_seeds > 10 {
+        let mut buf = depot.get_input_buf(depot.next_random());
+        run_afl_mutator(&mut executor,&mut buf);
         no_more_seeds = 0;
         info!("Rerun all {} tasks", global_tasks.read().unwrap().len());
         let cloned_branchhit: HashMap<(u64,u64,u32),u32> = branch_hitcount.read().unwrap().clone();

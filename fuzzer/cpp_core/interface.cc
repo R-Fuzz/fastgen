@@ -52,8 +52,9 @@ struct RGDSolution {
 };
 
 moodycamel::ConcurrentQueue<RGDSolution> solution_queue;
-moodycamel::ConcurrentQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks(10000000);
+//moodycamel::ConcurrentQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks(10000000);
 folly::ProducerConsumerQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks1(10000000);
+folly::ProducerConsumerQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks_higher(10000000);
 
 void save_task(const unsigned char* input, unsigned int input_length) {
   CodedInputStream s(input,input_length);
@@ -70,118 +71,125 @@ void* handle_task(void*) {
   while (1) {
     std::pair<std::shared_ptr<SearchTask>, bool> task1;
     //if (incoming_tasks.try_dequeue(task1)) {
-    if (!incoming_tasks1.isEmpty()) {
-      incoming_tasks1.read(task1);
-      std::shared_ptr<SearchTask> task = task1.first;
-      FUT* fut = nullptr;
-      FUT* fut_opt = nullptr;
-
-      bool n_solvable = false;
-      bool s_solvable = false;
-      bool z3n_solvable = false;
-      bool z3s_solvable = false;
-
-      lookup_or_construct(task.get(), &fut, &fut_opt, task1.second);
-
-      std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions;
-      std::vector<std::unordered_map<uint32_t, uint8_t>> partial_solutions;
-      std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions_opt;
-      std::unordered_map<uint32_t, uint8_t> z3_solution;
-      fut->rgd_solutions = &rgd_solutions;
-      fut->partial_solutions = &partial_solutions;
-      fut_opt->rgd_solutions = &rgd_solutions_opt;
-#if 1
-      gd_search(fut_opt);
-      if (rgd_solutions_opt.size() != 0) {
-        s_solvable = true;
-        //fut->load_hint(rgd_solutions_opt[0]);
-        gd_search(fut);
+    // let's try higher order first
+    if (incoming_tasks_higher.isEmpty()) {
+      if (incoming_tasks1.isEmpty()) {
+        continue;
       } else {
-        s_solvable = false;
+        incoming_tasks1.read(task1);
       }
+    } else {
+      incoming_tasks_higher.read(task1);
+    }
+    std::shared_ptr<SearchTask> task = task1.first;
+    FUT* fut = nullptr;
+    FUT* fut_opt = nullptr;
+
+    bool n_solvable = false;
+    bool s_solvable = false;
+    bool z3n_solvable = false;
+    bool z3s_solvable = false;
+
+    lookup_or_construct(task.get(), &fut, &fut_opt, task1.second);
+
+    std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions;
+    std::vector<std::unordered_map<uint32_t, uint8_t>> partial_solutions;
+    std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions_opt;
+    std::unordered_map<uint32_t, uint8_t> z3_solution;
+    fut->rgd_solutions = &rgd_solutions;
+    fut->partial_solutions = &partial_solutions;
+    fut_opt->rgd_solutions = &rgd_solutions_opt;
+#if 1
+    gd_search(fut_opt);
+    if (rgd_solutions_opt.size() != 0) {
+      s_solvable = true;
+      //fut->load_hint(rgd_solutions_opt[0]);
+      gd_search(fut);
+    } else {
+      s_solvable = false;
+    }
 #endif
 #if 1
-      fut_opt->flip();
-      fut->flip();
-      gd_search(fut_opt);
-      if (rgd_solutions_opt.size() != 0) {
-        s_solvable = true;
-        //fut->load_hint(rgd_solutions_opt[0]);
-        gd_search(fut);
-      } else {
-        s_solvable = false;
-      }
-      fut_opt->flip();
-      fut->flip();
+    fut_opt->flip();
+    fut->flip();
+    gd_search(fut_opt);
+    if (rgd_solutions_opt.size() != 0) {
+      s_solvable = true;
+      //fut->load_hint(rgd_solutions_opt[0]);
+      gd_search(fut);
+    } else {
+      s_solvable = false;
+    }
+    fut_opt->flip();
+    fut->flip();
 #endif
 
 #if 0
-      //if (rgd_solutions.size() == 0) {
-      bool ret = sendZ3Solver(false, task.get(), z3_solution);
-      if (!ret)
-        sendZ3Solver(true, task.get(), z3_solution);
-      // }
+    //if (rgd_solutions.size() == 0) {
+    bool ret = sendZ3Solver(false, task.get(), z3_solution);
+    if (!ret)
+      sendZ3Solver(true, task.get(), z3_solution);
+    // }
 #endif
 
 
-      if (!SAVING_WHOLE) {
-        for (auto rgd_solution :  rgd_solutions) {
-          RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
-          solution_queue.enqueue(sol);
+    if (!SAVING_WHOLE) {
+      for (auto rgd_solution :  rgd_solutions) {
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+        solution_queue.enqueue(sol);
 #if DEBUG
-          if (solution_queue.size_approx() % 1000 == 0)
-            printf("queue item is about %u\n", solution_queue.size_approx());
+        if (solution_queue.size_approx() % 1000 == 0)
+          printf("queue item is about %u\n", solution_queue.size_approx());
 #endif
-        }
-        for (auto rgd_solution :  rgd_solutions_opt) {
-          RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
-          solution_queue.enqueue(sol);
+      }
+      for (auto rgd_solution :  rgd_solutions_opt) {
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+        solution_queue.enqueue(sol);
 #if DEBUG
-          if (solution_queue.size_approx() % 1000 == 0)
-            printf("queue item is about %u\n", solution_queue.size_approx());
+        if (solution_queue.size_approx() % 1000 == 0)
+          printf("queue item is about %u\n", solution_queue.size_approx());
 #endif
-        }
-        for (auto rgd_solution :  partial_solutions) {
-          RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
-          solution_queue.enqueue(sol);
+      }
+      for (auto rgd_solution :  partial_solutions) {
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+        solution_queue.enqueue(sol);
 #if DEBUG
-          if (solution_queue.size_approx() % 1000 == 0)
-            printf("queue item is about %u\n", solution_queue.size_approx());
+        if (solution_queue.size_approx() % 1000 == 0)
+          printf("queue item is about %u\n", solution_queue.size_approx());
 #endif
-        }
-
-        if (z3_solution.size() != 0) {
-          RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order()};
-          solution_queue.enqueue(sol);
-        }
-
-      } else {
-        // std::string old_string = std::to_string(task->fid());
-        std::string input_file = "/home/cju/fastgen/test/seed";
-        // std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
-        //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-        for (auto rgd_solution : rgd_solutions) {
-          generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
-        }
-        for (auto rgd_solution : rgd_solutions_opt) {
-          generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
-        }
-        for (auto rgd_solution : partial_solutions) {
-          generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
-        }
-
-        if (z3_solution.size() != 0)
-          generate_input(z3_solution, input_file, "/home/cju/test", fid++);
-
       }
 
-      //delete fut;
-      //delete fut_opt;
-      //return n_solvable || s_solvable || z3n_solvable || z3s_solvable ;
+      if (z3_solution.size() != 0) {
+        RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+        solution_queue.enqueue(sol);
+      }
+
+    } else {
+      // std::string old_string = std::to_string(task->fid());
+      std::string input_file = "/home/cju/fastgen/test/seed";
+      // std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
+      //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      for (auto rgd_solution : rgd_solutions) {
+        generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+      }
+      for (auto rgd_solution : rgd_solutions_opt) {
+        generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+      }
+      for (auto rgd_solution : partial_solutions) {
+        generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+      }
+
+      if (z3_solution.size() != 0)
+        generate_input(z3_solution, input_file, "/home/cju/test", fid++);
+
     }
+
+    //delete fut;
+    //delete fut_opt;
+    //return n_solvable || s_solvable || z3n_solvable || z3s_solvable ;
   }
   return nullptr;
-}
+  }
 
 void init(bool saving_whole, bool use_codecache) {
   llvm::InitializeNativeTarget();
@@ -254,9 +262,14 @@ extern "C" {
 //    handle_task(0,task);
     //incoming_tasks.enqueue({task, fresh});
     std::pair<std::shared_ptr<SearchTask>,bool> tt{task,fresh};
-    incoming_tasks1.write(tt);
+    if (fresh)
+      incoming_tasks_higher.write(tt);
+    else {
+      if (incoming_tasks1.sizeGuess() < 9000000)
+        incoming_tasks1.write(tt);
+    }
     //if (incoming_tasks1.size_approx() % 1000 == 0)
-    if (incoming_tasks1.sizeGuess() % 1000 == 0)
+    if (incoming_tasks1.sizeGuess() % 1000 == 0 && incoming_tasks1.sizeGuess() > 0)
       printf("queue tasks is about %u\n", incoming_tasks1.sizeGuess());
   }
 
