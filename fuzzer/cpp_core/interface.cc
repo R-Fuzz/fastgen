@@ -52,6 +52,7 @@ struct RGDSolution {
 };
 
 moodycamel::ConcurrentQueue<RGDSolution> solution_queue;
+moodycamel::ConcurrentQueue<RGDSolution> higher_solution_queue;
 //moodycamel::ConcurrentQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks(10000000);
 folly::ProducerConsumerQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks1(10000000);
 folly::ProducerConsumerQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks_higher(10000000);
@@ -69,6 +70,7 @@ void save_task(const unsigned char* input, unsigned int input_length) {
 void* handle_task(void*) {
   //printTask(task.get());
   while (1) {
+    bool fresh = false;
     std::pair<std::shared_ptr<SearchTask>, bool> task1;
     //if (incoming_tasks.try_dequeue(task1)) {
     // let's try higher order first
@@ -80,6 +82,7 @@ void* handle_task(void*) {
       }
     } else {
       incoming_tasks_higher.read(task1);
+      fresh = true;
     }
     std::shared_ptr<SearchTask> task = task1.first;
     FUT* fut = nullptr;
@@ -136,6 +139,9 @@ void* handle_task(void*) {
     if (!SAVING_WHOLE) {
       for (auto rgd_solution :  rgd_solutions) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+	if (fresh)
+        higher_solution_queue.enqueue(sol);
+	else
         solution_queue.enqueue(sol);
 #if DEBUG
         if (solution_queue.size_approx() % 1000 == 0)
@@ -144,6 +150,9 @@ void* handle_task(void*) {
       }
       for (auto rgd_solution :  rgd_solutions_opt) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+        if (fresh)
+        higher_solution_queue.enqueue(sol);
+	else
         solution_queue.enqueue(sol);
 #if DEBUG
         if (solution_queue.size_approx() % 1000 == 0)
@@ -293,7 +302,19 @@ extern "C" {
     RGDSolution item;
     //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
      // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
-    if(solution_queue.try_dequeue(item)) {
+    if(higher_solution_queue.try_dequeue(item)) {
+      std::string old_string = std::to_string(item.fid);
+      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      //std::string input_file = "/home/cju/debug/seed.png";
+      uint32_t size = load_input(input_file, input);
+      for(auto it = item.sol.begin(); it != item.sol.end(); ++it)
+        input[it->first] = it->second;
+      *addr = item.addr;
+      *ctx = item.ctx;
+      *order = item.order;
+      *fid = item.fid;
+      return size;
+    } else if (solution_queue.try_dequeue(item)) {
       std::string old_string = std::to_string(item.fid);
       std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
       //std::string input_file = "/home/cju/debug/seed.png";
