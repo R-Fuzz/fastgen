@@ -185,6 +185,7 @@ pub fn fuzz_loop(
     } else {
       let mut buf = depot.get_input_buf(depot.next_random());
       run_afl_mutator(&mut executor,&mut buf);
+      //if !config::SAMPLING || unsafe { get_queue_length() } > 100000 {
       if !config::SAMPLING {
         continue;
       }
@@ -245,7 +246,7 @@ pub fn fuzz_loop(
           }
         }
         info!("scheduled_count {}", scheduled_count);
-        thread::sleep(time::Duration::from_secs(scheduled_count/1000));
+        //thread::sleep(time::Duration::from_secs(scheduled_count/1000));
         //break;
       }
     }

@@ -49,6 +49,7 @@ struct RGDSolution {
     uint64_t addr;
     uint64_t ctx;
     uint32_t order;
+    uint64_t direction;
 };
 
 moodycamel::ConcurrentQueue<RGDSolution> solution_queue;
@@ -138,7 +139,7 @@ void* handle_task(void*) {
 
     if (!SAVING_WHOLE) {
       for (auto rgd_solution :  rgd_solutions) {
-        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
 	if (fresh)
         higher_solution_queue.enqueue(sol);
 	else
@@ -149,7 +150,7 @@ void* handle_task(void*) {
 #endif
       }
       for (auto rgd_solution :  rgd_solutions_opt) {
-        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
         if (fresh)
         higher_solution_queue.enqueue(sol);
 	else
@@ -160,7 +161,7 @@ void* handle_task(void*) {
 #endif
       }
       for (auto rgd_solution :  partial_solutions) {
-        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
         solution_queue.enqueue(sol);
 #if DEBUG
         if (solution_queue.size_approx() % 1000 == 0)
@@ -169,7 +170,7 @@ void* handle_task(void*) {
       }
 
       if (z3_solution.size() != 0) {
-        RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order()};
+        RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
         solution_queue.enqueue(sol);
       }
 
@@ -255,6 +256,14 @@ extern "C" {
       handle_fmemcmp(data,index,size, tid, addr);
   }
 
+  void append_fid(uint64_t addr, uint64_t ctx, uint32_t order, uint64_t direction, uint32_t fid) {
+    add_fids(addr, ctx, order, direction, fid);
+  }
+
+  uint32_t get_queue_length() {
+    return incoming_tasks1.sizeGuess();
+  }
+
   void submit_task(const unsigned char* input, unsigned int input_length, bool expect_future, bool fresh) {
     CodedInputStream s(input,input_length);
     s.SetRecursionLimit(10000);
@@ -315,7 +324,9 @@ extern "C" {
       *fid = item.fid;
       return size;
     } else if (solution_queue.try_dequeue(item)) {
-      std::string old_string = std::to_string(item.fid);
+      //smapling output
+      uint32_t random_fid = get_random_fid(item.addr, item.ctx, item.order, item.direction);
+      std::string old_string = std::to_string(random_fid);
       std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
       //std::string input_file = "/home/cju/debug/seed.png";
       uint32_t size = load_input(input_file, input);

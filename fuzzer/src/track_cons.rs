@@ -65,6 +65,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       if label.6 == 2 {
         memcmp_data.pop_front().unwrap();
       }
+      unsafe { append_fid(label.3, label.4, label.5, label.2, label.0); }
       continue;
     }
     dedup.write().unwrap().insert((label.3,label.4,label.5, label.2));

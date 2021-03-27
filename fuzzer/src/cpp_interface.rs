@@ -6,6 +6,8 @@
 extern {
   pub fn submit_task(input: *const u8, input_length: u32, expect_future: bool, fresh: bool);
   pub fn submit_fmemcmp(data: *const u8, index: u64, size: u32, tid: u32, addr: u64);
+  pub fn append_fid(addr: u64, ctx: u64, order: u32, direction: u64, fid: u32);
+  pub fn get_queue_length() -> u32;
   pub fn init_core(save_whole: bool, use_codecache: bool);
   pub fn aggregate_results();
   pub fn get_input_buf(input: *mut u8);

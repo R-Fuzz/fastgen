@@ -3,6 +3,10 @@
 #include "rgd_op.h"
 #include "jit.h"
 #include "lprobe/hash_table.h"
+#include <stdio.h>      /* printf, scanf, puts, NULL */
+#include <stdlib.h>     /* srand, rand */
+#include <time.h>       /* time */
+
 using namespace rgd;
 using namespace pbbs;
 #define DEBUG 0
@@ -101,10 +105,35 @@ struct taskHash {
   bool replaceQ(eType, eType) {return 0;}
   eType update(eType v, eType) {return v;}
   bool cas(eType* p, eType o, eType n) {return atomic_compare_and_swap(p, o, n);}
-  };
+};
+
+struct taskFids {
+  std::tuple<uint64_t,uint64_t,uint32_t, uint64_t> branch;
+  std::vector<uint32_t> fids;
+  taskFids(std::tuple<uint64_t,uint64_t,uint32_t, uint64_t> abranch,
+      std::vector<uint32_t> afids)
+    : branch(abranch), fids(afids) {}
+};
+
+struct taskFidsHash {
+  using eType = struct taskFids*;
+  using kType = std::tuple<uint64_t, uint64_t, uint32_t, uint64_t>;
+  eType empty() {return nullptr;}
+  kType getKey(eType v) {return v->branch;}
+  int hash(kType v) {return std::get<0>(v)^std::get<1>(v)^std::get<2>(v)^std::get<3>(v);} //hash64_2(v);}
+  //int hash(kType v) {return hash64_2(v);}
+  //int cmp(kType v, kType b) {return (v > b) ? 1 : ((v == b) ? 0 : -1);}
+  int cmp(kType v, kType b) {return (v == b) ? 0 : -1;}
+  bool replaceQ(eType, eType) {return 0;}
+  eType update(eType v, eType) {return v;}
+  bool cas(eType* p, eType o, eType n) {return atomic_compare_and_swap(p, o, n);}
+};
+
 
 static pbbs::Table<myHash> Expr2Func(8000016, myHash(), 1.3);
 pbbs::Table<taskHash> TaskCache(8000016, taskHash(), 1.3);
+//the cache we append fids to the task
+pbbs::Table<taskFidsHash> TaskFidsCache(8000016, taskFidsHash(), 1.3);
 
 
 static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
@@ -186,6 +215,36 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bo
   (*fut_opt)->finalize();
   //return fut;
   return;
+}
+
+void add_fids(uint64_t addr, uint64_t ctx, uint32_t order, uint64_t direction, uint32_t fid) {
+  std::tuple<uint64_t,uint64_t,uint32_t,uint64_t> bid{addr,ctx,order, direction};
+  struct taskFids *res = TaskFidsCache.find(bid);
+  if (res == nullptr) {
+    std::vector<uint32_t> fids;
+    fids.push_back(fid);
+    res = new struct taskFids({bid, fids});
+    if (!TaskFidsCache.insert(res)) {
+      delete res;
+      res = TaskFidsCache.find(bid);
+      res->fids.push_back(fid);
+    }
+  } else {
+      res->fids.push_back(fid);
+  }
+}
+
+uint32_t get_random_fid(uint64_t addr, uint64_t ctx, uint32_t order, uint64_t direction) {
+  std::tuple<uint64_t,uint64_t,uint32_t,uint64_t> bid{addr,ctx,order,direction};
+  struct taskFids *res = TaskFidsCache.find(bid);
+  if (res == nullptr) {
+    return -1;
+  } else {
+    size_t len = res->fids.size();
+    srand (time(NULL));
+    uint32_t idx = rand() % len;
+    return res->fids[idx];
+  }
 }
 
 
