@@ -185,8 +185,8 @@ pub fn fuzz_loop(
     } else {
       let mut buf = depot.get_input_buf(depot.next_random());
       run_afl_mutator(&mut executor,&mut buf);
-      //if !config::SAMPLING || unsafe { get_queue_length() } > 100000 {
-      if !config::SAMPLING {
+      if !config::SAMPLING || unsafe { get_queue_length() } > 100000 {
+      //if !config::SAMPLING {
         continue;
       }
       no_more_seeds = no_more_seeds + 1;
