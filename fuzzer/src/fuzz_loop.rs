@@ -238,7 +238,13 @@ pub fn fuzz_loop(
             Some(&x) => x,
             None => 0,
           };
-          if if_quota || (!if_quota && (gencount > 1 || hitcount < 5)) {
+          if if_quota {
+          //if hitcount < 5 || gencount > 1 {
+            scheduled_count += 1;
+            let task_ser = task.write_to_bytes().unwrap();
+            unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
+          }
+          if (!if_quota && (gencount > 1)) {
           //if hitcount < 5 || gencount > 1 {
             scheduled_count += 1;
             let task_ser = task.write_to_bytes().unwrap();
