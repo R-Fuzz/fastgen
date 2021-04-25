@@ -113,7 +113,7 @@ void* handle_task(void*) {
       s_solvable = false;
     }
 #endif
-#if 1
+#if 0
     fut_opt->flip();
     fut->flip();
     gd_search(fut_opt);
@@ -145,10 +145,11 @@ void* handle_task(void*) {
 	else
         solution_queue.enqueue(sol);
 #if DEBUG
-        if (solution_queue.size_approx() % 1000 == 0)
-          printf("queue item is about %u\n", solution_queue.size_approx());
+        //if (solution_queue.size_approx() % 1000 == 0)
+          //printf("queue item is about %u\n", solution_queue.size_approx());
 #endif
       }
+/*
       for (auto rgd_solution :  rgd_solutions_opt) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
         if (fresh)
@@ -156,10 +157,11 @@ void* handle_task(void*) {
 	else
         solution_queue.enqueue(sol);
 #if DEBUG
-        if (solution_queue.size_approx() % 1000 == 0)
-          printf("queue item is about %u\n", solution_queue.size_approx());
+        //if (solution_queue.size_approx() % 1000 == 0)
+          //printf("queue item is about %u\n", solution_queue.size_approx());
 #endif
       }
+*/
       for (auto rgd_solution :  partial_solutions) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
         solution_queue.enqueue(sol);
@@ -306,7 +308,7 @@ extern "C" {
     }
   }
 
-  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, uint32_t *order, uint32_t *fid ) {
+  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, uint32_t *order, uint32_t *fid, uint64_t *direction ) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
     RGDSolution item;
     //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
@@ -322,6 +324,7 @@ extern "C" {
       *ctx = item.ctx;
       *order = item.order;
       *fid = item.fid;
+      *direction = item.direction;
       return size;
     } else if (solution_queue.try_dequeue(item)) {
       //smapling output
@@ -337,6 +340,7 @@ extern "C" {
       *ctx = item.ctx;
       *order = item.order;
       *fid = item.fid;
+      *direction = item.direction;
       return size;
     } else {
       return 0; 

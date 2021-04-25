@@ -50,7 +50,8 @@ pub fn fuzz_main(
   info!("{:?}", depot.dirs);
 
   let global_branches = Arc::new(branches::GlobalBranches::new());
-  let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
+  let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
+  let branch_solcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
   let running = Arc::new(AtomicBool::new(true));
   set_sigint_handler(running.clone());
 
@@ -76,8 +77,9 @@ pub fn fuzz_main(
     let b = global_branches.clone();
     let cmd = command_option.specify(4+g);
     let bg = branch_gencount.clone();
+    let bs = branch_solcount.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::grading_loop(r, cmd, d, b, bg);
+        fuzz_loop::grading_loop(r, cmd, d, b, bg, bs);
         });
     handlers.push(handle);
   }
@@ -88,8 +90,9 @@ pub fn fuzz_main(
     let b = global_branches.clone();
     let cmd = command_option.specify(2);
     let bg = branch_gencount.clone();
+    let bs = branch_solcount.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs);
         });
     handlers.push(handle);
   }
@@ -100,8 +103,9 @@ pub fn fuzz_main(
     let b = global_branches.clone();
     let cmd = command_option.specify(3);
     let bg = branch_gencount.clone();
+    let bs = branch_solcount.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs);
         });
     handlers.push(handle);
   } 

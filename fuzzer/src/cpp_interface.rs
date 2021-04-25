@@ -11,6 +11,6 @@ extern {
   pub fn init_core(save_whole: bool, use_codecache: bool);
   pub fn aggregate_results();
   pub fn get_input_buf(input: *mut u8);
-  pub fn get_next_input(input: *mut u8, addr: *mut u64, ctx: *mut u64, order: *mut u32, fid: *mut u32) -> u32;
+  pub fn get_next_input(input: *mut u8, addr: *mut u64, ctx: *mut u64, order: *mut u32, fid: *mut u32, direction: *mut u64) -> u32;
   pub fn fini_core();
 }

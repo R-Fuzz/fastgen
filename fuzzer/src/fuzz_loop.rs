@@ -30,7 +30,8 @@ pub fn grading_loop(
     cmd_opt: CommandOpt,
     depot: Arc<Depot>,
     global_branches: Arc<GlobalBranches>,
-    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32),u32>>>,
+    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     ) {
   let mut executor = Executor::new(
       cmd_opt,
@@ -71,20 +72,28 @@ pub fn grading_loop(
     let mut ctx: u64 = 0;
     let mut order: u32 = 0;
     let mut fid: u32 = 0;
+    let mut direction: u64 = 0;
     while running.load(Ordering::Relaxed) {
-      let len = unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid) };
+      let len = unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction) };
       if len != 0 {
         buf.resize(len as usize, 0);
         let new_path = executor.run_sync(&buf);
+        let mut solcount = 1;
+        if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
+            solcount = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
+            solcount += 1;
+            //info!("gencount is {}",count);
+        }
+        branch_solcount.write().unwrap().insert((addr,ctx,order,direction), solcount);
         if new_path.0 {
           info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {}, it is a new input {}, saved as input #{}", fid, addr, ctx, order, new_path.0, new_path.1);
           let mut count = 1;
-          if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order)) {
-            count = *branch_gencount.read().unwrap().get(&(addr,ctx, order)).unwrap();
+          if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
+            count = *branch_gencount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
             count += 1;
             //info!("gencount is {}",count);
           }
-          branch_gencount.write().unwrap().insert((addr,ctx,order), count);
+          branch_gencount.write().unwrap().insert((addr,ctx,order,direction), count);
           //info!("next input addr is {:} ctx is {}",addr,ctx);
         }
         grade_count = grade_count + 1;
@@ -114,7 +123,8 @@ pub fn fuzz_loop(
     cmd_opt: CommandOpt,
     depot: Arc<Depot>,
     global_branches: Arc<GlobalBranches>,
-    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32),u32>>>,
+    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     ) {
 
   let mut id: usize = 0;
@@ -194,12 +204,14 @@ pub fn fuzz_loop(
         no_more_seeds = 0;
         info!("Rerun all {} tasks", global_tasks.read().unwrap().len());
         let cloned_branchhit: HashMap<(u64,u64,u32),u32> = branch_hitcount.read().unwrap().clone();
-        let cloned_branchgen: HashMap<(u64,u64,u32),u32> = branch_gencount.read().unwrap().clone();
+        let cloned_branchgen: HashMap<(u64,u64,u32,u64),u32> = branch_gencount.read().unwrap().clone();
+        let cloned_branchsol: HashMap<(u64,u64,u32,u64),u32> = branch_solcount.read().unwrap().clone();
+/*
         let mut hitcount_vec: Vec<(&(u64,u64,u32), &u32)> = cloned_branchhit.iter().collect();
-        let mut gencount_vec: Vec<(&(u64,u64,u32), &u32)> = cloned_branchgen.iter().collect();
+        let mut gencount_vec: Vec<(&(u64,u64,u32,u64), &u32)> = cloned_branchgen.iter().collect();
         hitcount_vec.sort_by(|a, b| a.1.cmp(b.1));
         gencount_vec.sort_by(|a, b| b.1.cmp(a.1));
-/*
+
         for item in hitcount_vec {
           println!("Most frequently hit branch are {:?}, count is {}", item.0, item.1);
         }
@@ -212,6 +224,10 @@ pub fn fuzz_loop(
 */
 
         let mut scheduled_count = 0;
+        let mut zero_count = 0;
+        let mut one_count = 0;
+        let mut other_count = 0;
+        let mut divergence_count = 0;
         for task in global_tasks.read().unwrap().iter() {
           let if_quota;
           let mut quota;
@@ -234,18 +250,43 @@ pub fn fuzz_loop(
             None => 0,
           };
 
-          let gencount = match cloned_branchgen.get(&(task.get_addr(), task.get_ctx(), task.get_order())) {
+          let gencount = match cloned_branchgen.get(&(task.get_addr(), task.get_ctx(), task.get_order(), task.get_direction())) {
             Some(&x) => x,
             None => 0,
           };
+
+          let solcount = match cloned_branchsol.get(&(task.get_addr(), task.get_ctx(), task.get_order(), task.get_direction())) {
+            Some(&x) => x,
+            None => 0,
+          };
+
+          if (gencount == 0 && solcount == 0) {
+                zero_count += 1;
+            }
+          if (gencount == 0 && solcount != 0) {
+                divergence_count += 1;
+                info!("divergent task is addr {}, direction {}", task.get_addr(),task.get_direction());
+            }
+
+          if (gencount == 1) {
+                one_count += 1;
+            }
+          if (gencount > 1) {
+                other_count += 1;
+            }
           if if_quota || (!if_quota && (gencount > 1 || hitcount < 5)) {
           //if hitcount < 5 || gencount > 1 {
+            if (gencount > 4) {
+              info!("gencount {} solcount {} addr {}", gencount, solcount, task.get_addr());
+            }
+            
             scheduled_count += 1;
             let task_ser = task.write_to_bytes().unwrap();
             unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, false); }
           }
         }
         info!("scheduled_count {}", scheduled_count);
+        info!("zero_count {} divergenct_count {} one_count {} other_count {}", zero_count, divergence_count, one_count, other_count);
         //thread::sleep(time::Duration::from_secs(scheduled_count/1000));
         //break;
       }
