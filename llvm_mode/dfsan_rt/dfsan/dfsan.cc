@@ -290,7 +290,6 @@ dfsan_label __taint_union_load(const dfsan_label *ls, uptr n) {
 
   // shape
   bool shape = true;
-  uptr shape_ext = 0;
   if (__dfsan_label_info[label0].op != 0) {
     // not raw input bytes
     shape = false;
@@ -299,7 +298,6 @@ dfsan_label __taint_union_load(const dfsan_label *ls, uptr n) {
     for (uptr i = 1; i != n; ++i) {
       dfsan_label next_label = ls[i];
       if (next_label == kInitializingLabel) return kInitializingLabel;
-      else if (next_label == CONST_LABEL) ++shape_ext;
       else if (get_label_info(next_label)->op1 != offset + i) {
         shape = false;
         break;
@@ -308,22 +306,9 @@ dfsan_label __taint_union_load(const dfsan_label *ls, uptr n) {
   }
   if (shape) {
     if (n == 1) return label0;
-
-    uptr load_size = n - shape_ext;
-
-    AOUT("shape: label0: %d %d %d\n", label0, load_size, n);
-
-    dfsan_label ret = label0;
-    if (load_size > 1) {
-      ret = __taint_union(label0, (dfsan_label)load_size, Load, load_size * 8, 0, 0);
-    }
-    if (shape_ext) {
-      for (uptr i = 0; i < shape_ext; ++i) {
-        char *c = (char *)app_for(&ls[load_size + i]);
-        ret = __taint_union(ret, 0, Concat, (load_size + i + 1) * 8, 0, *c);
-      }
-    }
-    return ret;
+    
+    AOUT("shape: label0: %d %d\n", label0, n);
+    return __taint_union(label0, (dfsan_label)n, Load, n * 8, 0, 0);
   }
 
   // fast path 2: all labels are extracted from a n-size label, then return that label
@@ -410,31 +395,6 @@ void __taint_union_store(dfsan_label l, dfsan_label *ls, uptr n) {
     for (uptr i = 0; i < n; ++i)
       ls[i] = label0 + i;
     return;
-  }
-
-  // fast path 4: Concat
-  if (is_kind_of_label(l, Concat)) {
-    if (n * 8 == info->size) {
-      dfsan_label cur = info->l2; // next label
-      dfsan_label_info* cur_info = get_label_info(cur);
-      // store current
-      __taint_union_store(info->l2, &ls[n - cur_info->size / 8], cur_info->size / 8);
-      // store base
-      __taint_union_store(info->l1, ls, n - cur_info->size / 8);
-      return;
-    }
-  }
-
-  // simplify
-  if (is_kind_of_label(l, ZExt)) {
-    dfsan_label orig = info->l1;
-    // if the base size is multiple of byte
-    if ((get_label_info(orig)->size & 0x7) == 0) {
-      for (uptr i = get_label_info(orig)->size / 8; i < n; ++i)
-        ls[i] = 0;
-      __taint_union_store(orig, ls, get_label_info(orig)->size / 8);
-      return;
-    }
   }
 
   // default fall through
@@ -855,33 +815,6 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
   uint64_t acc = (uint64_t)addr;
   u8 r = get_const_result(c1,c2,predicate);
   u8 sym_r = 1-r;
-#if PATH_PREFIX
-  if ((op1 == 0 && op2 == 0)) {
-    u8 deter = 1;
-    XXH64_update(&state, &acc, sizeof(acc));
-    XXH64_update(&state, &deter, sizeof(deter));
-    XXH64_update(&state, &r, sizeof(r));
-    return;
-  }
-  u8 deter = 0;
-  XXH64_update(&state, &acc, sizeof(acc));
-  XXH64_update(&state, &deter, sizeof(deter));
-  XXH64_copyState(&state_sym, &state);
-
-  XXH64_update(&state, &r, sizeof(r));               // rolling in the direction of taken branch.
-  XXH64_update(&state_sym, &sym_r, sizeof(sym_r));   // rolling in the direction of untaken branch.
-
-  tmp_hash_symb = XXH64_digest(&state_sym);          // hash value of untaken branch
-  path_prefix_hash = XXH64_digest(&state);
-  redis.set(std::to_string(path_prefix_hash), "concrete");
-  auto val = redis.get(std::to_string(tmp_hash_symb));
-  if (val) {
-    skip = 1;	
-  } else {
-    redis.set(std::to_string(tmp_hash_symb), "explored");
-    skip = 0;
-  }
-#endif
   if ((op1 == 0 && op2 == 0))
     return;
   auto itr = __branches.find({__taint_trace_callstack, addr});
@@ -896,29 +829,9 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
     return;
   }
 
-#if CTX_FILTER
-  XXH64_state_t ctx_state;
-  XXH64_reset(&ctx_state,0);
-  uint64_t callstack = __taint_trace_callstack;
-  XXH64_update(&ctx_state, &acc, sizeof(acc));
-  XXH64_update(&ctx_state, &callstack, sizeof(callstack));
-  XXH64_update(&ctx_state, &order, sizeof(order));
-  uint64_t ctx_hash = XXH64_digest(&ctx_state);          // hash value of untaken branch
-  auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
-  if (val) {
-    //skip = 1;
-    return;
-  } else {
-    redis.set(std::to_string(ctx_hash)+PROGRAM, "explored");
-    //skip = 0;
-  }
-#endif
-
-
   AOUT("solving cmp: %u %u %u %d %llu %llu @%p\n", op1, op2, size, predicate, c1, c2, addr);
 
   dfsan_label temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
-
 
   __solve_cond(temp, addr, __taint_trace_callstack,order,skip,op1,op2,r,predicate);
 }
@@ -934,34 +847,6 @@ __taint_trace_cond(dfsan_label label, u8 r) {
   void *addr = __builtin_return_address(0);
   uint64_t acc = (uint64_t)addr;
   u8 sym_r = 1-r;
-#if PATH_PREFIX
-  if ((label == 0)) {
-    u8 deter = 1;
-    XXH64_update(&state, &acc, sizeof(acc));
-    XXH64_update(&state, &deter, sizeof(deter));
-    XXH64_update(&state, &r, sizeof(r));
-    return;
-  }
-  u8 deter = 0;
-  XXH64_update(&state, &acc, sizeof(acc));
-  XXH64_update(&state, &deter, sizeof(deter));
-  XXH64_copyState(&state_sym, &state);
-
-  XXH64_update(&state, &r, sizeof(r));               // rolling in the direction of taken branch.
-  XXH64_update(&state_sym, &sym_r, sizeof(sym_r));   // rolling in the direction of untaken branch.
-
-  tmp_hash_symb = XXH64_digest(&state_sym);          // hash value of untaken branch
-  path_prefix_hash = XXH64_digest(&state);
-  redis.set(std::to_string(path_prefix_hash), "concrete");
-  auto val = redis.get(std::to_string(tmp_hash_symb));
-  if (val) {
-    skip = 1;	
-  } else {
-    redis.set(std::to_string(tmp_hash_symb), "explored");
-    skip = 0;
-  }
-
-#endif
   if (label == 0)
     return;
   auto itr = __branches.find({__taint_trace_callstack, addr});
@@ -975,25 +860,6 @@ __taint_trace_cond(dfsan_label label, u8 r) {
     skip += 1;
     return;
   }
-
-#if CTX_FILTER
-  XXH64_state_t ctx_state;
-  XXH64_reset(&ctx_state,0);
-  uint64_t callstack = __taint_trace_callstack;
-  XXH64_update(&ctx_state, &acc, sizeof(acc));
-  XXH64_update(&ctx_state, &callstack, sizeof(callstack));
-  XXH64_update(&ctx_state, &order, sizeof(order));
-  uint64_t ctx_hash = XXH64_digest(&ctx_state);          // hash value of untaken branch
-  auto val = redis.get(std::to_string(ctx_hash)+PROGRAM);
-  if (val) {
-    return;
-    //skip = 1;	
-  } else {
-    redis.set(std::to_string(ctx_hash)+PROGRAM, "explored");
-    //skip = 0;
-  }
-#endif
-
 
   AOUT("solving cond: %u %u %u %p %u\n", label, r, __taint_trace_callstack, addr, itr->second);
 

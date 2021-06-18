@@ -228,6 +228,8 @@ static void edit_params(u32 argc, char **argv) {
   cc_params[cc_par_cnt++] = "-pie";
   cc_params[cc_par_cnt++] = "-fpic";
   cc_params[cc_par_cnt++] = "-Qunused-arguments";
+  cc_params[cc_par_cnt++] = "-fno-vectorize";
+  cc_params[cc_par_cnt++] = "-fno-slp-vectorize";
 #if 0
   cc_params[cc_par_cnt++] = "-mno-mmx";
   cc_params[cc_par_cnt++] = "-mno-sse";
