@@ -153,19 +153,26 @@ static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
   cons->const_num = c->meta().const_num(); 
 }
 
-std::unordered_map<uint64_t,std::shared_ptr<Cons>> cons_cache(1000000);
+std::unordered_map<uint64_t,Constraint> cons_cache(1000000);
 
 
 void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bool fresh) {
   int i = 0;
   static uint32_t old_fid = -1;
-  for (auto c : task->constraints()) {
-    assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
-    std::shared_ptr<Cons> cons;
-    if (cons_cache.find(task->fid()*1000000 + c.label()) != cons_cache.end()) {
-    //if (0) {
-      cons = cons_cache[task->fid()*1000000 + c.label()];
+  //for (Constraint c : task->constraints()) {
+  Constraint c;
+  for (int i =0; i< task->constraints_size(); i++) {
+    if (i == 0) { c = task->constraints(0);
+      cons_cache.insert({task->fid() * 1000000 + c.label(), c});
     } else {
+    	if (cons_cache.find(task->fid()*1000000 + c.label()) != cons_cache.end()) {
+	     c = cons_cache[task->fid()*1000000 + c.label()];
+        } else {
+	     continue;
+        }
+    }
+    if (c.node().kind() == rgd::Constant) continue;
+    std::shared_ptr<Cons> cons;
       cons = std::make_shared<Cons>();
       append_meta(cons, &c);
       if (USE_CODECACHE) {
@@ -203,12 +210,9 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bo
         auto fn = performJit(id);
         cons->fn = fn; // fn could be duplicated, but that's fine
       }
-      cons_cache.insert({task->fid() * 1000000 + c.label(), cons});
-    }
     (*fut)->constraints.push_back(cons);
     if ( i == 0)
       (*fut_opt)->constraints.push_back(cons);
-    i++;
   }
 
   (*fut)->finalize();
