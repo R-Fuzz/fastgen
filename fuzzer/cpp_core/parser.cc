@@ -162,9 +162,9 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bo
   for (auto c : task->constraints()) {
     assert(c.node().kind() != rgd::Constant && "kind must be non-constant");
     std::shared_ptr<Cons> cons;
-    if (cons_cache.find(task->fid()*100000 + c.label()) != cons_cache.end()) {
+    if (cons_cache.find(task->fid()*1000000 + c.label()) != cons_cache.end()) {
     //if (0) {
-      cons = cons_cache[task->fid()*100000 + c.label()];
+      cons = cons_cache[task->fid()*1000000 + c.label()];
     } else {
       cons = std::make_shared<Cons>();
       append_meta(cons, &c);
@@ -203,7 +203,7 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bo
         auto fn = performJit(id);
         cons->fn = fn; // fn could be duplicated, but that's fine
       }
-      cons_cache.insert({task->fid() * 100000 + c.label(), cons});
+      cons_cache.insert({task->fid() * 1000000 + c.label(), cons});
     }
     (*fut)->constraints.push_back(cons);
     if ( i == 0)
@@ -249,29 +249,7 @@ uint32_t get_random_fid(uint64_t addr, uint64_t ctx, uint32_t order, uint64_t di
 
 
 void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bool fresh) {
-  static int hit = 0;
-  static int miss = 0;
-
-
-  std::tuple<uint64_t,uint64_t,uint32_t,uint64_t> bid{task->addr(),task->ctx(),task->order(), task->direction()};
-  struct taskKV *res = TaskCache.find(bid);
-  //struct taskKV *res = nullptr;
-  if (res == nullptr) {
-    // printf("miss count %d\n", ++miss);
     *fut = new FUT();
     *fut_opt = new FUT();
     construct_task(task,fut,fut_opt, fresh);
-    res = new struct taskKV({bid, *fut, *fut_opt});
-    if (!TaskCache.insert(res)) {
-      delete res;
-      delete (*fut);
-      delete (*fut_opt);
-      res =  TaskCache.find(bid);
-      *fut = res->fut;
-      *fut_opt = res->fut_opt;
-    }
-  } else {
-    *fut = res->fut;
-    *fut_opt = res->fut_opt;
-  }
 }

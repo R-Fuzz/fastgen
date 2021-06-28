@@ -44,8 +44,8 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
 }
 
 pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_data: &mut VecDeque<[u8;1024]>,
-          table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>
-          , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32), u32>>>, global_tasks: &Arc<RwLock<Vec<SearchTask>>>, buf: &Vec<u8>) {
+          table: &UnionTable, tainted_size: usize, branch_gencount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>
+          , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, buf: &Vec<u8>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
   let mut uf = UnionFind::new(tainted_size);
   branch_deps.resize_with(tainted_size, || None);
@@ -53,22 +53,27 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
   let mut nbranches = 0;
   for &label in labels {
-    let mut count = 1;
-    if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5)) {
-      count = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5)).unwrap();
-      count += 1;
+    let mut hitcount = 1;
+    let mut gencount = 0;
+    if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
+      hitcount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
+      hitcount += 1;
     }
-    branch_hitcount.write().unwrap().insert((label.3,label.4,label.5), count);
+    branch_hitcount.write().unwrap().insert((label.3,label.4,label.5,label.2), hitcount);
+
+    if branch_gencount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
+      gencount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
+    }
+
     //we have to continue here, the underlying task lookup with check the redudant as well. If it is redudant, the task will be loaded
     //without inserting caching 
-    if dedup.read().unwrap().contains(&(label.3,label.4,label.5, label.2)) {
+    if hitcount > 1 {
       if label.6 == 2 {
         memcmp_data.pop_front().unwrap();
+      	continue;
       }
-      unsafe { append_fid(label.3, label.4, label.5, label.2, label.0); }
-      continue;
     }
-    dedup.write().unwrap().insert((label.3,label.4,label.5, label.2));
+
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
     //let mut cons_reverse = Constraint::new();
@@ -139,33 +144,14 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       task.set_direction(label.2);
 
       let task_ser = task.write_to_bytes().unwrap();
-      unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
-      global_tasks.write().unwrap().push(task);
-/*
-      if label.2 <= 1 {
-        let mut task_reverse = SearchTask::new();
-        //cons_table.insert(label.1, cons.clone());
-        flip_op(cons_reverse.mut_node());
-        task_reverse.mut_constraints().push(cons_reverse);
-        for &l in added.iter() {
-          // let mut c = cons_table[l].clone();
-          // flip_op(c.mut_node());
-          let mut c = Constraint::new();
-          c.set_label(l);
-          task_reverse.mut_constraints().push(c);
-        }
-        task_reverse.set_fid(label.0);
-        task_reverse.set_addr(label.3);
-        task_reverse.set_ctx(label.4);
-        task_reverse.set_order(label.5);
-        task_reverse.set_direction(1 - label.2);
 
-
-        let task_ser = task_reverse.write_to_bytes().unwrap();
-        unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
-        global_tasks.write().unwrap().push(task_reverse);
+      if gencount == 0 && hitcount == 1 {
+      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
+      } else if (gencount == 0 && hitcount < 50 ) {
+      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, false); }
       }
-*/
+      
+
     //step 3: nested branch
     for &off in inputs.iter() {
       let mut is_empty = false;

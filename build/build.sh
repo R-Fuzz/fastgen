@@ -7,7 +7,12 @@ set -euxo pipefail
 PREFIX1=${PREFIX:-${ROOT_DIR}/bin/}
 PREFIX2=${PREFIX:-${ROOT_DIR}/bin_ang/}
 
+export CC=clang-6.0
+export CXX=clang++-6.0
+unset CXXFLAGS
+unset CFLAGS
 cd fuzzer/cpp_core
+rm -rf build
 mkdir -p build
 cd build
 cmake .. && make -j
@@ -27,9 +32,6 @@ pushd llvm_mode
 rm -rf build
 mkdir -p build
 pushd build
-export CC=clang-6.0
-export CXX=clang++-6.0
-unset CXXFLAGS
 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX1} -DCMAKE_BUILD_TYPE=Release ..
 make -j
 make install

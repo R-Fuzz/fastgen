@@ -109,13 +109,13 @@ pub fn grading_loop(
 }
 
 
-pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>,
-    dedup: Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>,
-    branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32), u32>>>,
+pub fn dispatcher(table: &UnionTable,
+    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
+    branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
     buf: &Vec<u8>, id: usize) {
 
   let (labels,mut memcmp_data) = read_pipe(id);
-  scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &dedup, &branch_hitcount, &global_tasks, buf);
+  scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &branch_gencount, &branch_hitcount, buf);
 }
 
 pub fn fuzz_loop(
@@ -159,9 +159,7 @@ pub fn fuzz_loop(
 
   let ptr = unsafe { libc::shmat(shmid, std::ptr::null(), 0) as *mut UnionTable};
   let table = unsafe { & *ptr };
-  let global_tasks = Arc::new(RwLock::new(Vec::<SearchTask>::new()));
-  let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32, u64)>::new()));
-  let branch_hitcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
+  let branch_hitcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
   let mut branch_quota = HashMap::<(u64,u64,u32), u32>::new();
 
   let mut no_more_seeds = 0;
@@ -171,12 +169,11 @@ pub fn fuzz_loop(
       let buf = depot.get_input_buf(id);
       let buf_cloned = buf.clone();
       //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
-      let gtasks = global_tasks.clone();
-      let gdedup = dedup.clone();
       let gbranch_hitcount = branch_hitcount.clone();
+      let gbranch_gencount = branch_gencount.clone();
 
       let handle = thread::spawn(move || {
-          dispatcher(table, gtasks, gdedup, gbranch_hitcount, &buf_cloned, executor_id);
+          dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, executor_id);
       });
 
       let t_start = time::Instant::now();
@@ -193,103 +190,8 @@ pub fn fuzz_loop(
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
-      let mut buf = depot.get_input_buf(depot.next_random());
-      run_afl_mutator(&mut executor,&mut buf);
-      if !config::SAMPLING || unsafe { get_queue_length() } > 100000 {
-      //if !config::SAMPLING {
-        continue;
-      }
-      no_more_seeds = no_more_seeds + 1;
-      if no_more_seeds > 10 {
-        no_more_seeds = 0;
-        info!("Rerun all {} tasks", global_tasks.read().unwrap().len());
-        let cloned_branchhit: HashMap<(u64,u64,u32),u32> = branch_hitcount.read().unwrap().clone();
-        let cloned_branchgen: HashMap<(u64,u64,u32,u64),u32> = branch_gencount.read().unwrap().clone();
-        let cloned_branchsol: HashMap<(u64,u64,u32,u64),u32> = branch_solcount.read().unwrap().clone();
-/*
-        let mut hitcount_vec: Vec<(&(u64,u64,u32), &u32)> = cloned_branchhit.iter().collect();
-        let mut gencount_vec: Vec<(&(u64,u64,u32,u64), &u32)> = cloned_branchgen.iter().collect();
-        hitcount_vec.sort_by(|a, b| a.1.cmp(b.1));
-        gencount_vec.sort_by(|a, b| b.1.cmp(a.1));
-
-        for item in hitcount_vec {
-          println!("Most frequently hit branch are {:?}, count is {}", item.0, item.1);
-        }
-
-        warn!("gencount items is {}", gencount_vec.len());
-
-        for item in gencount_vec {
-          println!("Most frequently gen branch are {:?}, count is {}", item.0, item.1);
-        }
-*/
-
-        let mut scheduled_count = 0;
-        let mut zero_count = 0;
-        let mut one_count = 0;
-        let mut other_count = 0;
-        let mut divergence_count = 0;
-        for task in global_tasks.read().unwrap().iter() {
-          let if_quota;
-          let mut quota;
-          if branch_quota.contains_key(&(task.get_addr(), task.get_ctx(), task.get_order())) {
-            quota = *branch_quota.get(&(task.get_addr(), task.get_ctx(), task.get_order())).unwrap(); 
-            if quota > 0 {
-              if_quota = true;
-              quota = quota - 1;
-            } else {
-              if_quota = false;
-            }
-          } else {
-            quota = 9;
-            if_quota = true;
-          }
-          branch_quota.insert((task.get_addr(), task.get_ctx(), task.get_order()), quota);
-
-          let hitcount = match cloned_branchhit.get(&(task.get_addr(), task.get_ctx(), task.get_order())) {
-            Some(&x) => x,
-            None => 0,
-          };
-
-          let gencount = match cloned_branchgen.get(&(task.get_addr(), task.get_ctx(), task.get_order(), task.get_direction())) {
-            Some(&x) => x,
-            None => 0,
-          };
-
-          let solcount = match cloned_branchsol.get(&(task.get_addr(), task.get_ctx(), task.get_order(), task.get_direction())) {
-            Some(&x) => x,
-            None => 0,
-          };
-
-          if (gencount == 0 && solcount == 0) {
-                zero_count += 1;
-            }
-          if (gencount == 0 && solcount != 0) {
-                divergence_count += 1;
-                info!("divergent task is addr {}, direction {}", task.get_addr(),task.get_direction());
-            }
-
-          if (gencount == 1) {
-                one_count += 1;
-            }
-          if (gencount > 1) {
-                other_count += 1;
-            }
-          if if_quota || (!if_quota && (gencount > 1 || hitcount < 5)) {
-          //if hitcount < 5 || gencount > 1 {
-            if (gencount > 4) {
-              info!("gencount {} solcount {} addr {}", gencount, solcount, task.get_addr());
-            }
-            
-            scheduled_count += 1;
-            let task_ser = task.write_to_bytes().unwrap();
-            unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, false); }
-          }
-        }
-        info!("scheduled_count {}", scheduled_count);
-        info!("zero_count {} divergenct_count {} one_count {} other_count {}", zero_count, divergence_count, one_count, other_count);
-        //thread::sleep(time::Duration::from_secs(scheduled_count/1000));
+        thread::sleep(time::Duration::from_secs(1));
         //break;
-      }
     }
   }
 }

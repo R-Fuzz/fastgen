@@ -196,8 +196,8 @@ void* handle_task(void*) {
 
     }
 
-    //delete fut;
-    //delete fut_opt;
+    delete fut;
+    delete fut_opt;
     //return n_solvable || s_solvable || z3n_solvable || z3s_solvable ;
   }
   return nullptr;
@@ -258,9 +258,6 @@ extern "C" {
       handle_fmemcmp(data,index,size, tid, addr);
   }
 
-  void append_fid(uint64_t addr, uint64_t ctx, uint32_t order, uint64_t direction, uint32_t fid) {
-    add_fids(addr, ctx, order, direction, fid);
-  }
 
   uint32_t get_queue_length() {
     return incoming_tasks1.sizeGuess();
@@ -328,8 +325,9 @@ extern "C" {
       return size;
     } else if (solution_queue.try_dequeue(item)) {
       //smapling output
-      uint32_t random_fid = get_random_fid(item.addr, item.ctx, item.order, item.direction);
-      if (random_fid == -1) random_fid = item.fid;
+      //uint32_t random_fid = get_random_fid(item.addr, item.ctx, item.order, item.direction);
+      //if (random_fid == -1) random_fid = item.fid;
+      uint32_t random_fid = item.fid;
       std::string old_string = std::to_string(random_fid);
       std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
       //std::string input_file = "/home/cju/debug/seed.png";
