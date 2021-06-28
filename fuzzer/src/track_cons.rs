@@ -74,6 +74,10 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       }
     }
 
+    if gencount > 0 || hitcount > 10 {
+	continue;
+    }
+
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
     //let mut cons_reverse = Constraint::new();
@@ -91,7 +95,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     }
 
 
-    if inputs.is_empty() { warn!("Skip constraint!"); continue; }
+    if inputs.is_empty() { 
+	//warn!("Skip constraint!"); 
+     continue; }
 
     let mut init = false;
     //build union table
@@ -145,9 +151,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
       let task_ser = task.write_to_bytes().unwrap();
 
-      if gencount == 0 && hitcount == 1 {
+      if hitcount == 1 {
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
-      } else if (gencount == 0 && hitcount < 50 ) {
+      } else {
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, false); }
       }
       

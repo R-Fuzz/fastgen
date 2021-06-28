@@ -497,7 +497,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
   if is_relational_by_dfsan(op) {
     let mut src = AstNode::new();
     if info.depth > 80  {
-      warn!("large tree skipped depth is {}", info.depth);
+      //warn!("large tree skipped depth is {}", info.depth);
       return;
     }
     do_uta(label, &mut src, table, &mut cache);

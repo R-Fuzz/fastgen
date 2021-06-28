@@ -196,8 +196,8 @@ void* handle_task(void*) {
 
     }
 
-    delete fut;
-    delete fut_opt;
+    //delete fut;
+    //delete fut_opt;
     //return n_solvable || s_solvable || z3n_solvable || z3s_solvable ;
   }
   return nullptr;
