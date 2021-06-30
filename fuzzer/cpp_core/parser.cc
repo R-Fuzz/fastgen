@@ -165,8 +165,8 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bo
     if (i == 0) { c = task->constraints(0);
       cons_cache.insert({task->fid() * 1000000 + c.label(), c});
     } else {
-    	if (cons_cache.find(task->fid()*1000000 + c.label()) != cons_cache.end()) {
-	     c = cons_cache[task->fid()*1000000 + c.label()];
+    	if (cons_cache.find(task->fid()*1000000 + task->constraints(i).label()) != cons_cache.end()) {
+	     c = cons_cache[task->fid()*1000000 + task->constraints(i).label()];
         } else {
 	     continue;
         }
