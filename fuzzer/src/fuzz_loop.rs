@@ -25,6 +25,113 @@ use std::collections::HashMap;
 //use crate::util::*;
 use wait_timeout::ChildExt;
 
+
+pub fn dispatcher(table: &UnionTable,
+    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
+    branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
+    buf: &Vec<u8>, id: usize) {
+
+  let (labels,mut memcmp_data) = read_pipe(id);
+  scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &branch_gencount, &branch_hitcount, buf);
+}
+
+//check the status
+pub fn branch_verifier(id: usize, addr: u64, ctx: u64, 
+    order: u32, direction: u64,
+    branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>) {
+  let mut status = 4; // not reached
+  let (labels,mut memcmp_data) = read_pipe(id);
+  
+  for label in labels {
+    if label.6 == 2 {
+      memcmp_data.pop_front().unwrap();
+      continue;
+    }
+    if label.6 == 0 {
+      if label.3 == addr && label.4 == ctx && label.5 == order {
+        status = 2; //reached
+        if label.2 == 1-direction {
+          status = 1; //flipped
+        }
+      }
+    }
+  }
+
+  println!("verify ({},{},{},{}), status {}", addr,ctx,order,direction,status);
+  let mut status_to_update = 3;
+  if branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
+    status_to_update = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
+  }
+  if status < status_to_update {
+    status_to_update = status;
+  }
+  branch_solcount.write().unwrap().insert((addr,ctx,order,direction), status_to_update);
+
+}
+
+pub fn branch_checking(
+    running: Arc<AtomicBool>,
+    cmd_opt: CommandOpt,
+    depot: Arc<Depot>,
+    global_branches: Arc<GlobalBranches>,
+    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    // let's use this for the solving status
+    // 1 -> flipped
+    // 2 -> reached not flipped
+    // 3 -> not reached
+    branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    ) {
+  let mut executor = Executor::new(
+      cmd_opt,
+      global_branches,
+      depot.clone(),
+      0,
+      );
+
+  //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
+  let t_start = time::Instant::now();
+  let mut grade_count = 0;
+  let mut buf: Vec<u8> = Vec::with_capacity(config::MAX_INPUT_LEN);
+  buf.resize(config::MAX_INPUT_LEN, 0);
+  let mut addr: u64 = 0;
+  let mut ctx: u64 = 0;
+  let mut order: u32 = 0;
+  let mut fid: u32 = 0;
+  let mut direction: u64 = 0;
+  while running.load(Ordering::Relaxed) {
+    let len = unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction) };
+    if len != 0 {
+      buf.resize(len as usize, 0);
+      let gsol_count = branch_solcount.clone();
+      let handle = thread::spawn(move || {
+          branch_verifier(3, addr, ctx,order,direction, gsol_count);
+          });
+
+      executor.track(0, &buf);
+
+      if handle.join().is_err() {
+        error!("Error happened in listening thread!");
+      }
+
+      let new_path = executor.run_sync(&buf);
+      if new_path.0 {
+        info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {}, it is a new input {}, saved as input #{}", fid, addr, ctx, order, new_path.0, new_path.1);
+        let mut count = 1;
+        if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
+          count = *branch_gencount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
+          count += 1;
+          //info!("gencount is {}",count);
+        }
+        branch_gencount.write().unwrap().insert((addr,ctx,order,direction), count);
+        //info!("next input addr is {:} ctx is {}",addr,ctx);
+      }
+      grade_count = grade_count + 1;
+    }
+  }
+}
+
+
+
 pub fn grading_loop(
     running: Arc<AtomicBool>,
     cmd_opt: CommandOpt,
@@ -80,9 +187,9 @@ pub fn grading_loop(
         let new_path = executor.run_sync(&buf);
         let mut solcount = 1;
         if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
-            solcount = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
-            solcount += 1;
-            //info!("gencount is {}",count);
+          solcount = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
+          solcount += 1;
+          //info!("gencount is {}",count);
         }
         branch_solcount.write().unwrap().insert((addr,ctx,order,direction), solcount);
         if new_path.0 {
@@ -101,7 +208,7 @@ pub fn grading_loop(
       if grade_count % 1000 == 0 {
         let used_t1 = t_start.elapsed().as_secs() as u32;
         if used_t1 != 0 {
-       //   warn!("Grading throughput is {}", grade_count / used_t1);
+          //   warn!("Grading throughput is {}", grade_count / used_t1);
         }
       }
     }
@@ -109,14 +216,7 @@ pub fn grading_loop(
 }
 
 
-pub fn dispatcher(table: &UnionTable,
-    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
-    branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
-    buf: &Vec<u8>, id: usize) {
 
-  let (labels,mut memcmp_data) = read_pipe(id);
-  scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &branch_gencount, &branch_hitcount, buf);
-}
 
 pub fn fuzz_loop(
     running: Arc<AtomicBool>,
@@ -132,20 +232,20 @@ pub fn fuzz_loop(
 
   let shmid = match executor_id { 
     2 => unsafe {
-    libc::shmget(
-        0x1234,
-        0xc00000000,
-        0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
-        )
+      libc::shmget(
+          0x1234,
+          0xc00000000,
+          0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+          )
     },
-    3 => unsafe {
-    libc::shmget(
-        0x2468,
-        0xc00000000,
-        0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
-        )
-    },
-    _ => 0,
+      3 => unsafe {
+        libc::shmget(
+            0x2468,
+            0xc00000000,
+            0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+            )
+      },
+      _ => 0,
   };
 
   info!("start fuzz loop with shmid {}",shmid);
@@ -174,7 +274,7 @@ pub fn fuzz_loop(
 
       let handle = thread::spawn(move || {
           dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, executor_id);
-      });
+          });
 
       let t_start = time::Instant::now();
 
@@ -190,10 +290,10 @@ pub fn fuzz_loop(
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
-	let mut buf = depot.get_input_buf(depot.next_random());
-	run_afl_mutator(&mut executor,&mut buf);
-        thread::sleep(time::Duration::from_secs(1));
-        //break;
+      //let mut buf = depot.get_input_buf(depot.next_random());
+      //run_afl_mutator(&mut executor,&mut buf);
+      thread::sleep(time::Duration::from_secs(1));
+      //break;
     }
   }
 }
