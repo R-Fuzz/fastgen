@@ -81,12 +81,23 @@ pub fn branch_checking(
     // 3 -> not reached
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     ) {
+
+let shmid =  unsafe {
+        libc::shmget(
+            0x2468,
+            0xc00000000,
+            0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+            )
+      };
+
   let mut executor = Executor::new(
       cmd_opt,
       global_branches,
       depot.clone(),
-      0,
+      shmid,
       );
+
+  
 
   //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
   let t_start = time::Instant::now();
