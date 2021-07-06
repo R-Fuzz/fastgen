@@ -20,6 +20,7 @@ use std::{
     time,
 };
 use wait_timeout::ChildExt;
+use std::os::unix::io::RawFd;
 
 pub struct Executor {
     pub cmd: command::CommandOpt,
@@ -105,9 +106,9 @@ impl Executor {
         self.forksrv = Some(fs);
     }
 
-    pub fn track(&mut self, id: usize, buf: &Vec<u8>) {
+    pub fn track(&mut self, id: usize, buf: &Vec<u8>, pipeid: RawFd) {
         //FIXME
-        let e = format!("taint_file={} tid={} shmid={} pipeid={}", &self.cmd.out_file, &id, &self.shmid, &self.cmd.id);
+        let e = format!("taint_file={} tid={} shmid={} pipeid={}", &self.cmd.out_file, &id, &self.shmid, pipeid.to_string());
         info!("Track {}, e is {}", &id, e);
         self.envs.insert(
             defs::TAINT_OPTIONS.to_string(),

@@ -24,19 +24,22 @@ use std::collections::HashSet;
 use std::collections::HashMap;
 //use crate::util::*;
 use wait_timeout::ChildExt;
+use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
+use nix::unistd::pipe;
+use nix::unistd::close;
 
 
 pub fn dispatcher(table: &UnionTable,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
     branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
-    buf: &Vec<u8>, id: usize) {
+    buf: &Vec<u8>, id: RawFd) {
 
   let (labels,mut memcmp_data) = read_pipe(id);
   scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &branch_gencount, &branch_hitcount, buf);
 }
 
 //check the status
-pub fn branch_verifier(id: usize, addr: u64, ctx: u64, 
+pub fn branch_verifier(id: RawFd, addr: u64, ctx: u64, 
     order: u32, direction: u64, fid: u32,
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>) {
   let mut status = 4; // not reached
@@ -47,6 +50,10 @@ pub fn branch_verifier(id: usize, addr: u64, ctx: u64,
   blacklist.insert(123145304594353);
   blacklist.insert(123145304595949);
   blacklist.insert(123145304594728);
+  blacklist.insert(123145304669312);
+  blacklist.insert(123145304669035);
+  blacklist.insert(123145304660330);
+  blacklist.insert(123145304602306);
   for label in labels {
     if label.6 == 2 {
       memcmp_data.pop_front().unwrap();
@@ -63,7 +70,7 @@ pub fn branch_verifier(id: usize, addr: u64, ctx: u64,
   }
 
   println!("verify ({},{},{},{},{}), status {}", addr,ctx,order,direction,fid, status);
-  if status == 2 && !blacklist.contains(&addr) && (direction == 0 || direction == 1) {
+  if status == 4 && !blacklist.contains(&addr) && (direction == 0 || direction == 1) {
     std::process::exit(1);
   }
   let mut status_to_update = 3;
@@ -123,15 +130,20 @@ let shmid =  unsafe {
       buf.resize(len as usize, 0);
       let gsol_count = branch_solcount.clone();
       //let v_status = veri_status.clone();
+
+      let (read_end, write_end) = pipe().unwrap();
       let handle = thread::spawn(move || {
-          branch_verifier(3, addr, ctx,order,direction,fid,gsol_count);
+          branch_verifier(read_end, addr, ctx,order,direction,fid,gsol_count);
           });
 
-      executor.track(0, &buf);
+      executor.track(0, &buf, write_end);
+      close(write_end);
 
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
+      close(read_end);
+
 
       //if (veri_status.load(Ordering::Relaxed) == 4) {
           
@@ -297,17 +309,20 @@ pub fn fuzz_loop(
       let gbranch_hitcount = branch_hitcount.clone();
       let gbranch_gencount = branch_gencount.clone();
 
+      let (read_end, write_end) = pipe().unwrap();
       let handle = thread::spawn(move || {
-          dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, executor_id);
+          dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
           });
 
       let t_start = time::Instant::now();
 
-      executor.track(id, &buf);
+      executor.track(id, &buf, write_end);
+      close(write_end);
 
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
+      close(read_end);
 
 
       let used_t1 = t_start.elapsed();

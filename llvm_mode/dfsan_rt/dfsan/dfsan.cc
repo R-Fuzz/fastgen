@@ -1166,12 +1166,7 @@ static void dfsan_init(int argc, char **argv, char **envp) {
     }
   //}
   //mypipe = open("/tmp/wp", O_WRONLY | O_NONBLOCK);
-  if (__pipeid == 2)
-    mypipe = open("/tmp/wp2", O_WRONLY);
-  else if (__pipeid == 3)
-    mypipe = open("/tmp/wp3", O_WRONLY);
-  else
-    mypipe = open("/tmp/wp", O_WRONLY);
+  mypipe = __pipeid;
   //else {
   //   printf("segment containts: \n\%s\n", shmp->buf);
   //}

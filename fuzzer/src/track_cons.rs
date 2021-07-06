@@ -148,11 +148,14 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       let task_ser = task.write_to_bytes().unwrap();
 
 
+      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
+/*
       if hitcount == 1 && gencount == 0 {
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
       } else if  hitcount <=10 && gencount == 0 {
-      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, false); }
+      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
       }
+*/
       
 
     //step 3: nested branch

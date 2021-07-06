@@ -5,6 +5,7 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::fs::File;
 use std::collections::VecDeque;
+use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
 
 pub fn make_pipe() {
   match unistd::mkfifo("/tmp/wp", stat::Mode::S_IRWXU) {
@@ -13,12 +14,8 @@ pub fn make_pipe() {
   }
 }
 
-pub fn read_pipe(pipeid: usize) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<[u8;1024]>) {
-  let f = match pipeid {
-    2 => File::open("/tmp/wp2").expect("open pipe failed"),
-    3 => File::open("/tmp/wp3").expect("open pipe failed"),
-    _ => File::open("/tmp/wp2").expect("open pipe failed"),
-  };
+pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<[u8;1024]>) {
+  let f = unsafe { File::from_raw_fd(piped) };
   let mut reader = BufReader::new(f);
   let mut ret = Vec::new();
   let mut retdata = VecDeque::new();
