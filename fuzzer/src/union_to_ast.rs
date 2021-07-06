@@ -501,7 +501,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
       return;
     }
     do_uta(label, &mut src, table, &mut cache);
-    if direction == 1 {
+    if direction != 0 {
       flip_op(&mut src);
     }
     for &v in &cache[&label] {

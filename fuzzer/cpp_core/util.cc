@@ -107,9 +107,10 @@ void printNode(const AstNode* node) {
 
 
 void printTask(const SearchTask* task) {
-  printf("fid is %u\n",task->fid());
+  printf("addr is %p\n",task->addr());
   for(auto cons : task->constraints())  {
     printNode(&cons.node());
+/*
     for (auto amap : cons.meta().map()) {
       printf("k is %u, v is %u\n", amap.k(), amap.v());
     }
@@ -120,6 +121,7 @@ void printTask(const SearchTask* task) {
       printf("offset is %u, iv is %u\n", ainput.offset(), ainput.iv());
     }
     printf("num_const is %u\n", cons.meta().const_num());
+*/
   }
 }
 

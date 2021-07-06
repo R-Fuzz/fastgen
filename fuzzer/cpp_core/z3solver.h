@@ -18,7 +18,7 @@ public:
   Solver();
   void add(z3::expr expr);
 	void reset();
-  bool check(std::unordered_map<uint32_t,uint8_t> &solu);
+  bool check(std::unordered_map<uint32_t,uint8_t> &solu, uint64_t addr);
   bool checkonly();
 	z3::expr serialize(const AstNode* req, 
 						std::unordered_map<uint32_t,z3::expr> &expr_cache);

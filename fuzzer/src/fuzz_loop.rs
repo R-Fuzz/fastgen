@@ -37,11 +37,16 @@ pub fn dispatcher(table: &UnionTable,
 
 //check the status
 pub fn branch_verifier(id: usize, addr: u64, ctx: u64, 
-    order: u32, direction: u64,
+    order: u32, direction: u64, fid: u32,
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>) {
   let mut status = 4; // not reached
   let (labels,mut memcmp_data) = read_pipe(id);
-  
+ 
+  let mut blacklist: HashSet<u64> = HashSet::new();
+  blacklist.insert(123145304593908);
+  blacklist.insert(123145304594353);
+  blacklist.insert(123145304595949);
+  blacklist.insert(123145304594728);
   for label in labels {
     if label.6 == 2 {
       memcmp_data.pop_front().unwrap();
@@ -57,7 +62,10 @@ pub fn branch_verifier(id: usize, addr: u64, ctx: u64,
     }
   }
 
-  println!("verify ({},{},{},{}), status {}", addr,ctx,order,direction,status);
+  println!("verify ({},{},{},{},{}), status {}", addr,ctx,order,direction,fid, status);
+  if status == 2 && !blacklist.contains(&addr) && (direction == 0 || direction == 1) {
+    std::process::exit(1);
+  }
   let mut status_to_update = 3;
   if branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
     status_to_update = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
@@ -66,7 +74,6 @@ pub fn branch_verifier(id: usize, addr: u64, ctx: u64,
     status_to_update = status;
   }
   branch_solcount.write().unwrap().insert((addr,ctx,order,direction), status_to_update);
-
 }
 
 pub fn branch_checking(
@@ -109,13 +116,15 @@ let shmid =  unsafe {
   let mut order: u32 = 0;
   let mut fid: u32 = 0;
   let mut direction: u64 = 0;
+  //let mut veri_status: Arc<AtomicU32>;
   while running.load(Ordering::Relaxed) {
     let len = unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction) };
     if len != 0 {
       buf.resize(len as usize, 0);
       let gsol_count = branch_solcount.clone();
+      //let v_status = veri_status.clone();
       let handle = thread::spawn(move || {
-          branch_verifier(3, addr, ctx,order,direction, gsol_count);
+          branch_verifier(3, addr, ctx,order,direction,fid,gsol_count);
           });
 
       executor.track(0, &buf);
@@ -123,6 +132,11 @@ let shmid =  unsafe {
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
+
+      //if (veri_status.load(Ordering::Relaxed) == 4) {
+          
+       //   panic!("branch not reached");
+      //}
 
       let new_path = executor.run_sync(&buf);
       if new_path.0 {

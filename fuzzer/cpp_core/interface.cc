@@ -37,7 +37,7 @@ static std::atomic<uint64_t> fid;
 static std::atomic<uint64_t> task_id;
 bool SAVING_WHOLE; 
 bool USE_CODECACHE;
-bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu);
+bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu, uint64_t addr);
 void initZ3Solver();
 //moodycamel::ConcurrentQueue<std::pair<uint32_t, std::unordered_map<uint32_t,uint8_t>>> solution_queue;
 std::vector<std::future<bool>> gresults;
@@ -103,7 +103,8 @@ void* handle_task(void*) {
     fut->rgd_solutions = &rgd_solutions;
     fut->partial_solutions = &partial_solutions;
     fut_opt->rgd_solutions = &rgd_solutions_opt;
-#if 1
+    
+#if 0
     gd_search(fut_opt);
     if (rgd_solutions_opt.size() != 0) {
       s_solvable = true;
@@ -128,11 +129,11 @@ void* handle_task(void*) {
     fut->flip();
 #endif
 
-#if 0
+#if 1
     //if (rgd_solutions.size() == 0) {
-    bool ret = sendZ3Solver(false, task.get(), z3_solution);
-    if (!ret)
-      sendZ3Solver(true, task.get(), z3_solution);
+    bool ret = sendZ3Solver(false, task.get(), z3_solution, task->addr());
+    //if (!ret)
+     // sendZ3Solver(true, task.get(), z3_solution, task->addr());
     // }
 #endif
 
@@ -268,7 +269,7 @@ extern "C" {
     s.SetRecursionLimit(10000);
     std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
     task->ParseFromCodedStream(&s);
-    //printTask(task.get());
+    printTask(task.get());
 /*
     if (expect_future)
       gresults.emplace_back(pool->push(handle_task, task));
@@ -305,7 +306,8 @@ extern "C" {
     }
   }
 
-  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, uint32_t *order, uint32_t *fid, uint64_t *direction ) {
+  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
+          uint32_t *order, uint32_t *fid, uint64_t *direction) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
     RGDSolution item;
     //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)

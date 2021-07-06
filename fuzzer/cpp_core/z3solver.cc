@@ -55,9 +55,10 @@ bool Solver::checkonly() {
 }
 
 
-bool Solver::check(std::unordered_map<uint32_t,uint8_t> &solu) {
+bool Solver::check(std::unordered_map<uint32_t,uint8_t> &solu, uint64_t addr) {
   uint64_t before = getTimeStamp();
   z3::check_result res;
+  printf("@%p is %ss\n",addr, solver_.to_smt2().c_str());
   try {
     res = solver_.check();
     if (res==z3::sat) {
@@ -288,7 +289,7 @@ z3::expr Solver::serialize(const AstNode* req,
 
 
 std::unordered_map<uint64_t,z3::expr>  session_cache(1000000);
-bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu) {
+bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu, uint64_t addr) {
   g_solver->reset();
   int num_expr = 0;
   if (opti)
@@ -320,5 +321,5 @@ bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint
       return false;
     }
   }
-  return g_solver->check(solu);
+  return g_solver->check(solu, addr);
 }

@@ -64,7 +64,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     if branch_gencount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
       gencount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
     }
-
+    println!("label is {:?}", label);
     //we have to continue here, the underlying task lookup with check the redudant as well. If it is redudant, the task will be loaded
     //without inserting caching 
     if hitcount > 1 {
@@ -73,7 +73,6 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       	continue;
       }
     }
-
 
     let mut node = AstNode::new();
     let mut cons = Constraint::new();

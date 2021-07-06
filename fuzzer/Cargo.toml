@@ -26,3 +26,6 @@ rand = "0.7"
 
 [build-dependencies]
 protoc-rust = "2.0"
+
+[profile.release]
+panic = "abort"

@@ -108,7 +108,7 @@ impl Executor {
     pub fn track(&mut self, id: usize, buf: &Vec<u8>) {
         //FIXME
         let e = format!("taint_file={} tid={} shmid={} pipeid={}", &self.cmd.out_file, &id, &self.shmid, &self.cmd.id);
-        //info!("Track {}, e is {}", &id, e);
+        info!("Track {}, e is {}", &id, e);
         self.envs.insert(
             defs::TAINT_OPTIONS.to_string(),
             e,

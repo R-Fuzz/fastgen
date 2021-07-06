@@ -846,6 +846,7 @@ __taint_trace_cond(dfsan_label label, u8 r) {
   int skip = 0;
   void *addr = __builtin_return_address(0);
   uint64_t acc = (uint64_t)addr;
+  r = r & 1;
   u8 sym_r = 1-r;
   if (label == 0)
     return;
