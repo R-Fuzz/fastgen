@@ -132,9 +132,9 @@ void* handle_task(void*) {
 #if 1
     //if (rgd_solutions.size() == 0) {
     bool ret = sendZ3Solver(false, task.get(), z3_solution, task->addr());
-    //if (!ret)
-     // sendZ3Solver(true, task.get(), z3_solution, task->addr());
-    // }
+    if (!ret)
+      sendZ3Solver(true, task.get(), z3_solution, task->addr());
+    //}
 #endif
 
 
@@ -269,7 +269,7 @@ extern "C" {
     s.SetRecursionLimit(10000);
     std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
     task->ParseFromCodedStream(&s);
-    printTask(task.get());
+    //printTask(task.get());
 /*
     if (expect_future)
       gresults.emplace_back(pool->push(handle_task, task));

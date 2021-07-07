@@ -79,7 +79,8 @@ pub fn fuzz_main(
     let bg = branch_gencount.clone();
     let bs = branch_solcount.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::branch_checking(r, cmd, d, b, bg, bs);
+        //fuzz_loop::branch_checking(r, cmd, d, b, bg, bs);
+        fuzz_loop::grading_loop(r, cmd, d, b, bg, bs);
         });
     handlers.push(handle);
   }

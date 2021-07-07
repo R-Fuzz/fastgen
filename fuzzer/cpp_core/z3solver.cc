@@ -58,7 +58,7 @@ bool Solver::checkonly() {
 bool Solver::check(std::unordered_map<uint32_t,uint8_t> &solu, uint64_t addr) {
   uint64_t before = getTimeStamp();
   z3::check_result res;
-  printf("@%p is %ss\n",addr, solver_.to_smt2().c_str());
+  //printf("@%p is %s\n",addr, solver_.to_smt2().c_str());
   try {
     res = solver_.check();
     if (res==z3::sat) {
