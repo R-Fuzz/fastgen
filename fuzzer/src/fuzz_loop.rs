@@ -267,6 +267,17 @@ pub fn fuzz_loop(
   let mut id: usize = 0;
   let executor_id = cmd_opt.id;
 
+  let shmid =  
+    unsafe {
+      libc::shmget(
+          libc::IPC_PRIVATE,
+          0xc00000000,
+          0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+          )
+    };
+
+
+/*
   let shmid = match executor_id { 
     2 => unsafe {
       libc::shmget(
@@ -284,6 +295,7 @@ pub fn fuzz_loop(
       },
       _ => 0,
   };
+*/
 
   info!("start fuzz loop with shmid {}",shmid);
 
