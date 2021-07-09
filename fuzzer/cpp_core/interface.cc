@@ -83,10 +83,6 @@ void* handle_task(void*) {
     std::shared_ptr<SearchTask> task = task1.first;
     bool solve = task1.second;
 
-    if (!solve) {
-	addCons(task.get());
-	continue;
-    }
     FUT* fut = nullptr;
     FUT* fut_opt = nullptr;
 

@@ -30,7 +30,7 @@ pushd llvm_mode
 rm -rf build
 mkdir -p build
 pushd build
-cmake -DCMAKE_INSTALL_PREFIX=${PREFIX1} -DCMAKE_BUILD_TYPE=Release ..
+CC=clang-6.0 CXX=clang++-6.0 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX1} -DCMAKE_BUILD_TYPE=Release ..
 make -j
 make install
 popd
@@ -39,7 +39,7 @@ popd
 pushd llvm_mode_angora
 mkdir -p build
 pushd build
-cmake -DCMAKE_INSTALL_PREFIX=${PREFIX2} -DCMAKE_BUILD_TYPE=Release ..
+CC=clang-6.0 CXX=clang++-6.0 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX2} -DCMAKE_BUILD_TYPE=Release ..
 make -j
 make install
 popd

@@ -4,7 +4,7 @@ project(rgd C CXX)
 
 ## set up test
 set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 -std=c++14 -fPIC -mcx16 -march=x86-64-v2 -mno-avx512f -L/out/lib")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 -std=c++14 -fPIC -mcx16 -mno-avx512f -L/out/lib")
 
 enable_testing()
 set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test)
