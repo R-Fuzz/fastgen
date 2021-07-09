@@ -104,7 +104,7 @@ void* handle_task(void*) {
     fut->partial_solutions = &partial_solutions;
     fut_opt->rgd_solutions = &rgd_solutions_opt;
     
-#if 0
+#if 1
     gd_search(fut_opt);
     if (rgd_solutions_opt.size() != 0) {
       s_solvable = true;
@@ -129,7 +129,7 @@ void* handle_task(void*) {
     fut->flip();
 #endif
 
-#if 1
+#if 0
     //if (rgd_solutions.size() == 0) {
     bool ret = sendZ3Solver(false, task.get(), z3_solution, task->addr());
     if (!ret)

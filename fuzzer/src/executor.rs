@@ -247,8 +247,8 @@ impl Executor {
 
 
         let timeout = time::Duration::from_secs(time_limit);
-        let ret = match child.wait_timeout(timeout).unwrap() {
-            Some(status) => {
+        let ret = match child.wait_timeout(timeout) {
+            Ok(Some(status)) => {
                 if let Some(status_code) = status.code() {
                     if self.cmd.uses_asan && status_code == defs::MSAN_ERROR_CODE
                     {
@@ -260,13 +260,14 @@ impl Executor {
                     StatusType::Crash
                 }
             }
-            None => {
+            Ok(None) => {
                 // Timeout
                 // child hasn't exited yet
                 child.kill().expect("Could not send kill signal to child.");
                 child.wait().expect("Error during waiting for child.");
                 StatusType::Timeout
             }
+	    Err(_) => { StatusType::Timeout }
         };
         ret
     }

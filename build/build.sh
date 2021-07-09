@@ -7,8 +7,6 @@ set -euxo pipefail
 PREFIX1=${PREFIX:-${ROOT_DIR}/bin/}
 PREFIX2=${PREFIX:-${ROOT_DIR}/bin_ang/}
 
-export CC=clang-6.0
-export CXX=clang++-6.0
 unset CXXFLAGS
 unset CFLAGS
 cd fuzzer/cpp_core
@@ -46,4 +44,3 @@ make -j
 make install
 popd
 popd
-
