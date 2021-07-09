@@ -131,9 +131,9 @@ struct taskFidsHash {
 
 
 static pbbs::Table<myHash> Expr2Func(8000016, myHash(), 1.3);
-pbbs::Table<taskHash> TaskCache(8000016, taskHash(), 1.3);
+//pbbs::Table<taskHash> TaskCache(8000016, taskHash(), 1.3);
 //the cache we append fids to the task
-pbbs::Table<taskFidsHash> TaskFidsCache(8000016, taskFidsHash(), 1.3);
+//pbbs::Table<taskFidsHash> TaskFidsCache(8000016, taskFidsHash(), 1.3);
 
 
 static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
@@ -153,7 +153,15 @@ static void append_meta(std::shared_ptr<Cons> cons, const Constraint* c) {
   cons->const_num = c->meta().const_num(); 
 }
 
-std::unordered_map<uint64_t,Constraint> cons_cache(1000000);
+
+typedef std::pair<uint32_t, uint32_t> cons_context;
+struct cons_hash {
+  std::size_t operator()(const cons_context &context) const {
+    return std::hash<uint32_t>{}(context.first) ^ std::hash<uint32_t>{}(context.second);
+  }
+};
+
+std::unordered_map<cons_context,Constraint, cons_hash> cons_cache(1000000);
 
 
 void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bool fresh) {
@@ -163,10 +171,10 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bo
   Constraint c;
   for (int i =0; i< task->constraints_size(); i++) {
     if (i == 0) { c = task->constraints(0);
-      cons_cache.insert({task->fid() * 1000000 + c.label(), c});
+      cons_cache.insert({{task->fid(),c.label()}, c});
     } else {
-    	if (cons_cache.find(task->fid()*1000000 + task->constraints(i).label()) != cons_cache.end()) {
-	     c = cons_cache[task->fid()*1000000 + task->constraints(i).label()];
+    	if (cons_cache.find({task->fid(), task->constraints(i).label()}) != cons_cache.end()) {
+	     c = cons_cache[{task->fid(), task->constraints(i).label()}];
         } else {
 	     continue;
         }
@@ -222,6 +230,7 @@ void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bo
 }
 
 void add_fids(uint64_t addr, uint64_t ctx, uint32_t order, uint64_t direction, uint32_t fid) {
+/*
   std::tuple<uint64_t,uint64_t,uint32_t,uint64_t> bid{addr,ctx,order, direction};
   struct taskFids *res = TaskFidsCache.find(bid);
   if (res == nullptr) {
@@ -236,9 +245,11 @@ void add_fids(uint64_t addr, uint64_t ctx, uint32_t order, uint64_t direction, u
   } else {
       res->fids.push_back(fid);
   }
+*/
 }
 
 uint32_t get_random_fid(uint64_t addr, uint64_t ctx, uint32_t order, uint64_t direction) {
+/*
   std::tuple<uint64_t,uint64_t,uint32_t,uint64_t> bid{addr,ctx,order,direction};
   struct taskFids *res = TaskFidsCache.find(bid);
   if (res == nullptr) {
@@ -249,6 +260,7 @@ uint32_t get_random_fid(uint64_t addr, uint64_t ctx, uint32_t order, uint64_t di
     uint32_t idx = rand() % len;
     return res->fids[idx];
   }
+*/
 }
 
 
@@ -256,4 +268,8 @@ void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_op
     *fut = new FUT();
     *fut_opt = new FUT();
     construct_task(task,fut,fut_opt, fresh);
+}
+
+void addCons(SearchTask* task){
+    cons_cache.insert({{task->fid(),task->constraints(0).label()}, task->constraints(0)});
 }

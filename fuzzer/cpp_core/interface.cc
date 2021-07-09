@@ -37,8 +37,9 @@ static std::atomic<uint64_t> fid;
 static std::atomic<uint64_t> task_id;
 bool SAVING_WHOLE; 
 bool USE_CODECACHE;
-bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu, uint64_t addr);
+bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu, uint64_t addr, bool solve);
 void initZ3Solver();
+void addCons(SearchTask* task);
 //moodycamel::ConcurrentQueue<std::pair<uint32_t, std::unordered_map<uint32_t,uint8_t>>> solution_queue;
 std::vector<std::future<bool>> gresults;
 
@@ -71,21 +72,21 @@ void save_task(const unsigned char* input, unsigned int input_length) {
 void* handle_task(void*) {
   //printTask(task.get());
   while (1) {
-    bool fresh = false;
     std::pair<std::shared_ptr<SearchTask>, bool> task1;
     //if (incoming_tasks.try_dequeue(task1)) {
     // let's try higher order first
     if (incoming_tasks_higher.isEmpty()) {
-      if (incoming_tasks1.isEmpty()) {
         continue;
-      } else {
-        incoming_tasks1.read(task1);
-      }
     } else {
       incoming_tasks_higher.read(task1);
-      fresh = true;
     }
     std::shared_ptr<SearchTask> task = task1.first;
+    bool solve = task1.second;
+
+    if (!solve) {
+	addCons(task.get());
+	continue;
+    }
     FUT* fut = nullptr;
     FUT* fut_opt = nullptr;
 
@@ -104,7 +105,7 @@ void* handle_task(void*) {
     fut->partial_solutions = &partial_solutions;
     fut_opt->rgd_solutions = &rgd_solutions_opt;
     
-#if 1
+#if 0
     gd_search(fut_opt);
     if (rgd_solutions_opt.size() != 0) {
       s_solvable = true;
@@ -129,11 +130,11 @@ void* handle_task(void*) {
     fut->flip();
 #endif
 
-#if 0
+#if 1
     //if (rgd_solutions.size() == 0) {
-    bool ret = sendZ3Solver(false, task.get(), z3_solution, task->addr());
+    bool ret = sendZ3Solver(false, task.get(), z3_solution, task->addr(), solve);
     if (!ret)
-      sendZ3Solver(true, task.get(), z3_solution, task->addr());
+      sendZ3Solver(true, task.get(), z3_solution, task->addr(), solve);
     //}
 #endif
 
@@ -141,10 +142,7 @@ void* handle_task(void*) {
     if (!SAVING_WHOLE) {
       for (auto rgd_solution :  rgd_solutions) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
-	if (fresh)
         higher_solution_queue.enqueue(sol);
-	else
-        solution_queue.enqueue(sol);
 #if DEBUG
         //if (solution_queue.size_approx() % 1000 == 0)
           //printf("queue item is about %u\n", solution_queue.size_approx());
@@ -264,7 +262,7 @@ extern "C" {
     return incoming_tasks1.sizeGuess();
   }
 
-  void submit_task(const unsigned char* input, unsigned int input_length, bool expect_future, bool fresh) {
+  void submit_task(const unsigned char* input, unsigned int input_length, bool expect_future, bool solve) {
     CodedInputStream s(input,input_length);
     s.SetRecursionLimit(10000);
     std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
@@ -279,15 +277,10 @@ extern "C" {
 
 //    handle_task(0,task);
     //incoming_tasks.enqueue({task, fresh});
-    std::pair<std::shared_ptr<SearchTask>,bool> tt{task,fresh};
-    if (fresh)
-      incoming_tasks_higher.write(tt);
-    else {
-      if (incoming_tasks1.sizeGuess() < 9000000)
-        incoming_tasks1.write(tt);
-    }
-    //if (incoming_tasks1.size_approx() % 1000 == 0)
-    if (incoming_tasks1.sizeGuess() % 1000 == 0 && incoming_tasks1.sizeGuess() > 0)
+    std::pair<std::shared_ptr<SearchTask>,bool> tt{task,solve};
+    incoming_tasks_higher.write(tt);
+        //if (incoming_tasks1.size_approx() % 1000 == 0)
+    if (incoming_tasks_higher.sizeGuess() % 1000 == 0 && incoming_tasks_higher.sizeGuess() > 0)
       printf("queue tasks is about %u\n", incoming_tasks1.sizeGuess());
   }
 
@@ -334,8 +327,10 @@ extern "C" {
       std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
       //std::string input_file = "/home/cju/debug/seed.png";
       uint32_t size = load_input(input_file, input);
-      for(auto it = item.sol.begin(); it != item.sol.end(); ++it)
-        input[it->first] = it->second;
+      for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
+        if (it->first < size)
+          input[it->first] = it->second;
+      }
       *addr = item.addr;
       *ctx = item.ctx;
       *order = item.order;

@@ -86,7 +86,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       unsafe { submit_fmemcmp(data.as_ptr(), label.2, label.1, label.0, label.3); }
       continue;
     } else if label.6 == 3 {
-     // get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
+      get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     }
 
 
@@ -149,10 +149,10 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
       //	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
 
-      if hitcount == 1 && gencount == 0 {
+      if hitcount <= 1 && gencount == 0 && label.6 !=3 {
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
-      } else if  hitcount <=10 && gencount == 0 {
-      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
+      } else {
+      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, false); }
       }
 
       
