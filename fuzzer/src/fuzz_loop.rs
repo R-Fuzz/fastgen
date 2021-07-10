@@ -253,8 +253,11 @@ pub fn grading_loop(
 }
 
 
+pub fn constraint_solver(shmid: i32, pipe: RawFd) {
+  unsafe { run_solver(shmid, pipe) };
+}
 
-
+//fuzz loop with parsing in C++
 pub fn fuzz_loop(
     running: Arc<AtomicBool>,
     cmd_opt: CommandOpt,
@@ -276,26 +279,71 @@ pub fn fuzz_loop(
           )
     };
 
+  info!("start fuzz loop with shmid {}",shmid);
+
+  //the executor to run the frontend
+  let mut executor = Executor::new(
+      cmd_opt,
+      global_branches,
+      depot.clone(),
+      shmid,
+  );
+
+  while running.load(Ordering::Relaxed) {
+    if id < depot.get_num_inputs() {
+
+      let (read_end, write_end) = pipe().unwrap();
+      let handle = thread::spawn(move || {
+          constraint_solver(shmid, write_end);
+          });
+
+      let t_start = time::Instant::now();
+
+      let buf = depot.get_input_buf(id);
+      executor.track(id, &buf, write_end);
+      close(write_end);
+
+      if handle.join().is_err() {
+        error!("Error happened in listening thread!");
+      }
+      close(read_end);
+
+
+      let used_t1 = t_start.elapsed();
+      let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
+      trace!("track time {}", used_us1);
+      id = id + 1;
+    } else {
+      //let mut buf = depot.get_input_buf(depot.next_random());
+      //run_afl_mutator(&mut executor,&mut buf);
+      thread::sleep(time::Duration::from_secs(1));
+      //break;
+    }
+  }
+}
+
 
 /*
-  let shmid = match executor_id { 
-    2 => unsafe {
+pub fn fuzz_loop(
+    running: Arc<AtomicBool>,
+    cmd_opt: CommandOpt,
+    depot: Arc<Depot>,
+    global_branches: Arc<GlobalBranches>,
+    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    ) {
+
+  let mut id: usize = 0;
+  let executor_id = cmd_opt.id;
+
+  let shmid =  
+    unsafe {
       libc::shmget(
-          0x1234,
+          libc::IPC_PRIVATE,
           0xc00000000,
           0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
           )
-    },
-      3 => unsafe {
-        libc::shmget(
-            0x2468,
-            0xc00000000,
-            0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
-            )
-      },
-      _ => 0,
-  };
-*/
+    };
 
   info!("start fuzz loop with shmid {}",shmid);
 
@@ -349,6 +397,7 @@ pub fn fuzz_loop(
     }
   }
 }
+*/
 
 
 #[cfg(test)]

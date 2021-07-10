@@ -6,9 +6,9 @@ project(rgd C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 -std=c++14 -fPIC -mcx16 -mno-avx512f -L/out/lib")
 
-enable_testing()
-set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test)
-set(CMAKE_TEST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+#enable_testing()
+#set(CMAKE_TEST_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/test)
+#set(CMAKE_TEST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 find_package(LLVM 9 REQUIRED CONFIG)
 
@@ -44,14 +44,16 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 add_library(gd
   STATIC
-  interface.cc
-  jit.cc
+  #interface.cc
+  z3backend.cc
+  xxhash.cc
+  #jit.cc
   util.cc
-  parser.cc
-  gd.cc
-  input.cc
-  grad.cc
-  z3solver.cc
+  #parser.cc
+  #gd.cc
+  #input.cc
+  #grad.cc
+  #z3solver.cc
   ${rgd_proto_srcs}
 )
 
@@ -61,4 +63,4 @@ target_link_libraries(gd
   z3
   pthread)
 
-add_subdirectory(self_test)
+#add_subdirectory(self_test)

@@ -14,4 +14,5 @@ extern {
   pub fn get_next_input(input: *mut u8, addr: *mut u64, ctx: *mut u64, 
         order: *mut u32, fid: *mut u32, direction: *mut u64) -> u32;
   pub fn fini_core();
+  pub fn run_solver(shmid: i32, pipefd: i32);
 }

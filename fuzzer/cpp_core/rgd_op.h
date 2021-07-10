@@ -1,6 +1,6 @@
 #ifndef __IR__H_
 #define __IR__H_
-
+#include <stdint.h>
 namespace rgd {
 	enum Kind {
 		Bool, // 0
@@ -54,5 +54,45 @@ namespace rgd {
 		Memcmp, //37
 	};
 }
+
+
+//Derived from llvm-6.0/llvm/IR/Instruction.def
+//and dfsan.h
+
+const uint32_t  CONST_OFFSET = 1;
+const uint32_t  DFSAN_READ = 0;
+const uint32_t  DFSAN_NOT = 1;
+const uint32_t  DFSAN_NEG = 2;
+const uint32_t  DFSAN_ADD = 11;
+const uint32_t  DFSAN_SUB = 13;
+const uint32_t  DFSAN_MUL = 15;
+const uint32_t  DFSAN_UDIV = 17;
+const uint32_t  DFSAN_SDIV = 18;
+const uint32_t  DFSAN_UREM = 20;
+const uint32_t  DFSAN_SREM = 21;
+const uint32_t  DFSAN_SHL = 23;
+const uint32_t  DFSAN_LSHR = 24;
+const uint32_t  DFSAN_ASHR = 25;
+const uint32_t  DFSAN_AND = 26;
+const uint32_t  DFSAN_OR = 27;
+const uint32_t  DFSAN_XOR = 28;
+const uint32_t  DFSAN_TRUNC = 36;
+const uint32_t  DFSAN_ZEXT = 37;
+const uint32_t  DFSAN_SEXT = 38;
+const uint32_t  DFSAN_LOAD = 67;
+const uint32_t  DFSAN_EXTRACT = 68;
+const uint32_t  DFSAN_CONCAT = 69;
+//relational
+const uint32_t  DFSAN_BVEQ = 32;
+const uint32_t  DFSAN_BVNEQ = 33;
+const uint32_t  DFSAN_BVUGT = 34;
+const uint32_t  DFSAN_BVUGE = 35;
+const uint32_t  DFSAN_BVULT = 36;
+const uint32_t  DFSAN_BVULE = 37;
+const uint32_t  DFSAN_BVSGT = 38;
+const uint32_t  DFSAN_BVSGE = 39;
+const uint32_t  DFSAN_BVSLT = 40;
+const uint32_t  DFSAN_BVSLE = 41;
+const uint32_t  DFSAN_ICMP = 51;
 
 #endif
