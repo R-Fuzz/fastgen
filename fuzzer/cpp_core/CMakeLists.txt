@@ -46,7 +46,7 @@ add_library(gd
   STATIC
   #interface.cc
   z3backend.cc
-  xxhash.cc
+  #xxhash.cc
   #jit.cc
   util.cc
   #parser.cc
@@ -58,7 +58,7 @@ add_library(gd
 )
 
 target_link_libraries(gd
-  LLVM
+  #LLVM
   #tcmalloc
   z3
   pthread)

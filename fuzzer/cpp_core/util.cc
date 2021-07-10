@@ -1,197 +1,20 @@
 #include "rgd_op.h"
-#include "rgd.pb.h"
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <fcntl.h>
 #include <unistd.h>
-using namespace google::protobuf::io;
-using namespace rgd;
+#include <string>
+#include <string.h>
+#include <unordered_map>
+#include <linux/limits.h>
+#include <unistd.h>
 const uint64_t kUsToS = 1000000;
 uint64_t getTimeStamp() {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	return tv.tv_sec * kUsToS + tv.tv_usec;
-}
-
-static std::string get_name(uint32_t kind) {
-	switch (kind) {
-		case rgd::Bool: return "bool";
-		case rgd::Constant: return "constant";
-		case rgd::Read: return "read";
-		case rgd::Concat: return "concat";
-		case rgd::Extract: return "extract";
-
-		case rgd::ZExt: return "zext";
-		case rgd::SExt: return "sext";
-
-		// Arithmetic
-		case rgd::Add:	return "add";
-		case rgd::Sub:	return "sub";
-		case rgd::Mul:	return "mul";
-		case rgd::UDiv:	return "udiv";
-		case rgd::SDiv:	return "sdiv";
-		case rgd::URem:	return "urem";
-		case rgd::SRem:	return "srem";
-		case rgd::Neg:	return "neg";
-
-		// Bit
-		case rgd::Not: return "not";
-		case rgd::And: return "and";
-		case rgd::Or: return "or";
-		case rgd::Xor: return "xor";
-		case rgd::Shl: return "shl";
-		case rgd::LShr: return "lshr";
-		case rgd::AShr: return "ashr";
-
-		// Compare
-		case rgd::Equal: return "equal";
-		case rgd::Distinct: return "distinct";
-		case rgd::Ult: return "ult";
-		case rgd::Ule: return "ule";
-		case rgd::Ugt: return "ugt";
-		case rgd::Uge: return "uge";
-		case rgd::Slt: return "slt";
-		case rgd::Sle: return "sle";
-		case rgd::Sgt: return "sgt";
-		case rgd::Sge: return "sge";
-
-		// Logical
-		case rgd::LOr: return "lor";
-		case rgd::LAnd: return "land";
-		case rgd::LNot: return "lnot";
-
-		// Special
-		case rgd::Ite: return "ite";
-		case rgd::Memcmp: return "memcmp";
-	}
-}
-static void do_print(const AstNode* node) {
-	std::cerr << get_name(node->kind()) << "(";
-	//std::cerr << req->name() << "(";
-	std::cerr << "width=" << node->bits() << ",";
-	//std::cerr << " hash=" << req->hash() << ",";
-	std::cerr << " label=" << node->label() << ",";
-	//std::cerr << " hash=" << req->hash() << ",";
-	if (node->kind() == rgd::Bool) {
-		std::cerr << node->value();
-	}
-	if (node->kind() == rgd::Constant) {
-		std::cerr << node->value() << ", ";
-	//	std::cerr << req->index();
-	}
-	if (node->kind() == rgd::Memcmp) {
-		std::cerr << node->value() << ", ";
-	//	std::cerr << req->index();
-	}
-	if (node->kind() == rgd::Read || node->kind() == rgd::Extract) {
-		std::cerr << node->index() << ", ";
-	}
-	for(int i = 0; i < node->children_size(); i++) {
-		do_print(&node->children(i));
-		if (i != node->children_size() - 1)
-			std::cerr << ", ";
-	}
-	std::cerr << ")";
-}
-
-
-
-
-void printNode(const AstNode* node) {
-	do_print(node);
-	std::cerr << std::endl;
-}
-
-
-void printTask(const SearchTask* task) {
-  printf("addr is %p\n",task->addr());
-  for(auto cons : task->constraints())  {
-    printNode(&cons.node());
-/*
-    for (auto amap : cons.meta().map()) {
-      printf("k is %u, v is %u\n", amap.k(), amap.v());
-    }
-    for (auto aarg : cons.meta().args()) {
-      printf("isinput is %u, v is %lu\n", aarg.isinput(), aarg.v());
-    }
-    for (auto ainput : cons.meta().inputs()) {
-      printf("offset is %u, iv is %u\n", ainput.offset(), ainput.iv());
-    }
-    printf("num_const is %u\n", cons.meta().const_num());
-*/
-  }
-}
-
-
-
-static bool writeDelimitedTo(
-		const google::protobuf::MessageLite& message,
-		google::protobuf::io::ZeroCopyOutputStream* rawOutput) {
-	// We create a new coded stream for each message.  Don't worry, this is fast.
-	google::protobuf::io::CodedOutputStream output(rawOutput);
-
-	// Write the size.
-	const int size = message.ByteSizeLong();
-	output.WriteVarint32(size);
-
-	uint8_t* buffer = output.GetDirectBufferForNBytesAndAdvance(size);
-	if (buffer != NULL) {
-		// Optimization:  The message fits in one buffer, so use the faster
-		// direct-to-array serialization path.
-		message.SerializeWithCachedSizesToArray(buffer);
-	} else {
-		// Slightly-slower path when the message is multiple buffers.
-		message.SerializeWithCachedSizes(&output);
-		if (output.HadError()) return false;
-	}
-
-	return true;
-}
-
-bool readDelimitedFrom(
-		google::protobuf::io::ZeroCopyInputStream* rawInput,
-		google::protobuf::MessageLite* message) {
-	// We create a new coded stream for each message.  Don't worry, this is fast,
-	// and it makes sure the 64MB total size limit is imposed per-message rather
-	// than on the whole stream.  (See the CodedInputStream interface for more
-	// info on this limit.)
-	google::protobuf::io::CodedInputStream input(rawInput);
-
-  input.SetRecursionLimit(10000);
-
-	// Read the size.
-	uint32_t size;
-	if (!input.ReadVarint32(&size)) return false;
-
-	// Tell the stream not to read beyond that size.
-	google::protobuf::io::CodedInputStream::Limit limit =
-		input.PushLimit(size);
-
-	// Parse the message.
-	if (!message->MergeFromCodedStream(&input)) return false;
-	if (!input.ConsumedEntireMessage()) return false;
-
-	// Release the limit.
-	input.PopLimit(limit);
-
-	return true;
-}
-
-
-bool saveRequest(
-			const google::protobuf::MessageLite& message, 
-			const char* path) {
-		mode_t mode = S_IRUSR | S_IWUSR;
-		int fd = open(path, O_CREAT | O_WRONLY | O_APPEND, mode);
-		ZeroCopyOutputStream* rawOutput = new google::protobuf::io::FileOutputStream(fd);
-		bool suc = writeDelimitedTo(message,rawOutput);
-		delete rawOutput;
-		sync();
-		close(fd);
-		return suc;
 }
 
 uint32_t load_input(std::string input_file, unsigned char* input) {
@@ -292,7 +115,3 @@ fail1:
 fail:
 	return;
 }
-
-
-
-

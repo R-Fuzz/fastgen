@@ -2,7 +2,6 @@
 #include <unordered_set>
 #include <stdio.h>
 #include "util.h"
-#include "ctpl.h"
 #include "union_table.h"
 #include "rgd_op.h"
 #include "queue.h"
@@ -20,12 +19,13 @@
 #include <stdio.h>
 #include "util.h"
 #include "interface.h"
-
+#include <vector>
+#include <string>
+#include <unistd.h>
 
 #define THREAD_POOL_SIZE 1
 #define DEBUG 1
 
-#include "xxhash.h"
 #define B_FLIPPED 0x1
 //global variables
 
@@ -718,7 +718,7 @@ bool bcount_filter(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t ord
   }
 }
 
-
+#if 0
 bool filter(uint32_t label, uint64_t addr, uint64_t direction, 
     XXH64_state_t* path_prefix) {
 
@@ -756,8 +756,10 @@ bool filter(uint32_t label, uint64_t addr, uint64_t direction,
   mark_pp(taken_digest);
   return check_pp(untaken_digest);
 }
+#endif
 
 //roll in branch
+#if 0
 uint64_t roll_in_pp(uint32_t label, uint64_t addr, uint64_t direction, 
     XXH64_state_t* path_prefix) {
 
@@ -796,6 +798,7 @@ uint64_t roll_in_pp(uint32_t label, uint64_t addr, uint64_t direction,
   return untaken_digest;
 
 }
+#endif
 
 
 bool dry_run(int32_t round, uint32_t seed_id) {
@@ -932,8 +935,8 @@ uint32_t solve(int shmid, int pipefd) {
   uint32_t count = 0;
   uint32_t filtered_count = 0;
   //create global state for one session
-  XXH64_state_t path_prefix;
-  XXH64_reset(&path_prefix,0);
+  //XXH64_state_t path_prefix;
+  //XXH64_reset(&path_prefix,0);
   uint64_t acc_time = 0;
   uint64_t one_start = getTimeStamp();
   bool skip_rest = false;

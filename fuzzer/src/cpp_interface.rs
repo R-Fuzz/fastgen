@@ -1,6 +1,6 @@
 #[link(name = "gd")]
-#[link(name = "protobuf")]
-#[link(name = "LLVM")]
+//#[link(name = "protobuf")]
+//#[link(name = "LLVM")]
 #[link(name = "stdc++")]
 #[link(name = "z3")]
 extern {
