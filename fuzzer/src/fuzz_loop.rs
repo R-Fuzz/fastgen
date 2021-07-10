@@ -294,7 +294,7 @@ pub fn fuzz_loop(
 
       let (read_end, write_end) = pipe().unwrap();
       let handle = thread::spawn(move || {
-          constraint_solver(shmid, write_end);
+          constraint_solver(shmid, read_end);
           });
 
       let t_start = time::Instant::now();

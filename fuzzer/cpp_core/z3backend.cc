@@ -919,7 +919,7 @@ void cleanup() {
 }
 
 uint32_t solve(int shmid, int pipefd) {
-  std::cout << "run_solver pipeid is " << pipefd << std::endl;
+  //std::cout << "run_solver pipeid is " << pipefd << std::endl;
 
   // map the union table
   __union_table = (dfsan_label_info*)shmat(shmid, nullptr, 0);
@@ -939,10 +939,10 @@ uint32_t solve(int shmid, int pipefd) {
   bool skip_rest = false;
   std::vector<uint32_t> per_seed_keys;
   struct pipe_msg msg;
-  while (read(pipefd,&msg,sizeof(msg) == sizeof(msg)))
+  while (read(pipefd,&msg,sizeof(msg)) == sizeof(msg))
   {
     
-    
+    printf("read %d bytes\n", sizeof(msg)); 
        std::cout << "tid: " << msg.tid
        << " label: " << msg.label
        << " result: " << msg.result
@@ -950,6 +950,7 @@ uint32_t solve(int shmid, int pipefd) {
        << " ctx: " << msg.ctx
        << " localcnt: " << msg.localcnt
        << " type: " << msg.type << std::endl;
+
      
 
     //the last token
@@ -975,9 +976,10 @@ uint32_t solve(int shmid, int pipefd) {
       uint8_t data[msg.result];
       if (read(pipefd, data, msg.result) == msg.result) {
                 //bool try_solve = filter(addr, label, direction, &path_prefix);
+        printf("read strcmp %d\n", msg.result);
         bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
         if (try_solve)
-          handle_fmemcmp(data, msg.result, msg.label, msg.tid, msg.addr);
+          handle_fmemcmp(data, msg.label, msg.result, msg.tid, msg.addr);
       } else {
         // pipe corruption
         break;
@@ -1023,21 +1025,6 @@ uint32_t solve(int shmid, int pipefd) {
 extern "C" {
   void init_core(bool saving_whole) { 
     init(saving_whole); 
-    semagra = sem_open("grader", O_CREAT);
-    printf("init semaphore\n");
-    if(semagra == SEM_FAILED) {
-      sem_close(semagra);
-      printf("Failed to open semphore for semagra");
-      exit(-1);
-    }
-
-    semace = sem_open("ce", O_CREAT);
-    if(semace == SEM_FAILED) {
-      sem_close(semace);
-      printf("Failed to open semphore for semace");
-      exit(-1);
-    }
-    printf("end semaphore\n");
     printf("the length of union_table is %u\n", 0xC00000000/sizeof(dfsan_label_info));
     __z3_solver.set("timeout", 10000U);
     memset(pp_map, 0, kMapSize);
@@ -1069,7 +1056,7 @@ extern "C" {
       std::string old_string = std::to_string(item.fid);
       //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
       //std::string input_file = "./corpus";
-      std::string input_file = "./corpus/tmp/cur_input_2";
+      std::string input_file = "./corpus/angora/tmp/cur_input_2";
       uint32_t size = load_input(input_file, input);
       for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
         if (it->first < size)

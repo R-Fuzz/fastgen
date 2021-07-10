@@ -11,4 +11,4 @@ struct dfsan_label_info {
   uint32_t tree_size;
   uint32_t hash;
   uint32_t depth;
-} __attribute__((aligned (8)));
+} __attribute__((aligned (8), packed));

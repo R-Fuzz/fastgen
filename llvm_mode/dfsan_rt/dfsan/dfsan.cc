@@ -125,9 +125,9 @@ struct expr_equal1 {
 
 struct pipe_msg {
   u32 type; //gep, cond, add_constraints, strcmp 
-  u32 tid;  
-  u32 label;
-  u64 result; //direction for conditional branch, index for GEP
+  u32 tid;   //0: cond 1: gep 2: strcmp 3: add_cons
+  u32 label;  //size for memcmp
+  u64 result; //direction for conditional branch, index for GEP and memcmp
   void* addr;
   u64 ctx; 
   u32 localcnt; 
@@ -734,7 +734,7 @@ static dfsan_label rejectBranch(dfsan_label label) {
 }
 
 
-static bool get_fmemcmp(dfsan_label label, u64* index, u64* size, u8** data) {
+static bool get_fmemcmp(dfsan_label label, u32* index, u32* size, u8** data) {
   dfsan_label_info *info = get_label_info(label); 
   //we only support const == Load
   if (info->l1 >= CONST_OFFSET || info->l2 < CONST_OFFSET)
@@ -766,15 +766,16 @@ static void __solve_cond(dfsan_label label,
         //printLabel(label);
         //sending fmemcmp special 
         if (reason > 2) { //fmemcmp 
-          u64 index = 0;
-          u64 size = 0;
+          u32 index = 0;
+          u32 size = 0;
           u8* data;
           get_fmemcmp(reason, &index, &size, &data);
           //printf("get_fmemp index: %lu, size: %lu, data: %lu\n",index,size,data);
            // sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, size, index, (uint64_t)addr, ctx, (uint32_t)order);
-            struct pipe_msg msg = {.type = 2, .tid = __tid, .label = label, .result = r, .addr = addr, .ctx = ctx, .localcnt = order };
+            struct pipe_msg msg = {.type = 2, .tid = __tid, .label = index, .result = size, .addr = addr, .ctx = ctx, .localcnt = order };
             //write(mypipe,content,strlen(content));
             write(mypipe, &msg,sizeof(msg));
+            printf("strcmp write %d bytes\n", sizeof(msg));
             write(mypipe,data,size);
             fsync(mypipe);
             get_label_info(label)->flags |= B_FLIPPED;
@@ -1168,7 +1169,6 @@ static void dfsan_init(int argc, char **argv, char **envp) {
       //printf("address mappped to shared mem\n");
     }
   //}
-  //mypipe = open("/tmp/wp", O_WRONLY | O_NONBLOCK);
   mypipe = __pipeid;
   //else {
   //   printf("segment containts: \n\%s\n", shmp->buf);
