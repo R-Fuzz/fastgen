@@ -41,8 +41,8 @@ sem_t * semace;
 uint32_t total_generation_count = 0;
 uint64_t total_time = 0;
 
-//std::string input_file = "./corpus/tmp/cur_input_2";
-std::string input_file = "/magma_shared/findings/tmp/cur_input_2";
+std::string input_file = "./corpus/angora/tmp/cur_input_2";
+//std::string input_file = "/magma_shared/findings/tmp/cur_input_2";
 static dfsan_label_info *__union_table;
 
 struct RGDSolution {
@@ -477,11 +477,13 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve) {
         z3::model m = __z3_solver.get_model();
         sol.clear();
         generate_solution(m, sol);
-        generate_input(sol, input_file, "./ce_output", fid++);
+        RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
+        solution_queue.enqueue(rsol);
       } else {
         opt_sol.clear();
         generate_solution(m_opt, opt_sol);
-        generate_input(opt_sol, input_file, "./ce_output", fid++);
+        RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
+        solution_queue.enqueue(rsol);
       }
     }
 
@@ -514,11 +516,13 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve) {
           z3::model m = __z3_solver.get_model();
           sol.clear();
           generate_solution(m, sol);
-          generate_input(sol, input_file, "./ce_output", fid++);
+          RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
+          solution_queue.enqueue(rsol);
         } else {
           opt_sol.clear();
           generate_solution(m_opt, opt_sol);
-          generate_input(opt_sol, input_file, "./ce_output", fid++);
+          RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
+          solution_queue.enqueue(rsol);
         }
       }
     }
@@ -552,11 +556,13 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve) {
           z3::model m = __z3_solver.get_model();
           sol.clear();
           generate_solution(m, sol);
-          generate_input(sol, input_file, "./ce_output", fid++);
+          RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
+          solution_queue.enqueue(rsol);
         } else {
           opt_sol.clear();
           generate_solution(m_opt, opt_sol);
-          generate_input(opt_sol, input_file, "./ce_output", fid++);
+          RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
+          solution_queue.enqueue(rsol);
         }
       }
     }
@@ -892,13 +898,8 @@ void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, 
     rgd_solution[(uint32_t)index+i] = data[i];
     //data = data >> 8 ;
   }
-  if (SAVING_WHOLE) {
-    generate_input(rgd_solution, input_file, "./ce_output", fid++);
-  }
-  else {
-    RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0};
-    solution_queue.enqueue(sol);
-  }
+  RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0};
+  solution_queue.enqueue(sol);
 }
 
 
@@ -998,8 +999,8 @@ uint32_t solve(int shmid, int pipefd) {
        solution_queue.enqueue(rsol);
        }
        if (opt_sol.size()) {
-       RGDSolution rsol_opt = {opt_sol, 0, 0, 0, 0, 0};
-       solution_queue.enqueue(rsol_opt);
+       RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
+       solution_queue.enqueue(rsol);
        }
     /* 
     if (sol.size()) {
