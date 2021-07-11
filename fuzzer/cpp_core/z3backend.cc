@@ -338,11 +338,11 @@ static void solve_divisor() {
   try {
     std::unordered_set<dfsan_label> inputs;
     z3::expr cond = serialize(label, inputs);
-  std::unordered_map<uint32_t, uint8_t> opt_sol; 
-  std::unordered_map<uint32_t, uint8_t> sol;
-  //std::string input_file = "./corpus/tmp/cur_input_2";
-  //std::string input_file = "/magma_shared/findings/tmp/cur_input_2";
-  unsigned char size = get_label_info(label)->size;
+    std::unordered_map<uint32_t, uint8_t> opt_sol; 
+    std::unordered_map<uint32_t, uint8_t> sol;
+    //std::string input_file = "./corpus/tmp/cur_input_2";
+    //std::string input_file = "/magma_shared/findings/tmp/cur_input_2";
+    unsigned char size = get_label_info(label)->size;
 #if 1
     if (get_label_info(label)->tree_size > 50000) {
       // don't bother?
@@ -396,13 +396,13 @@ static void solve_divisor() {
         sol.clear();
         generate_solution(m, sol);
         //generate_input(sol, input_file, "./ce_output", fid++);
-    	RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
-    	solution_queue.enqueue(rsol);
+        RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
+        solution_queue.enqueue(rsol);
       } else {
         opt_sol.clear();
         generate_solution(m_opt, opt_sol);
-    	RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
-    	solution_queue.enqueue(rsol);
+        RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
+        solution_queue.enqueue(rsol);
         //generate_input(opt_sol, input_file, "./ce_output", fid++);
       }
     }
@@ -413,7 +413,7 @@ static void solve_divisor() {
 
 }
 
-static void solve_gep(dfsan_label label, uint64_t r, bool try_solve) {
+static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t tid) {
 
   if (label == 0 || !try_solve)
     return;
@@ -477,12 +477,12 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve) {
         z3::model m = __z3_solver.get_model();
         sol.clear();
         generate_solution(m, sol);
-        RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
+        RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
         solution_queue.enqueue(rsol);
       } else {
         opt_sol.clear();
         generate_solution(m_opt, opt_sol);
-        RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
+        RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
         solution_queue.enqueue(rsol);
       }
     }
@@ -516,12 +516,12 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve) {
           z3::model m = __z3_solver.get_model();
           sol.clear();
           generate_solution(m, sol);
-          RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
+          RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
           solution_queue.enqueue(rsol);
         } else {
           opt_sol.clear();
           generate_solution(m_opt, opt_sol);
-          RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
+          RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
           solution_queue.enqueue(rsol);
         }
       }
@@ -556,12 +556,12 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve) {
           z3::model m = __z3_solver.get_model();
           sol.clear();
           generate_solution(m, sol);
-          RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
+          RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
           solution_queue.enqueue(rsol);
         } else {
           opt_sol.clear();
           generate_solution(m_opt, opt_sol);
-          RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
+          RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
           solution_queue.enqueue(rsol);
         }
       }
@@ -923,8 +923,6 @@ void cleanup() {
 }
 
 uint32_t solve(int shmid, int pipefd) {
-  //std::cout << "run_solver pipeid is " << pipefd << std::endl;
-
   // map the union table
   __union_table = (dfsan_label_info*)shmat(shmid, nullptr, 0);
   if (__union_table == (void*)(-1)) {
@@ -932,9 +930,8 @@ uint32_t solve(int shmid, int pipefd) {
     return 0;
   }
   size_t pos = 0;
-  
+
   uint32_t count = 0;
-  uint32_t filtered_count = 0;
   //create global state for one session
   //XXH64_state_t path_prefix;
   //XXH64_reset(&path_prefix,0);
@@ -945,17 +942,17 @@ uint32_t solve(int shmid, int pipefd) {
   struct pipe_msg msg;
   while (read(pipefd,&msg,sizeof(msg)) == sizeof(msg))
   {
-    
-    printf("read %d bytes\n", sizeof(msg)); 
-       std::cout << "tid: " << msg.tid
-       << " label: " << msg.label
-       << " result: " << msg.result
-       << " addr: " << msg.addr
-       << " ctx: " << msg.ctx
-       << " localcnt: " << msg.localcnt
-       << " type: " << msg.type << std::endl;
 
-     
+    printf("read %d bytes\n", sizeof(msg)); 
+    std::cout << "tid: " << msg.tid
+      << " label: " << msg.label
+      << " result: " << msg.result
+      << " addr: " << msg.addr
+      << " ctx: " << msg.ctx
+      << " localcnt: " << msg.localcnt
+      << " type: " << msg.type << std::endl;
+
+
 
     //the last token
     //std::cout << line << std::endl;
@@ -966,7 +963,7 @@ uint32_t solve(int shmid, int pipefd) {
     if (msg.type == 0) {  //cond
       if (skip_rest) continue;
       //bool try_solve = hybrid_filter(msg.addr, msg.ctx, msg.result, msg.localcnt, 
-        //  label, &path_prefix, &per_seed_keys);
+      //  label, &path_prefix, &per_seed_keys);
       //if (try_solve) filtered_count++;
       uint64_t tstart = getTimeStamp();
       solve_cond(msg.label, msg.result, opt_sol, sol, true);
@@ -974,12 +971,12 @@ uint32_t solve(int shmid, int pipefd) {
       if (acc_time > 90000000 || count > 5000 ) //90s
         skip_rest = true;
       //if (try_solve)
-       // solve_divisor();
+      // solve_divisor();
     }
     else if (msg.type == 2) {  //strcmp
       uint8_t data[msg.result];
       if (read(pipefd, data, msg.result) == msg.result) {
-                //bool try_solve = filter(addr, label, direction, &path_prefix);
+        //bool try_solve = filter(addr, label, direction, &path_prefix);
         printf("read strcmp %d\n", msg.result);
         bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
         if (try_solve)
@@ -991,34 +988,35 @@ uint32_t solve(int shmid, int pipefd) {
     } else if (msg.type == 1) { //gep constraint
       bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
       if (try_solve)
-        solve_gep(msg.label, msg.result, try_solve); 
+        solve_gep(msg.label, msg.result, try_solve, msg.tid); 
     }
-    
-       if (sol.size()) {
-       RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
-       solution_queue.enqueue(rsol);
-       }
-       if (opt_sol.size()) {
-       RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
-       solution_queue.enqueue(rsol);
-       }
-    /* 
+
     if (sol.size()) {
-      generate_input(sol, input_file, "./ce_output", fid++);
+      RGDSolution rsol = {sol, msg.tid, 0, 0, 0, 0};
+      solution_queue.enqueue(rsol);
       count++;
     }
     if (opt_sol.size()) {
-      generate_input(opt_sol, input_file, "./ce_output", fid++);
+      RGDSolution rsol = {opt_sol, msg.tid, 0, 0, 0, 0};
+      solution_queue.enqueue(rsol);
       count++;
     }
-	*/
+    /* 
+       if (sol.size()) {
+       generate_input(sol, input_file, "./ce_output", fid++);
+       count++;
+       }
+       if (opt_sol.size()) {
+       generate_input(opt_sol, input_file, "./ce_output", fid++);
+       count++;
+       }
+     */
   }
   total_generation_count += count;
   total_time += getTimeStamp() - one_start;
   cleanup();
   if (skip_rest) std::cout << "timeout!" << std::endl;
   std::cout << "generate count " << count 
-    << " filtered count " << filtered_count 
     << " total count " << total_generation_count 
     << " process_time " << getTimeStamp() - one_start 
     << std::endl;
@@ -1051,16 +1049,14 @@ extern "C" {
   }
 
   uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
-          uint32_t *order, uint32_t *fid, uint64_t *direction) {
+      uint32_t *order, uint32_t *fid, uint64_t *direction) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
     RGDSolution item;
     //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
-     // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
+    // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
     if(solution_queue.try_dequeue(item)) {
       std::string old_string = std::to_string(item.fid);
-      //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-      //std::string input_file = "./corpus";
-      std::string input_file = "./corpus/angora/tmp/cur_input_2";
+      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
       uint32_t size = load_input(input_file, input);
       for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
         if (it->first < size)
