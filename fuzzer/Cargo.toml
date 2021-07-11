@@ -7,17 +7,17 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chrono = "0.4"
-ctrlc = { version = "3.1", features = ["termination"] }
-clap = "2.32"
-libc = "0.2"
+chrono = "0.4.19"
+ctrlc = { version = "3.1.9", features = ["termination"] }
+clap = "2.33.3"
+libc = "0.2.98"
 protobuf = "2"
-num-traits = "0.2"
-num-derive = "0.2"
-nix = "0.13"
-byteorder = "1.2"
-log = "0.4"
-pretty_env_logger = "0.3"
+num-traits = "0.2.14"
+num-derive = "0.3.3"
+nix = "0.22.0"
+byteorder = "1.4.3"
+log = "0.4.14"
+pretty_env_logger = "0.4.0"
 fastgen_common = { path = "../common" }
 wait-timeout = "0.2"
 twoway = "0.2.0"
@@ -26,6 +26,3 @@ rand = "0.7"
 
 [build-dependencies]
 protoc-rust = "2.0"
-
-[profile.release]
-panic = "abort"
