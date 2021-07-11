@@ -4,7 +4,6 @@
 #include "util.h"
 #include "union_table.h"
 #include "rgd_op.h"
-#include "queue.h"
 #include <z3++.h>
 #include <sys/types.h>
 #include <sys/shm.h>
@@ -22,6 +21,9 @@
 #include <vector>
 #include <string>
 #include <unistd.h>
+#include <deque>
+#include <atomic>
+#include <mutex>
 
 #define THREAD_POOL_SIZE 1
 #define DEBUG 1
@@ -55,7 +57,8 @@ struct RGDSolution {
   uint64_t direction;
 };
 
-moodycamel::ConcurrentQueue<RGDSolution> solution_queue;
+std::deque<RGDSolution> solution_queue;
+std::mutex queue_mutex;
 
 
 // dependencies
@@ -397,12 +400,16 @@ static void solve_divisor() {
         generate_solution(m, sol);
         //generate_input(sol, input_file, "./ce_output", fid++);
         RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
-        solution_queue.enqueue(rsol);
+        queue_mutex.lock();
+        solution_queue.push_back(rsol);
+        queue_mutex.unlock();
       } else {
         opt_sol.clear();
         generate_solution(m_opt, opt_sol);
         RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
-        solution_queue.enqueue(rsol);
+        queue_mutex.lock();
+        solution_queue.push_back(rsol);
+        queue_mutex.unlock();
         //generate_input(opt_sol, input_file, "./ce_output", fid++);
       }
     }
@@ -478,12 +485,16 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
         sol.clear();
         generate_solution(m, sol);
         RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
-        solution_queue.enqueue(rsol);
+        queue_mutex.lock();
+        solution_queue.push_back(rsol);
+        queue_mutex.unlock();
       } else {
         opt_sol.clear();
         generate_solution(m_opt, opt_sol);
         RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
-        solution_queue.enqueue(rsol);
+        queue_mutex.lock();
+        solution_queue.push_back(rsol);
+        queue_mutex.unlock();
       }
     }
 
@@ -517,12 +528,16 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
           sol.clear();
           generate_solution(m, sol);
           RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
-          solution_queue.enqueue(rsol);
+          queue_mutex.lock();
+          solution_queue.push_back(rsol);
+          queue_mutex.unlock();
         } else {
           opt_sol.clear();
           generate_solution(m_opt, opt_sol);
           RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
-          solution_queue.enqueue(rsol);
+          queue_mutex.lock();
+          solution_queue.push_back(rsol);
+          queue_mutex.unlock();
         }
       }
     }
@@ -557,12 +572,16 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
           sol.clear();
           generate_solution(m, sol);
           RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
-          solution_queue.enqueue(rsol);
+          queue_mutex.lock();
+          solution_queue.push_back(rsol);
+          queue_mutex.unlock();
         } else {
           opt_sol.clear();
           generate_solution(m_opt, opt_sol);
           RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
-          solution_queue.enqueue(rsol);
+          queue_mutex.lock();
+          solution_queue.push_back(rsol);
+          queue_mutex.unlock();
         }
       }
     }
@@ -899,7 +918,9 @@ void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, 
     //data = data >> 8 ;
   }
   RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0};
-  solution_queue.enqueue(sol);
+  queue_mutex.lock();
+  solution_queue.push_back(sol);
+  queue_mutex.unlock();
 }
 
 
@@ -993,12 +1014,12 @@ uint32_t solve(int shmid, int pipefd) {
 
     if (sol.size()) {
       RGDSolution rsol = {sol, msg.tid, 0, 0, 0, 0};
-      solution_queue.enqueue(rsol);
+      solution_queue.push_back(rsol);
       count++;
     }
     if (opt_sol.size()) {
       RGDSolution rsol = {opt_sol, msg.tid, 0, 0, 0, 0};
-      solution_queue.enqueue(rsol);
+      solution_queue.push_back(rsol);
       count++;
     }
     /* 
@@ -1054,7 +1075,10 @@ extern "C" {
     RGDSolution item;
     //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
     // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
-    if(solution_queue.try_dequeue(item)) {
+    queue_mutex.lock();
+    if(!solution_queue.empty()) {
+      item = solution_queue.front(); 
+      solution_queue.pop_front();
       std::string old_string = std::to_string(item.fid);
       std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
       uint32_t size = load_input(input_file, input);
@@ -1067,8 +1091,10 @@ extern "C" {
       *order = item.order;
       *fid = item.fid;
       *direction = item.direction;
+      queue_mutex.unlock();
       return size;
     } else {
+      queue_mutex.unlock();
       return 0; 
     }
   }
