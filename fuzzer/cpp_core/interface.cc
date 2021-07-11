@@ -144,27 +144,16 @@ void* handle_task(void*) {
           //printf("queue item is about %u\n", solution_queue.size_approx());
 #endif
       }
-/*
+
       for (auto rgd_solution :  rgd_solutions_opt) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
-        if (fresh)
         higher_solution_queue.enqueue(sol);
-	else
-        solution_queue.enqueue(sol);
 #if DEBUG
         //if (solution_queue.size_approx() % 1000 == 0)
           //printf("queue item is about %u\n", solution_queue.size_approx());
 #endif
       }
-*/
-      for (auto rgd_solution :  partial_solutions) {
-        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
-        solution_queue.enqueue(sol);
-#if DEBUG
-        if (solution_queue.size_approx() % 1000 == 0)
-          printf("queue item is about %u\n", solution_queue.size_approx());
-#endif
-      }
+
 
       if (z3_solution.size() != 0) {
         RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
@@ -172,22 +161,19 @@ void* handle_task(void*) {
       }
 
     } else {
-      // std::string old_string = std::to_string(task->fid());
-      std::string input_file = "/home/cju/fastgen/test/seed";
+      std::string old_string = std::to_string(task->fid());
+      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
       // std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
       //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
       for (auto rgd_solution : rgd_solutions) {
-        generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+        generate_input(rgd_solution, input_file, "./raw_cases", fid++);
       }
       for (auto rgd_solution : rgd_solutions_opt) {
-        generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
-      }
-      for (auto rgd_solution : partial_solutions) {
-        generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+        generate_input(rgd_solution, input_file, "./raw_cases", fid++);
       }
 
       if (z3_solution.size() != 0)
-        generate_input(z3_solution, input_file, "/home/cju/test", fid++);
+        generate_input(z3_solution, input_file, "./raw_cases", fid++);
 
     }
 
@@ -229,17 +215,15 @@ std::string get_current_dir() {
 
 void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
-  std::string input_file = "/home/cju/fastgen/test/seed";
- // std::string old_string = std::to_string(tid);
-  //std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
-  //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+  std::string old_string = std::to_string(tid);
+  std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
   for(uint32_t i=0;i<size;i++) {
     //rgd_solution[(uint32_t)index+i] = (uint8_t) (data & 0xff);
     rgd_solution[(uint32_t)index+i] = data[i];
     //data = data >> 8 ;
   }
   if (SAVING_WHOLE) {
-    generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+    generate_input(rgd_solution, input_file, "./raw_cases", fid++);
   }
   else {
     RGDSolution sol = {rgd_solution, tid, addr, 0, 0};

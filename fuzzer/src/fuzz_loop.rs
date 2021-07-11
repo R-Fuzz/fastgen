@@ -188,7 +188,7 @@ pub fn grading_loop(
   let t_start = time::Instant::now();
   if config::SAVING_WHOLE {
     let mut fid = 0;
-    let dirpath = Path::new("/home/cju/test");
+    let dirpath = Path::new("./raw_cases");
     while running.load(Ordering::Relaxed) {
       let file_name = format!("id-{:08}", fid);
       let fpath = dirpath.join(file_name);
