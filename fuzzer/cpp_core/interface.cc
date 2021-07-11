@@ -56,8 +56,8 @@ struct RGDSolution {
 moodycamel::ConcurrentQueue<RGDSolution> solution_queue;
 moodycamel::ConcurrentQueue<RGDSolution> higher_solution_queue;
 //moodycamel::ConcurrentQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks(10000000);
-folly::ProducerConsumerQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks1(10000000);
-folly::ProducerConsumerQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks_higher(10000000);
+folly::ProducerConsumerQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks1(1000000);
+folly::ProducerConsumerQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks_higher(1000000);
 
 void save_task(const unsigned char* input, unsigned int input_length) {
   CodedInputStream s(input,input_length);
@@ -101,7 +101,7 @@ void* handle_task(void*) {
     fut->partial_solutions = &partial_solutions;
     fut_opt->rgd_solutions = &rgd_solutions_opt;
     
-#if 1
+#if 0
     gd_search(fut_opt);
     if (rgd_solutions_opt.size() != 0) {
       s_solvable = true;
@@ -126,7 +126,7 @@ void* handle_task(void*) {
     fut->flip();
 #endif
 
-#if 0
+#if 1
     //if (rgd_solutions.size() == 0) {
     bool ret = sendZ3Solver(false, task.get(), z3_solution, task->addr(), solve);
     if (!ret)

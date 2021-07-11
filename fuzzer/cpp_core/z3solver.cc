@@ -295,9 +295,16 @@ struct z3_hash {
   }
 };
 
-std::unordered_map<z3_context,z3::expr, z3_hash> session_cache(1000000);
+//std::unordered_map<z3_context,z3::expr, z3_hash> session_cache(1000000);
+std::unordered_map<uint32_t,z3::expr> session_cache(1000000);
 
 bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu, uint64_t addr, bool solve) {
+
+  static uint32_t old_fid = -1;
+  if (task->fid() != old_fid) {
+    session_cache.clear();
+    old_fid = task->fid();
+  }
   g_solver->reset();
   int num_expr = 0;
   if (opti)
@@ -309,7 +316,8 @@ bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint
     const AstNode *req = &task->constraints(i).node();
     //printExpression(req);
     try {
-       auto itr = session_cache.find({task->fid(), task->constraints(i).label()}); 
+       //auto itr = session_cache.find({task->fid(), task->constraints(i).label()}); 
+       auto itr = session_cache.find(task->constraints(i).label()); 
        if (itr != session_cache.end()) {
        //if (0) {
         z3::expr z3expr = itr->second; 
@@ -320,7 +328,8 @@ bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint
        } else {
         z3::expr z3expr = g_solver->serialize(req,expr_cache);
         g_solver->add(z3expr);
-        session_cache.insert({{task->fid(), task->constraints(i).label()},z3expr});
+        //session_cache.insert({{task->fid(), task->constraints(i).label()},z3expr});
+        session_cache.insert({task->constraints(i).label(),z3expr});
        }
       //std::cout << "z3: " << z3expr.to_string() << std::endl;
       //std::cout << "z3 simplified: " << z3expr.simplify().to_string() << std::endl;
