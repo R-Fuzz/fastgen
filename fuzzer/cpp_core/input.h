@@ -48,12 +48,20 @@ public:
 	static void copy(MutInput *dst, const MutInput *src)
   {
       uint64_t *dst_value = dst->value;
+      uint8_t *dst_disables = dst->disables;
       memcpy(dst, src, sizeof(MutInput));
       if (!dst_value)
         dst->value = (uint64_t*)malloc(src->size_*sizeof(uint64_t));
       else
         dst->value = dst_value;
       memcpy(dst->value, src->value, src->size_*sizeof(uint64_t));
+
+      if (!dst_disables)
+        dst->disables = (uint8_t*)malloc(src->size_*sizeof(uint8_t));
+      else
+        dst->disables = dst_disables;
+      memcpy(dst->disables, src->disables, src->size_*sizeof(uint8_t));
+
   }
 };
 #endif
