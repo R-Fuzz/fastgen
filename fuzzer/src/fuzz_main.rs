@@ -33,7 +33,7 @@ pub fn fuzz_main(
     ) {
   pretty_env_logger::init();
 
-  let (seeds_dir, angora_out_dir, ce_progress) = initialize_directories(in_dir, out_dir, sync_afl);
+  let (seeds_dir, angora_out_dir) = initialize_directories(in_dir, out_dir, sync_afl);
 
   let restart = in_dir == "-";
   let command_option = command::CommandOpt::new(
@@ -94,7 +94,7 @@ pub fn fuzz_main(
     let bg = branch_gencount.clone();
     let bs = branch_solcount.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs, ce_progress, restart);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs, restart);
         });
     handlers.push(handle);
   }
@@ -115,7 +115,7 @@ pub fn fuzz_main(
   }
 }
 
-fn initialize_directories(in_dir: &str, out_dir: &str, sync_afl: bool) -> (PathBuf, PathBuf, std::fs::File) {
+fn initialize_directories(in_dir: &str, out_dir: &str, sync_afl: bool) -> (PathBuf, PathBuf) {
   let angora_out_dir = if sync_afl {
     gen_path_afl(out_dir)
   } else {
@@ -127,9 +127,6 @@ fn initialize_directories(in_dir: &str, out_dir: &str, sync_afl: bool) -> (PathB
   let restart = in_dir == "-";
   if !restart {
     fs::create_dir(&angora_out_dir).expect("Output directory has existed!");
-    ce_progress = std::fs::File::create("ce_prgress").expect("create failed");
-  } else {
-    ce_progress = std::fs::File::open("ce_prgress").expect("open failed");
   }
 
   
@@ -147,7 +144,7 @@ fn initialize_directories(in_dir: &str, out_dir: &str, sync_afl: bool) -> (PathB
     PathBuf::from(in_dir)
   };
 
-  (seeds_dir, angora_out_dir, ce_progress)
+  (seeds_dir, angora_out_dir)
 }
 
 fn gen_path_afl(out_dir: &str) -> PathBuf {

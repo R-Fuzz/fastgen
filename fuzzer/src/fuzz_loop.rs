@@ -267,7 +267,6 @@ pub fn fuzz_loop(
     global_branches: Arc<GlobalBranches>,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
-    mut ce_progress: std::fs::File,
     restart: bool,
     ) {
 
@@ -276,7 +275,7 @@ pub fn fuzz_loop(
 
   let mut progress_data = vec![0u8; 4];
   if (restart) {
-    ce_progress.read(&mut progress_data); 
+    progress_data = std::fs::read("ce_progress").unwrap();
     id = (&progress_data[..]).read_u32::<LittleEndian>().unwrap();
     println!("restarting scan from id {}",id);
   }
@@ -336,10 +335,8 @@ pub fn fuzz_loop(
       id = id + 1;
       let mut progress = Vec::new();
       progress.write_u32::<LittleEndian>(id).unwrap();
-      ce_progress.seek(SeekFrom::Start(0)).expect("seek file");
       println!("write progress data {:?}", progress);
-      ce_progress.write_all(&progress);
-      ce_progress.sync_all();
+      std::fs::write("ce_progress", &progress);
     } else {
       //let mut buf = depot.get_input_buf(depot.next_random());
       //run_afl_mutator(&mut executor,&mut buf);
