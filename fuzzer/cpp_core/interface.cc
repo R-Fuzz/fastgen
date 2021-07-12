@@ -53,7 +53,6 @@ struct RGDSolution {
     uint64_t direction;
 };
 
-moodycamel::ConcurrentQueue<RGDSolution> solution_queue;
 moodycamel::ConcurrentQueue<RGDSolution> higher_solution_queue;
 //moodycamel::ConcurrentQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks(10000000);
 folly::ProducerConsumerQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks1(1000000);
@@ -157,7 +156,7 @@ void* handle_task(void*) {
 
       if (z3_solution.size() != 0) {
         RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
-        solution_queue.enqueue(sol);
+        higher_solution_queue.enqueue(sol);
       }
 
     } else {
@@ -227,7 +226,7 @@ void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, 
   }
   else {
     RGDSolution sol = {rgd_solution, tid, addr, 0, 0};
-    solution_queue.enqueue(sol);
+    higher_solution_queue.enqueue(sol);
   }
 }
 
@@ -279,47 +278,29 @@ extern "C" {
     }
   }
 
-  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
-          uint32_t *order, uint32_t *fid, uint64_t *direction) {
-    //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
+  RGDSolution pending;
+  uint32_t get_next_input_id() {
     RGDSolution item;
-    //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
-     // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
     if(higher_solution_queue.try_dequeue(item)) {
-      std::string old_string = std::to_string(item.fid);
-      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      pending = item;
+      return item.fid;
+    } else {
+      return 0xffffffff;
+    }
+  } 
+
+  void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
+          uint32_t *order, uint32_t *fid, uint64_t *direction, size_t size) {
       //std::string input_file = "/home/cju/debug/seed.png";
-      uint32_t size = load_input(input_file, input);
-      for(auto it = item.sol.begin(); it != item.sol.end(); ++it)
-        input[it->first] = it->second;
-      *addr = item.addr;
-      *ctx = item.ctx;
-      *order = item.order;
-      *fid = item.fid;
-      *direction = item.direction;
-      return size;
-    } else if (solution_queue.try_dequeue(item)) {
-      //smapling output
-      //uint32_t random_fid = get_random_fid(item.addr, item.ctx, item.order, item.direction);
-      //if (random_fid == -1) random_fid = item.fid;
-      uint32_t random_fid = item.fid;
-      std::string old_string = std::to_string(random_fid);
-      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-      //std::string input_file = "/home/cju/debug/seed.png";
-      uint32_t size = load_input(input_file, input);
-      for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
+      for(auto it = pending.sol.begin(); it != pending.sol.end(); ++it) {
         if (it->first < size)
           input[it->first] = it->second;
       }
-      *addr = item.addr;
-      *ctx = item.ctx;
-      *order = item.order;
-      *fid = item.fid;
-      *direction = item.direction;
-      return size;
-    } else {
-      return 0; 
+      *addr = pending.addr;
+      *ctx = pending.ctx;
+      *order = pending.order;
+      *fid = pending.fid;
+      *direction = pending.direction;
     }
-  }
 };
 

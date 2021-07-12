@@ -116,8 +116,6 @@ let shmid =  unsafe {
   //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
   let t_start = time::Instant::now();
   let mut grade_count = 0;
-  let mut buf: Vec<u8> = Vec::with_capacity(config::MAX_INPUT_LEN);
-  buf.resize(config::MAX_INPUT_LEN, 0);
   let mut addr: u64 = 0;
   let mut ctx: u64 = 0;
   let mut order: u32 = 0;
@@ -125,9 +123,10 @@ let shmid =  unsafe {
   let mut direction: u64 = 0;
   //let mut veri_status: Arc<AtomicU32>;
   while running.load(Ordering::Relaxed) {
-    let len = unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction) };
-    if len != 0 {
-      buf.resize(len as usize, 0);
+    let id = unsafe { get_next_input_id() };
+    if id != std::u32::MAX {
+      let mut buf: Vec<u8> = depot.get_input_buf(id as usize);
+      unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, buf.len()) };
       let gsol_count = branch_solcount.clone();
       //let v_status = veri_status.clone();
 
@@ -218,9 +217,10 @@ pub fn grading_loop(
     let mut fid: u32 = 0;
     let mut direction: u64 = 0;
     while running.load(Ordering::Relaxed) {
-      let len = unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction) };
-      if len != 0 {
-        buf.resize(len as usize, 0);
+      let id = unsafe { get_next_input_id() };
+      if id != std::u32::MAX {
+        let mut buf: Vec<u8> = depot.get_input_buf(id as usize);
+        unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, buf.len()) };
         let new_path = executor.run_sync(&buf);
         let mut solcount = 1;
         if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
