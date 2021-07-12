@@ -109,28 +109,14 @@ struct expr_equal {
   }
 };
 typedef std::unordered_set<z3::expr, expr_hash, expr_equal> expr_set_t;
-typedef struct {
+struct branch_dep_t {
   expr_set_t expr_deps;
   std::unordered_set<dfsan_label> input_deps;
-} branch_dep_t;
-static std::vector<branch_dep_t*> *__branch_deps;
+};
+static std::unordered_map<size_t, branch_dep_t> branch_deps;
 
 static inline dfsan_label_info* get_label_info(dfsan_label label) {
   return &__union_table[label];
-}
-
-static inline branch_dep_t* get_branch_dep(size_t n) {
-  if (n >= __branch_deps->size()) {
-    __branch_deps->resize(n + 1);
-  }
-  return __branch_deps->at(n);
-}
-
-static inline void set_branch_dep(size_t n, branch_dep_t* dep) {
-  if (n >= __branch_deps->size()) {
-    __branch_deps->resize(n + 1);
-  }
-  __branch_deps->at(n) = dep;
 }
 
 static z3::expr get_cmd(z3::expr const &lhs, z3::expr const &rhs, uint32_t predicate) {
@@ -155,8 +141,6 @@ static z3::expr get_cmd(z3::expr const &lhs, z3::expr const &rhs, uint32_t predi
 }
 
 static inline z3::expr cache_expr(dfsan_label label, z3::expr const &e, std::unordered_set<uint32_t> &deps) {
-  //info->expr = new z3::expr(e);
-  //info->deps = new std::unordered_set<uint32_t>(deps);
   if (label != 0)  {
     expr_cache.insert({label,e});
     deps_cache.insert({label,deps});
@@ -316,7 +300,6 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
 void init(bool saving_whole) {
   SAVING_WHOLE = saving_whole;
   //initZ3Solver();
-  __branch_deps = new std::vector<branch_dep_t*>(100000, nullptr);
 }
 
 static void generate_solution(z3::model &m, std::unordered_map<uint32_t, uint8_t> &solu) {
@@ -361,12 +344,10 @@ static void solve_divisor() {
       auto off = worklist.back();
       worklist.pop_back();
 
-      auto deps = get_branch_dep(off);
-      if (deps != nullptr) {
-        for (auto i : deps->input_deps) {
-          if (inputs.insert(i).second)
-            worklist.push_back(i);
-        }
+      auto &deps = branch_deps[off];
+      for (auto i : deps.input_deps) {
+        if (inputs.insert(i).second)
+          worklist.push_back(i);
       }
     }
 
@@ -382,13 +363,11 @@ static void solve_divisor() {
       expr_set_t added;
       for (auto off : inputs) {
         //AOUT("adding offset %d\n", off);
-        auto deps = get_branch_dep(off);
-        if (deps != nullptr) {
-          for (auto &expr : deps->expr_deps) {
-            if (added.insert(expr).second) {
-              //AOUT("adding expr: %s\n", expr.to_string().c_str());
-              __z3_solver.add(expr);
-            }
+        auto &deps = branch_deps[off];
+        for (auto &expr : deps.expr_deps) {
+          if (added.insert(expr).second) {
+            //AOUT("adding expr: %s\n", expr.to_string().c_str());
+            __z3_solver.add(expr);
           }
         }
       } 
@@ -447,12 +426,10 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
       auto off = worklist.back();
       worklist.pop_back();
 
-      auto deps = get_branch_dep(off);
-      if (deps != nullptr) {
-        for (auto i : deps->input_deps) {
-          if (inputs.insert(i).second)
-            worklist.push_back(i);
-        }
+      auto &deps = branch_deps[off];
+      for (auto i : deps.input_deps) {
+        if (inputs.insert(i).second)
+          worklist.push_back(i);
       }
     }
 
@@ -469,12 +446,10 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
       // 2. add constraints
       expr_set_t added;
       for (auto off : inputs) {
-        auto deps = get_branch_dep(off);
-        if (deps != nullptr) {
-          for (auto &expr : deps->expr_deps) {
-            if (added.insert(expr).second) {
-              __z3_solver.add(expr);
-            }
+        auto &deps = branch_deps[off];
+        for (auto &expr : deps.expr_deps) {
+          if (added.insert(expr).second) {
+            __z3_solver.add(expr);
           }
         }
       }
@@ -512,12 +487,10 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
         // 2. add constraints
         expr_set_t added;
         for (auto off : inputs) {
-          auto deps = get_branch_dep(off);
-          if (deps != nullptr) {
-            for (auto &expr : deps->expr_deps) {
-              if (added.insert(expr).second) {
-                __z3_solver.add(expr);
-              }
+          auto &deps = branch_deps[off];
+          for (auto &expr : deps.expr_deps) {
+            if (added.insert(expr).second) {
+              __z3_solver.add(expr);
             }
           }
         }
@@ -556,12 +529,10 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
         // 2. add constraints
         expr_set_t added;
         for (auto off : inputs) {
-          auto deps = get_branch_dep(off);
-          if (deps != nullptr) {
-            for (auto &expr : deps->expr_deps) {
-              if (added.insert(expr).second) {
-                __z3_solver.add(expr);
-              }
+          auto &deps = branch_deps[off];
+          for (auto &expr : deps.expr_deps) {
+            if (added.insert(expr).second) {
+              __z3_solver.add(expr);
             }
           }
         }
@@ -589,17 +560,9 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
 
     // preserve
     for (auto off : inputs) {
-      auto c = get_branch_dep(off);
-      if (c == nullptr) {
-        c = new branch_dep_t();
-        set_branch_dep(off, c);
-      }
-      if (c == nullptr) {
-        printf("WARNING: out of memory\n");
-      } else {
-        c->input_deps.insert(inputs.begin(), inputs.end());
-        c->expr_deps.insert(index == result);
-      }
+      auto &deps = branch_deps[off];
+      deps.input_deps.insert(inputs.begin(), inputs.end());
+      deps.expr_deps.insert(index == result);
     }
 
     // mark as visited
@@ -639,12 +602,10 @@ static void solve_cond(dfsan_label label, uint32_t direction,
         auto off = worklist.back();
         worklist.pop_back();
 
-        auto deps = get_branch_dep(off);
-        if (deps != nullptr) {
-          for (auto i : deps->input_deps) {
-            if (inputs.insert(i).second)
+        auto &deps = branch_deps[off];
+        for (auto i : deps.input_deps) {
+          if (inputs.insert(i).second)
               worklist.push_back(i);
-          }
         }
       }
 
@@ -660,13 +621,11 @@ static void solve_cond(dfsan_label label, uint32_t direction,
         expr_set_t added;
         for (auto off : inputs) {
           //AOUT("adding offset %d\n", off);
-          auto deps = get_branch_dep(off);
-          if (deps != nullptr) {
-            for (auto &expr : deps->expr_deps) {
-              if (added.insert(expr).second) {
-                //AOUT("adding expr: %s\n", expr.to_string().c_str());
-                __z3_solver.add(expr);
-              }
+          auto &deps = branch_deps[off];
+          for (auto &expr : deps.expr_deps) {
+            if (added.insert(expr).second) {
+              //AOUT("adding expr: %s\n", expr.to_string().c_str());
+              __z3_solver.add(expr);
             }
           }
         } 
@@ -682,20 +641,9 @@ static void solve_cond(dfsan_label label, uint32_t direction,
     } //end of try_solve
     //nested branches
     for (auto off : inputs) {
-      auto c = get_branch_dep(off);
-      if (c == nullptr) {
-        c = new branch_dep_t();
-        if (c == nullptr) {
-          printf("WARNING: out of memory\n");
-        } else {
-          set_branch_dep(off, c);
-          c->input_deps.insert(inputs.begin(), inputs.end());
-          c->expr_deps.insert(cond == result);
-        }
-      } else {
-        c->input_deps.insert(inputs.begin(), inputs.end());
-        c->expr_deps.insert(cond == result);
-      }
+      auto &dep = branch_deps[off];
+      dep.input_deps.insert(inputs.begin(), inputs.end());
+      dep.expr_deps.insert(cond == result);
     }
   } catch (z3::exception e) {
     printf("WARNING: solving error: %s\n", e.msg());
@@ -925,27 +873,16 @@ void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, 
 
 
 void cleanup() {
-
-  for(int i = 0; i <= max_label_per_session; i++) {
-    dfsan_label_info* info = get_label_info(i);
-    //if (info->expr)  { delete info->expr;  info->expr = nullptr; }
-    //if (info->deps)  { delete info->deps;  info->deps = nullptr; }
-    memset(info, 0, sizeof(dfsan_label_info));
-  }
-
   expr_cache.clear();
   deps_cache.clear();
   max_label_per_session = 0;
-  for (int i = 0 ; i< __branch_deps->size(); i++) {
-    branch_dep_t* slot =  __branch_deps->at(i);
-    if (slot) { delete slot; __branch_deps->at(i) = nullptr; }
-  }
+  branch_deps.clear();
   shmdt(__union_table);
 }
 
 uint32_t solve(int shmid, int pipefd) {
   // map the union table
-  __union_table = (dfsan_label_info*)shmat(shmid, nullptr, 0);
+  __union_table = (dfsan_label_info*)shmat(shmid, nullptr, SHM_RDONLY);
   if (__union_table == (void*)(-1)) {
     printf("error %s\n",strerror(errno));
     return 0;

@@ -73,7 +73,7 @@ dfsan_label_info *__dfsan_label_info;
 static struct taint_file tainted;
 
 // Hash table
-static const uptr hashtable_size = (1ULL << 32);
+static const uptr hashtable_size = UnionTableAddr() - HashTableAddr();
 static const size_t union_table_size = (1ULL << 18);
 static __taint::union_hashtable __union_table(union_table_size);
 
@@ -1155,25 +1155,16 @@ static void dfsan_init(int argc, char **argv, char **envp) {
   //printf("unsued addr %p and shadow addr %p and uniton addr %p\n", UnusedAddr(),ShadowAddr(),UnionTableAddr());
   //printf("mapping %lx bytes\n",UnusedAddr() - ShadowAddr());
   __dfsan_label_info = (dfsan_label_info *)UnionTableAddr();
-  //int shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
-  //  void* ret = shmat(shmid, (void *)ShadowAddr(), 0); 
-  //if (shmid == -1) {
-    //perror("Shared mmoery");
-  //} else {
-    if (__shmid == 0)
-      __shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
-    shmp = shmat(__shmid, (void *)UnionTableAddr(), 0);
-    if (shmp == (void*) -1) {
-      //perror("error shared memory attach");
-    }  else {
-      //printf("address mappped to shared mem\n");
-    }
-  //}
+  if (__shmid == 0)
+    __shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
+  shmp = shmat(__shmid, (void *)UnionTableAddr(), 0);
+  if (shmp == (void*) -1) {
+    FATAL("error shared memory attach");
+  }
   mypipe = __pipeid;
-  //else {
-  //   printf("segment containts: \n\%s\n", shmp->buf);
-  //}
+
   // init const size
+  internal_memset(&__dfsan_label_info[CONST_LABEL], 0, sizeof(dfsan_label_info));
   __dfsan_label_info[CONST_LABEL].size = 8;
 
   InitializeInterceptors();
@@ -1181,7 +1172,6 @@ static void dfsan_init(int argc, char **argv, char **envp) {
   // Protect the region of memory we don't use, to preserve the one-to-one
   // mapping from application to shadow memory.
   MmapFixedNoAccess(UnusedAddr(), AppAddr() - UnusedAddr());
-  MmapFixedNoReserve(HashTableAddr(), hashtable_size);
   __taint::allocator_init(HashTableAddr(), HashTableAddr() + hashtable_size);
 
   InitializeTaintFile();
