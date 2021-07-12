@@ -952,12 +952,16 @@ uint32_t solve(int shmid, int pipefd) {
 
     if (sol.size()) {
       RGDSolution rsol = {sol, msg.tid, 0, 0, 0, 0};
+      queue_mutex.lock();
       solution_queue.push_back(rsol);
+      queue_mutex.unlock();
       count++;
     }
     if (opt_sol.size()) {
       RGDSolution rsol = {opt_sol, msg.tid, 0, 0, 0, 0};
+      queue_mutex.lock();
       solution_queue.push_back(rsol);
+      queue_mutex.unlock();
       count++;
     }
     /* 
@@ -1007,19 +1011,17 @@ extern "C" {
     sem_post(semagra);
   }
 
-  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
-      uint32_t *order, uint32_t *fid, uint64_t *direction) {
+  void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
+      uint32_t *order, uint32_t *fid, uint64_t *direction, size_t size) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
     RGDSolution item;
     //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
     // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
     queue_mutex.lock();
+    //asert(!solutio_queue.empty());
     if(!solution_queue.empty()) {
       item = solution_queue.front(); 
       solution_queue.pop_front();
-      std::string old_string = std::to_string(item.fid);
-      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-      uint32_t size = load_input(input_file, input);
       for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
         if (it->first < size)
           input[it->first] = it->second;
@@ -1029,11 +1031,24 @@ extern "C" {
       *order = item.order;
       *fid = item.fid;
       *direction = item.direction;
+    }
+    queue_mutex.unlock();
+  }
+
+  uint32_t get_next_input_id() {
+    //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
+    RGDSolution item;
+    //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
+    // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
+    queue_mutex.lock();
+    if(!solution_queue.empty()) {
+      item = solution_queue.front(); 
       queue_mutex.unlock();
-      return size;
+      return item.fid;
     } else {
       queue_mutex.unlock();
-      return 0; 
+      // no next input
+      return UINTMAX_MAX; 
     }
   }
 
