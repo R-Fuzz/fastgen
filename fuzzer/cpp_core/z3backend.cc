@@ -34,8 +34,8 @@
 static dfsan_label divisor_label = 0;
 static std::atomic<uint64_t> fid;
 bool SAVING_WHOLE; 
-static z3::context __z3_context;
-static z3::solver __z3_solver(__z3_context, "QF_BV");
+z3::context *__z3_context;
+z3::solver *__z3_solver; //(__z3_context, "QF_BV");
 static const dfsan_label kInitializingLabel = -1;
 static uint32_t max_label_per_session = 0;
 sem_t * semagra;
@@ -181,21 +181,21 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
   // special ops
   if (info->op == 0) {
     // input
-    z3::symbol symbol = __z3_context.int_symbol(info->op1);
-    z3::sort sort = __z3_context.bv_sort(8);
+    z3::symbol symbol = __z3_context->int_symbol(info->op1);
+    z3::sort sort = __z3_context->bv_sort(8);
     //info->tree_size = 1; // lazy init
     deps.insert(info->op1);
     // caching is not super helpful
-    return __z3_context.constant(symbol, sort);
+    return __z3_context->constant(symbol, sort);
   } else if (info->op == DFSAN_LOAD) {
     uint64_t offset = get_label_info(info->l1)->op1;
-    z3::symbol symbol = __z3_context.int_symbol(offset);
-    z3::sort sort = __z3_context.bv_sort(8);
-    z3::expr out = __z3_context.constant(symbol, sort);
+    z3::symbol symbol = __z3_context->int_symbol(offset);
+    z3::sort sort = __z3_context->bv_sort(8);
+    z3::expr out = __z3_context->constant(symbol, sort);
     deps.insert(offset);
     for (uint32_t i = 1; i < info->l2; i++) {
-      symbol = __z3_context.int_symbol(offset + i);
-      out = z3::concat(__z3_context.constant(symbol, sort), out);
+      symbol = __z3_context->int_symbol(offset + i);
+      out = z3::concat(__z3_context->constant(symbol, sort), out);
       deps.insert(offset + i);
     }
     //info->tree_size = 1; // lazy init
@@ -203,16 +203,16 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
   } else if (info->op == DFSAN_ZEXT) {
     z3::expr base = serialize(info->l1, deps);
     if (base.is_bool()) // dirty hack since llvm lacks bool
-      base = z3::ite(base, __z3_context.bv_val(1, 1),
-          __z3_context.bv_val(0, 1));
+      base = z3::ite(base, __z3_context->bv_val(1, 1),
+          __z3_context->bv_val(0, 1));
     uint32_t base_size = base.get_sort().bv_size();
     //info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
     return cache_expr(label, z3::zext(base, info->size - base_size), deps);
   } else if (info->op == DFSAN_SEXT) {
     z3::expr base = serialize(info->l1, deps);
     if (base.is_bool()) // dirty hack since llvm lacks bool
-      base = z3::ite(base, __z3_context.bv_val(1, 1),
-          __z3_context.bv_val(0, 1));
+      base = z3::ite(base, __z3_context->bv_val(1, 1),
+          __z3_context->bv_val(0, 1));
     uint32_t base_size = base.get_sort().bv_size();
     //info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
     return cache_expr(label, z3::sext(base, info->size - base_size), deps);
@@ -249,23 +249,23 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
     assert(info->l2 >= CONST_OFFSET);
     size = info->size - get_label_info(info->l2)->size;
   }
-  z3::expr op1 = __z3_context.bv_val((uint64_t)info->op1, size);
+  z3::expr op1 = __z3_context->bv_val((uint64_t)info->op1, size);
   if (info->l1 >= CONST_OFFSET) {
     op1 = serialize(info->l1, deps).simplify();
   } else if (info->size == 1) {
-    op1 = __z3_context.bool_val(info->op1 == 1);
+    op1 = __z3_context->bool_val(info->op1 == 1);
   }
   if (info->op == DFSAN_CONCAT && info->l2 == 0) {
     assert(info->l1 >= CONST_OFFSET);
     size = info->size - get_label_info(info->l1)->size;
   }
-  z3::expr op2 = __z3_context.bv_val((uint64_t)info->op2, size);
+  z3::expr op2 = __z3_context->bv_val((uint64_t)info->op2, size);
   if (info->l2 >= CONST_OFFSET) {
     std::unordered_set<uint32_t> deps2;
     op2 = serialize(info->l2, deps2).simplify();
     deps.insert(deps2.begin(),deps2.end());
   } else if (info->size == 1) {
-    op2 = __z3_context.bool_val(info->op2 == 1); }
+    op2 = __z3_context->bool_val(info->op2 == 1); }
   // update tree_size
   //info->tree_size = get_label_info(info->l1)->tree_size +
    // get_label_info(info->l2)->tree_size;
@@ -336,7 +336,7 @@ static void solve_divisor() {
       throw z3::exception("formula too large");
     }
 #endif
-    z3::expr zero_v = __z3_context.bv_val((uint64_t)0, size);
+    z3::expr zero_v = __z3_context->bv_val((uint64_t)0, size);
 
     // collect additional input deps
     std::vector<dfsan_label> worklist;
@@ -352,13 +352,13 @@ static void solve_divisor() {
       }
     }
 
-    __z3_solver.reset();
+    __z3_solver->reset();
     //AOUT("%s\n", cond.to_string().c_str());
-    __z3_solver.add(cond == zero_v);
-    z3::check_result res = __z3_solver.check();
+    __z3_solver->add(cond == zero_v);
+    z3::check_result res = __z3_solver->check();
     if (res == z3::sat) {
-      z3::model m_opt = __z3_solver.get_model();
-      __z3_solver.push();
+      z3::model m_opt = __z3_solver->get_model();
+      __z3_solver->push();
 
       // 2. add constraints
       expr_set_t added;
@@ -368,14 +368,14 @@ static void solve_divisor() {
         for (auto &expr : deps.expr_deps) {
           if (added.insert(expr).second) {
             //AOUT("adding expr: %s\n", expr.to_string().c_str());
-            __z3_solver.add(expr);
+            __z3_solver->add(expr);
           }
         }
       } 
-      res = __z3_solver.check();
-      //printf("\n%s\n", __z3_solver.to_smt2().c_str()); 
+      res = __z3_solver->check();
+      //printf("\n%s\n", __z3_solver->to_smt2().c_str()); 
       if (res == z3::sat) {
-        z3::model m = __z3_solver.get_model();
+        z3::model m = __z3_solver->get_model();
         sol.clear();
         generate_solution(m, sol);
         //generate_input(sol, input_file, "./ce_output", fid++);
@@ -395,7 +395,7 @@ static void solve_divisor() {
     }
   } catch (z3::exception e) {
     printf("WARNING: solving error: %s\n", e.msg());
-    //printf("Expr is %s\n", __z3_solver.to_smt2().c_str());
+    //printf("Expr is %s\n", __z3_solver->to_smt2().c_str());
   }
 
 }
@@ -418,7 +418,7 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
   try {
     std::unordered_set<dfsan_label> inputs;
     z3::expr index = serialize(label, inputs);
-    z3::expr result = __z3_context.bv_val((uint64_t)r, size);
+    z3::expr result = __z3_context->bv_val((uint64_t)r, size);
 
     // collect additional input deps
     std::vector<dfsan_label> worklist;
@@ -434,15 +434,15 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
       }
     }
 
-    __z3_solver.reset();
+    __z3_solver->reset();
 
-    __z3_solver.add(index > result);
-    z3::check_result res = __z3_solver.check();
+    __z3_solver->add(index > result);
+    z3::check_result res = __z3_solver->check();
 
-    //AOUT("\n%s\n", __z3_solver.to_smt2().c_str());
+    //AOUT("\n%s\n", __z3_solver->to_smt2().c_str());
     if (res == z3::sat) {
-      z3::model m_opt = __z3_solver.get_model();
-      __z3_solver.push();
+      z3::model m_opt = __z3_solver->get_model();
+      __z3_solver->push();
 
       // 2. add constraints
       expr_set_t added;
@@ -450,14 +450,14 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
         auto &deps = branch_deps[off];
         for (auto &expr : deps.expr_deps) {
           if (added.insert(expr).second) {
-            __z3_solver.add(expr);
+            __z3_solver->add(expr);
           }
         }
       }
 
-      res = __z3_solver.check();
+      res = __z3_solver->check();
       if (res == z3::sat) {
-        z3::model m = __z3_solver.get_model();
+        z3::model m = __z3_solver->get_model();
         sol.clear();
         generate_solution(m, sol);
         RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
@@ -475,15 +475,15 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
     }
 
     {
-      __z3_solver.reset();
-      z3::expr zero_v = __z3_context.bv_val((uint64_t)0, size);
-      __z3_solver.add(index < zero_v);
-      z3::check_result res = __z3_solver.check();
+      __z3_solver->reset();
+      z3::expr zero_v = __z3_context->bv_val((uint64_t)0, size);
+      __z3_solver->add(index < zero_v);
+      z3::check_result res = __z3_solver->check();
 
-      //AOUT("\n%s\n", __z3_solver.to_smt2().c_str());
+      //AOUT("\n%s\n", __z3_solver->to_smt2().c_str());
       if (res == z3::sat) {
-        z3::model m_opt = __z3_solver.get_model();
-        __z3_solver.push();
+        z3::model m_opt = __z3_solver->get_model();
+        __z3_solver->push();
 
         // 2. add constraints
         expr_set_t added;
@@ -491,14 +491,14 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
           auto &deps = branch_deps[off];
           for (auto &expr : deps.expr_deps) {
             if (added.insert(expr).second) {
-              __z3_solver.add(expr);
+              __z3_solver->add(expr);
             }
           }
         }
 
-        res = __z3_solver.check();
+        res = __z3_solver->check();
         if (res == z3::sat) {
-          z3::model m = __z3_solver.get_model();
+          z3::model m = __z3_solver->get_model();
           sol.clear();
           generate_solution(m, sol);
           RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
@@ -517,15 +517,15 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
     }
     for (int i=0; i<128;i++)
     {
-      __z3_solver.reset();
-      z3::expr cur_v = __z3_context.bv_val((uint64_t)i, size);
-      __z3_solver.add(index == cur_v);
-      z3::check_result res = __z3_solver.check();
+      __z3_solver->reset();
+      z3::expr cur_v = __z3_context->bv_val((uint64_t)i, size);
+      __z3_solver->add(index == cur_v);
+      z3::check_result res = __z3_solver->check();
 
-      //AOUT("\n%s\n", __z3_solver.to_smt2().c_str());
+      //AOUT("\n%s\n", __z3_solver->to_smt2().c_str());
       if (res == z3::sat) {
-        z3::model m_opt = __z3_solver.get_model();
-        __z3_solver.push();
+        z3::model m_opt = __z3_solver->get_model();
+        __z3_solver->push();
 
         // 2. add constraints
         expr_set_t added;
@@ -533,14 +533,14 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
           auto &deps = branch_deps[off];
           for (auto &expr : deps.expr_deps) {
             if (added.insert(expr).second) {
-              __z3_solver.add(expr);
+              __z3_solver->add(expr);
             }
           }
         }
 
-        res = __z3_solver.check();
+        res = __z3_solver->check();
         if (res == z3::sat) {
-          z3::model m = __z3_solver.get_model();
+          z3::model m = __z3_solver->get_model();
           sol.clear();
           generate_solution(m, sol);
           RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
@@ -570,7 +570,7 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
     get_label_info(label)->flags |= B_FLIPPED;
   } catch (z3::exception e) {
     printf("WARNING: index solving error: %s\n", e.msg());
-    //printf("Expr is %s\n", __z3_solver.to_smt2().c_str());
+    //printf("Expr is %s\n", __z3_solver->to_smt2().c_str());
   }
 
 }
@@ -580,7 +580,7 @@ static void solve_cond(dfsan_label label, uint32_t direction,
     std::unordered_map<uint32_t, uint8_t> &opt_sol, 
     std::unordered_map<uint32_t, uint8_t> &sol, bool try_solve) {
 
-  z3::expr result = __z3_context.bool_val(direction);
+  z3::expr result = __z3_context->bool_val(direction);
 
   if (!label || !try_solve) 
     return;
@@ -610,13 +610,13 @@ static void solve_cond(dfsan_label label, uint32_t direction,
         }
       }
 
-      __z3_solver.reset();
+      __z3_solver->reset();
       //AOUT("%s\n", cond.to_string().c_str());
-      __z3_solver.add(cond != result);
-      z3::check_result res = __z3_solver.check();
+      __z3_solver->add(cond != result);
+      z3::check_result res = __z3_solver->check();
       if (res == z3::sat) {
-        z3::model m_opt = __z3_solver.get_model();
-        __z3_solver.push();
+        z3::model m_opt = __z3_solver->get_model();
+        __z3_solver->push();
 
         // 2. add constraints
         expr_set_t added;
@@ -626,14 +626,14 @@ static void solve_cond(dfsan_label label, uint32_t direction,
           for (auto &expr : deps.expr_deps) {
             if (added.insert(expr).second) {
               //AOUT("adding expr: %s\n", expr.to_string().c_str());
-              __z3_solver.add(expr);
+              __z3_solver->add(expr);
             }
           }
         } 
-        res = __z3_solver.check();
-        //printf("\n%s\n", __z3_solver.to_smt2().c_str()); 
+        res = __z3_solver->check();
+        //printf("\n%s\n", __z3_solver->to_smt2().c_str()); 
         if (res == z3::sat) {
-          z3::model m = __z3_solver.get_model();
+          z3::model m = __z3_solver->get_model();
           generate_solution(m, sol);
         } else {
           generate_solution(m_opt, opt_sol);
@@ -648,7 +648,7 @@ static void solve_cond(dfsan_label label, uint32_t direction,
     }
   } catch (z3::exception e) {
     printf("WARNING: solving error: %s\n", e.msg());
-    //printf("Expr is %s\n", __z3_solver.to_smt2().c_str());
+    //printf("Expr is %s\n", __z3_solver->to_smt2().c_str());
   }
 }
 
@@ -879,6 +879,8 @@ void cleanup() {
   max_label_per_session = 0;
   branch_deps.clear();
   shmdt(__union_table);
+  delete __z3_context;
+  delete __z3_solver;
 }
 
 uint32_t solve(int shmid, int pipefd) {
@@ -888,6 +890,9 @@ uint32_t solve(int shmid, int pipefd) {
     printf("error %s\n",strerror(errno));
     return 0;
   }
+  __z3_context = new z3::context();
+  __z3_solver = new z3::solver(*__z3_context, "QF_BV");
+  __z3_solver->set("timeout", 10000U);
   size_t pos = 0;
 
   uint32_t count = 0;
@@ -991,7 +996,6 @@ extern "C" {
   void init_core(bool saving_whole) { 
     init(saving_whole); 
     printf("the length of union_table is %u\n", 0xC00000000/sizeof(dfsan_label_info));
-    __z3_solver.set("timeout", 10000U);
     memset(pp_map, 0, kMapSize);
   }
 
@@ -1047,8 +1051,8 @@ extern "C" {
       return item.fid;
     } else {
       queue_mutex.unlock();
-      // no next input
-      return UINTMAX_MAX; 
+      // no next input, return UINT32_MAX
+      return 0xffffffff; 
     }
   }
 
