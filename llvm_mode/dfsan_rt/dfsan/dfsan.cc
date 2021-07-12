@@ -73,7 +73,7 @@ dfsan_label_info *__dfsan_label_info;
 static struct taint_file tainted;
 
 // Hash table
-static const uptr hashtable_size = UnionTableAddr() - HashTableAddr();
+static const uptr hashtable_size = (1ULL << 32);
 static const size_t union_table_size = (1ULL << 18);
 static __taint::union_hashtable __union_table(union_table_size);
 
@@ -1159,7 +1159,8 @@ static void dfsan_init(int argc, char **argv, char **envp) {
     __shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
   shmp = shmat(__shmid, (void *)UnionTableAddr(), 0);
   if (shmp == (void*) -1) {
-    FATAL("error shared memory attach");
+    Printf("FATAL: error shared memory attach");
+    Die();
   }
   mypipe = __pipeid;
 

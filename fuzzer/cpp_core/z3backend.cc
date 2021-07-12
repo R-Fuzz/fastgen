@@ -94,6 +94,7 @@ static std::unordered_map<uint32_t, std::vector<uint32_t>> seed_map;
 static std::unordered_set<std::tuple<uint64_t, uint64_t, uint64_t, uint32_t>, dedup_hash, dedup_equal> fmemcmp_dedup;
 
 std::unordered_map<uint32_t,z3::expr> expr_cache;
+std::unordered_map<uint32_t,uint32_t> tsize_cache;
 std::unordered_map<uint32_t,std::unordered_set<uint32_t>> deps_cache;
 
 
@@ -182,7 +183,7 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
     // input
     z3::symbol symbol = __z3_context.int_symbol(info->op1);
     z3::sort sort = __z3_context.bv_sort(8);
-    info->tree_size = 1; // lazy init
+    //info->tree_size = 1; // lazy init
     deps.insert(info->op1);
     // caching is not super helpful
     return __z3_context.constant(symbol, sort);
@@ -197,7 +198,7 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
       out = z3::concat(__z3_context.constant(symbol, sort), out);
       deps.insert(offset + i);
     }
-    info->tree_size = 1; // lazy init
+    //info->tree_size = 1; // lazy init
     return cache_expr(label, out, deps);
   } else if (info->op == DFSAN_ZEXT) {
     z3::expr base = serialize(info->l1, deps);
@@ -205,7 +206,7 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
       base = z3::ite(base, __z3_context.bv_val(1, 1),
           __z3_context.bv_val(0, 1));
     uint32_t base_size = base.get_sort().bv_size();
-    info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
+    //info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
     return cache_expr(label, z3::zext(base, info->size - base_size), deps);
   } else if (info->op == DFSAN_SEXT) {
     z3::expr base = serialize(info->l1, deps);
@@ -213,22 +214,22 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
       base = z3::ite(base, __z3_context.bv_val(1, 1),
           __z3_context.bv_val(0, 1));
     uint32_t base_size = base.get_sort().bv_size();
-    info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
+    //info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
     return cache_expr(label, z3::sext(base, info->size - base_size), deps);
   } else if (info->op == DFSAN_TRUNC) {
     z3::expr base = serialize(info->l1, deps);
-    info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
+    //info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
     return cache_expr(label, base.extract(info->size - 1, 0), deps);
   } else if (info->op == DFSAN_EXTRACT) {
     z3::expr base = serialize(info->l1, deps);
-    info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
+    //info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
     return cache_expr(label, base.extract((info->op2 + info->size) - 1, info->op2), deps);
   } else if (info->op == DFSAN_NOT) {
     if (info->l2 == 0 || info->size != 1) {
       throw z3::exception("invalid Not operation");
     }
     z3::expr e = serialize(info->l2, deps);
-    info->tree_size = get_label_info(info->l2)->tree_size; // lazy init
+    //info->tree_size = get_label_info(info->l2)->tree_size; // lazy init
     if (!e.is_bool()) {
       throw z3::exception("Only LNot should be recorded");
     }
@@ -238,7 +239,7 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
       throw z3::exception("invalid Neg predicate");
     }
     z3::expr e = serialize(info->l2, deps);
-    info->tree_size = get_label_info(info->l2)->tree_size; // lazy init
+    //info->tree_size = get_label_info(info->l2)->tree_size; // lazy init
     return cache_expr(label, -e, deps);
   }
   // common ops
@@ -266,8 +267,8 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
   } else if (info->size == 1) {
     op2 = __z3_context.bool_val(info->op2 == 1); }
   // update tree_size
-  info->tree_size = get_label_info(info->l1)->tree_size +
-    get_label_info(info->l2)->tree_size;
+  //info->tree_size = get_label_info(info->l1)->tree_size +
+   // get_label_info(info->l2)->tree_size;
 
   switch((info->op & 0xff)) {
     // llvm doesn't distinguish between logical and bitwise and/or/xor
@@ -329,7 +330,7 @@ static void solve_divisor() {
     //std::string input_file = "./corpus/tmp/cur_input_2";
     //std::string input_file = "/magma_shared/findings/tmp/cur_input_2";
     unsigned char size = get_label_info(label)->size;
-#if 1
+#if 0
     if (get_label_info(label)->tree_size > 50000) {
       // don't bother?
       throw z3::exception("formula too large");
@@ -588,7 +589,7 @@ static void solve_cond(dfsan_label label, uint32_t direction,
     std::unordered_set<dfsan_label> inputs;
     z3::expr cond = serialize(label, inputs);
     if(try_solve) {
-#if 1
+#if 0
       if (get_label_info(label)->tree_size > 50000) {
         // don't bother?
         throw z3::exception("formula too large");
