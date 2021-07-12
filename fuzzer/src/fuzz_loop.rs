@@ -277,26 +277,6 @@ pub fn fuzz_loop(
     };
 
 
-/*
-  let shmid = match executor_id { 
-    2 => unsafe {
-      libc::shmget(
-          0x1234,
-          0xc00000000,
-          0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
-          )
-    },
-      3 => unsafe {
-        libc::shmget(
-            0x2468,
-            0xc00000000,
-            0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
-            )
-      },
-      _ => 0,
-  };
-*/
-
   info!("start fuzz loop with shmid {}",shmid);
 
   let mut executor = Executor::new(
@@ -322,9 +302,9 @@ pub fn fuzz_loop(
       let gbranch_gencount = branch_gencount.clone();
 
       let (read_end, write_end) = pipe().unwrap();
-      let handle = thread::spawn(move || {
+      let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
           dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
-          });
+          }).unwrap();
 
       let t_start = time::Instant::now();
 
