@@ -33,8 +33,9 @@ pub fn fuzz_main(
     ) {
   pretty_env_logger::init();
 
-  let (seeds_dir, angora_out_dir) = initialize_directories(in_dir, out_dir, sync_afl);
+  let (seeds_dir, angora_out_dir, ce_progress) = initialize_directories(in_dir, out_dir, sync_afl);
 
+  let restart = in_dir == "-";
   let command_option = command::CommandOpt::new(
       track_target,
       pargs,
@@ -93,23 +94,11 @@ pub fn fuzz_main(
     let bg = branch_gencount.clone();
     let bs = branch_solcount.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs, ce_progress, restart);
         });
     handlers.push(handle);
   }
-  if _num_jobs > 1
-  { 
-    let r = running.clone();
-    let d = depot.clone();
-    let b = global_branches.clone();
-    let cmd = command_option.specify(3);
-    let bg = branch_gencount.clone();
-    let bs = branch_solcount.clone();
-    let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs);
-        });
-    handlers.push(handle);
-  } 
+   
 
   main_thread_sync(
     out_dir,
@@ -126,23 +115,31 @@ pub fn fuzz_main(
   }
 }
 
-fn initialize_directories(in_dir: &str, out_dir: &str, sync_afl: bool) -> (PathBuf, PathBuf) {
+fn initialize_directories(in_dir: &str, out_dir: &str, sync_afl: bool) -> (PathBuf, PathBuf, std::fs::File) {
   let angora_out_dir = if sync_afl {
     gen_path_afl(out_dir)
   } else {
     PathBuf::from(out_dir)
   };
 
+
+  let mut ce_progress: std::fs::File;
   let restart = in_dir == "-";
   if !restart {
     fs::create_dir(&angora_out_dir).expect("Output directory has existed!");
+    ce_progress = std::fs::File::create("ce_prgress").expect("create failed");
+  } else {
+    ce_progress = std::fs::File::open("ce_prgress").expect("open failed");
   }
 
-  let workdir = PathBuf::from("./");
+  
+
+  let workdir = PathBuf::from("angora");
 
   let out_dir = &angora_out_dir;
   let seeds_dir = if restart {
     let orig_out_dir = workdir.with_extension(Local::now().to_rfc3339());
+    println!("orig out dir is {:?}",orig_out_dir);
     fs::rename(&out_dir, orig_out_dir.clone()).unwrap();
     fs::create_dir(&out_dir).unwrap();
     PathBuf::from(orig_out_dir).join(defs::INPUTS_DIR)
@@ -150,7 +147,7 @@ fn initialize_directories(in_dir: &str, out_dir: &str, sync_afl: bool) -> (PathB
     PathBuf::from(in_dir)
   };
 
-  (seeds_dir, angora_out_dir)
+  (seeds_dir, angora_out_dir, ce_progress)
 }
 
 fn gen_path_afl(out_dir: &str) -> PathBuf {

@@ -2,6 +2,7 @@ use crate::{
   branches::GlobalBranches, command::CommandOpt, depot::Depot,
     executor::Executor,
 };
+use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::sync::{
   atomic::{AtomicBool, Ordering},
     Arc, RwLock,
@@ -22,6 +23,10 @@ use std::path::{Path};
 use crate::rgd::*;
 use std::collections::HashSet;
 use std::collections::HashMap;
+use std::io::Read;
+use std::io::Write;
+use std::io::Seek;
+use std::io::SeekFrom;
 //use crate::util::*;
 use wait_timeout::ChildExt;
 use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
@@ -262,11 +267,19 @@ pub fn fuzz_loop(
     global_branches: Arc<GlobalBranches>,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    mut ce_progress: std::fs::File,
+    restart: bool,
     ) {
 
-  let mut id: usize = 0;
+  let mut id: u32 = 0;
   let executor_id = cmd_opt.id;
 
+  let mut progress_data = vec![0u8; 4];
+  if (restart) {
+    ce_progress.read(&mut progress_data); 
+    id = (&progress_data[..]).read_u32::<LittleEndian>().unwrap();
+    println!("restarting scan from id {}",id);
+  }
   let shmid =  
     unsafe {
       libc::shmget(
@@ -293,9 +306,9 @@ pub fn fuzz_loop(
 
   let mut no_more_seeds = 0;
   while running.load(Ordering::Relaxed) {
-    if id < depot.get_num_inputs() {
+    if (id as usize) < depot.get_num_inputs() {
       //thread::sleep(time::Duration::from_millis(10));
-      let buf = depot.get_input_buf(id);
+      let buf = depot.get_input_buf(id as usize);
       let buf_cloned = buf.clone();
       //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
       let gbranch_hitcount = branch_hitcount.clone();
@@ -308,7 +321,7 @@ pub fn fuzz_loop(
 
       let t_start = time::Instant::now();
 
-      executor.track(id, &buf, write_end);
+      executor.track(id as usize, &buf, write_end);
       close(write_end);
 
       if handle.join().is_err() {
@@ -321,6 +334,12 @@ pub fn fuzz_loop(
       let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
       trace!("track time {}", used_us1);
       id = id + 1;
+      let mut progress = Vec::new();
+      progress.write_u32::<LittleEndian>(id).unwrap();
+      ce_progress.seek(SeekFrom::Start(0)).expect("seek file");
+      println!("write progress data {:?}", progress);
+      ce_progress.write_all(&progress);
+      ce_progress.sync_all();
     } else {
       //let mut buf = depot.get_input_buf(depot.next_random());
       //run_afl_mutator(&mut executor,&mut buf);
