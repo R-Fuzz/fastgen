@@ -879,8 +879,8 @@ void cleanup() {
   max_label_per_session = 0;
   branch_deps.clear();
   shmdt(__union_table);
-  delete __z3_context;
   delete __z3_solver;
+  delete __z3_context;
 }
 
 uint32_t solve(int shmid, int pipefd) {
