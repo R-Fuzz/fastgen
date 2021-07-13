@@ -613,10 +613,10 @@ static void solve_cond(dfsan_label label, uint32_t direction,
       __z3_solver->reset();
       //AOUT("%s\n", cond.to_string().c_str());
       __z3_solver->add(cond != result);
-      z3::check_result res = __z3_solver->check();
-      if (res == z3::sat) {
-        z3::model m_opt = __z3_solver->get_model();
-        __z3_solver->push();
+      //z3::check_result res = __z3_solver->check();
+      //if (res == z3::sat) {
+      //  z3::model m_opt = __z3_solver->get_model();
+      //  __z3_solver->push();
 
         // 2. add constraints
         expr_set_t added;
@@ -630,15 +630,22 @@ static void solve_cond(dfsan_label label, uint32_t direction,
             }
           }
         } 
-        res = __z3_solver->check();
+        z3::check_result res = __z3_solver->check();
         //printf("\n%s\n", __z3_solver->to_smt2().c_str()); 
         if (res == z3::sat) {
           z3::model m = __z3_solver->get_model();
           generate_solution(m, sol);
         } else {
+          __z3_solver->reset();
+          //AOUT("%s\n", cond.to_string().c_str());
+          __z3_solver->add(cond != result);
+          res = __z3_solver->check();
+          if (res == z3::sat) {
+          z3::model m_opt = __z3_solver->get_model();
           generate_solution(m_opt, opt_sol);
+          }
         }
-      }
+      //}
     } //end of try_solve
     //nested branches
     for (auto off : inputs) {
