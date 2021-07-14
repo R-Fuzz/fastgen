@@ -1,7 +1,6 @@
 use nix::unistd;
 use nix::sys::stat;
 //use std::io;
-use std::io::prelude::*;
 use std::io::BufReader;
 use std::collections::VecDeque;
 use std::os::unix::io::{FromRawFd, RawFd};
@@ -69,7 +68,7 @@ pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<
       ret.push((tid,label,direction,addr,ctx,order,isgep));
       if isgep == 2 {
         let mut data = Vec::new();
-        for i in 0..direction as usize {
+        for _i in 0..direction as usize {
             if let Ok(cur) = reader.read_u8() {
               data.push(cur);
             } else {

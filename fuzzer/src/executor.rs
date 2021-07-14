@@ -106,7 +106,7 @@ impl Executor {
     self.forksrv = Some(fs);
   }
 
-  pub fn track(&mut self, id: usize, buf: &Vec<u8>, pipeid: RawFd) -> std::process::Child {
+  pub fn track(&mut self, id: usize, buf: &Vec<u8>, pipeid: RawFd) {
     //FIXME
     let e = format!("taint_file={} tid={} shmid={} pipeid={}", &self.cmd.out_file, &id, &self.shmid, pipeid.to_string());
     info!("Track {}, e is {}", &id, e);
@@ -119,7 +119,7 @@ impl Executor {
     self.write_test(buf);
 
     compiler_fence(Ordering::SeqCst);
-    let child = self.run_target(
+    let ret_status = self.run_target(
         &self.cmd.track,
         config::MEM_LIMIT_TRACK,
         //self.cmd.time_limit *
@@ -127,16 +127,15 @@ impl Executor {
         );
     compiler_fence(Ordering::SeqCst);
 
-    child
-    /*
-       if ret_status != StatusType::Normal {
-       error!(
-       "Crash or hang while tracking! -- {:?},  id: {}",
-       ret_status, id
-       );
-       return;
-       }
-     */
+
+    if ret_status != StatusType::Normal {
+      error!(
+          "Crash or hang while tracking! -- {:?},  id: {}",
+          ret_status, id
+          );
+      return;
+    }
+
   }
 
 
@@ -234,7 +233,7 @@ impl Executor {
       target: &(String, Vec<String>),
       mem_limit: u64,
       time_limit: u64,
-      ) ->  std::process::Child {
+      ) -> StatusType {
     let mut cmd = Command::new(&target.0);
     let mut child = cmd
       .args(&target.1)
@@ -249,8 +248,7 @@ impl Executor {
       .spawn()
       .expect("Could not run target");
 
-    child
-/*
+
     let timeout = time::Duration::from_secs(time_limit);
     let ret = match child.wait_timeout(timeout) {
       Ok(Some(status)) => {
@@ -275,7 +273,7 @@ impl Executor {
       Err(_) => { StatusType::Timeout }
     };
     ret
-*/
+
   }
 
 }
