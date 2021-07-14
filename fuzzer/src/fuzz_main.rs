@@ -92,9 +92,9 @@ pub fn fuzz_main(
     let b = global_branches.clone();
     let cmd = command_option.specify(2);
     let bg = branch_gencount.clone();
-    let handle = thread::spawn(move || {
+    let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
         fuzz_loop::fuzz_loop(r, cmd, d, b, bg, restart);
-        });
+        }).unwrap();
     handlers.push(handle);
   }
    

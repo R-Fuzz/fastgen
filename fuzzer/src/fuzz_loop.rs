@@ -300,19 +300,30 @@ pub fn fuzz_loop(
       let gbranch_gencount = branch_gencount.clone();
 
       let (read_end, write_end) = pipe().unwrap();
-      let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
-          dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
-          }).unwrap();
+      /*
+         let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
+         dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
+         }).unwrap();
+       */
 
       let t_start = time::Instant::now();
 
-      executor.track(id as usize, &buf, write_end);
+      let mut child = executor.track(id as usize, &buf, write_end);
       close(write_end).map_err(|err| warn!("close write end {:?}", err)).ok();
 
-      if handle.join().is_err() {
-        error!("Error happened in listening thread!");
-      }
+      dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
       close(read_end).map_err(|err| warn!("close read end {:?}", err)).ok();
+
+      match child.try_wait() {
+        Ok(Some(status)) => println!("exited with: {}", status),
+          Ok(None) => {
+            println!("status not ready yet, let's really wait");
+            child.kill();
+            let res = child.wait();
+            println!("result: {:?}", res);
+          }
+        Err(e) => println!("error attempting to wait: {}", e),
+      }
 
 
       let used_t1 = t_start.elapsed();
