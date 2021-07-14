@@ -131,9 +131,44 @@ void save_task(const unsigned char* input, unsigned int input_length) {
   saveRequest(task, "regression.data");
 }
 
+void* handle_task_z3(void*) {
+  //printTask(task.get());
+  while (true) {
+    auto task1 = task_queue.pop();
+    
+    std::shared_ptr<SearchTask> task = task1.first;
+    bool solve = task1.second;
+
+
+    std::unordered_map<uint32_t, uint8_t> z3_solution;
+
+    //if (rgd_solutions.size() == 0) {
+    bool ret = sendZ3Solver(false, task.get(), z3_solution, task->addr(), solve);
+    if (!ret)
+      sendZ3Solver(true, task.get(), z3_solution, task->addr(), solve);
+    //}
+
+
+    if (!SAVING_WHOLE) {
+      if (z3_solution.size() != 0) {
+        RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+        solution_queue.push(sol);
+      }
+
+    } else {
+      std::string old_string = std::to_string(task->fid());
+      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      if (z3_solution.size() != 0)
+        generate_input(z3_solution, input_file, "./raw_cases", fid++);
+
+    }
+
+  }
+  return nullptr;
+}
+
 //bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
 void* handle_task(void*) {
-  //printTask(task.get());
   while (true) {
     auto task1 = task_queue.pop();
     
@@ -143,40 +178,20 @@ void* handle_task(void*) {
     FUT* fut = nullptr;
     FUT* fut_opt = nullptr;
 
-    bool n_solvable = false;
-    bool s_solvable = false;
-    bool z3n_solvable = false;
-    bool z3s_solvable = false;
-
     lookup_or_construct(task.get(), &fut, &fut_opt, task1.second);
 
     std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions;
     std::vector<std::unordered_map<uint32_t, uint8_t>> partial_solutions;
     std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions_opt;
-    std::unordered_map<uint32_t, uint8_t> z3_solution;
     fut->rgd_solutions = &rgd_solutions;
     fut->partial_solutions = &partial_solutions;
     fut_opt->rgd_solutions = &rgd_solutions_opt;
 
-#if 0
     gd_search(fut_opt);
     if (rgd_solutions_opt.size() != 0) {
-      s_solvable = true;
       //fut->load_hint(rgd_solutions_opt[0]);
       gd_search(fut);
-    } else {
-      s_solvable = false;
     }
-#endif
-
-#if 1
-    //if (rgd_solutions.size() == 0) {
-    bool ret = sendZ3Solver(false, task.get(), z3_solution, task->addr(), solve);
-    if (!ret)
-      sendZ3Solver(true, task.get(), z3_solution, task->addr(), solve);
-    //}
-#endif
-
 
     if (!SAVING_WHOLE) {
       for (auto rgd_solution :  rgd_solutions) {
@@ -188,13 +203,6 @@ void* handle_task(void*) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
         solution_queue.push(sol);
       }
-
-
-      if (z3_solution.size() != 0) {
-        RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
-        solution_queue.push(sol);
-      }
-
     } else {
       std::string old_string = std::to_string(task->fid());
       std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
@@ -206,17 +214,13 @@ void* handle_task(void*) {
       for (auto rgd_solution : rgd_solutions_opt) {
         generate_input(rgd_solution, input_file, "./raw_cases", fid++);
       }
-
-      if (z3_solution.size() != 0)
-        generate_input(z3_solution, input_file, "./raw_cases", fid++);
-
     }
 
     delete fut;
     delete fut_opt;
   }
   return nullptr;
-  }
+}
 
   void init(bool saving_whole, bool use_codecache) {
     llvm::InitializeNativeTarget();

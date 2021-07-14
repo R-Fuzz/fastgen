@@ -250,7 +250,7 @@ impl Executor {
 
 
     let timeout = time::Duration::from_secs(time_limit);
-    let ret = match child.wait_timeout(timeout) {
+    let ret = match child.try_wait() {
       Ok(Some(status)) => {
         if let Some(status_code) = status.code() {
           if self.cmd.uses_asan && status_code == defs::MSAN_ERROR_CODE
