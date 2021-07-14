@@ -63,4 +63,14 @@ target_link_libraries(gd
   z3
   pthread)
 
+
+add_executable(solver
+  main.cc
+)
+
+target_link_libraries(solver
+  gd
+  z3
+  pthread)
+
 #add_subdirectory(self_test)

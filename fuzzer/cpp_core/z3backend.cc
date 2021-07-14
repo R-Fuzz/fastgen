@@ -579,6 +579,7 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
 static void solve_cond(dfsan_label label, uint32_t direction,
     std::unordered_map<uint32_t, uint8_t> &opt_sol, 
     std::unordered_map<uint32_t, uint8_t> &sol, bool try_solve) {
+  printf("entered solve cond\n");
 
   z3::expr result = __z3_context->bool_val(direction);
 
@@ -640,10 +641,12 @@ static void solve_cond(dfsan_label label, uint32_t direction,
           //AOUT("%s\n", cond.to_string().c_str());
           __z3_solver->add(cond != result);
           res = __z3_solver->check();
+
           if (res == z3::sat) {
           z3::model m_opt = __z3_solver->get_model();
           generate_solution(m_opt, opt_sol);
           }
+
         }
       //}
     } //end of try_solve
@@ -940,7 +943,8 @@ uint32_t solve(int shmid, int pipefd) {
       solve_cond(msg.label, msg.result, opt_sol, sol, true);
       acc_time += getTimeStamp() - tstart;
       if (acc_time > 90000000 || count > 5000 ) //90s
-        skip_rest = true;
+        //skip_rest = true;
+	break;
       //if (try_solve)
       // solve_divisor();
     }
@@ -957,10 +961,11 @@ uint32_t solve(int shmid, int pipefd) {
         break;
       }
     } else if (msg.type == 1) { //gep constraint
-      bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
-      if (try_solve)
-        solve_gep(msg.label, msg.result, try_solve, msg.tid); 
+      //bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
+      //if (try_solve)
+        //solve_gep(msg.label, msg.result, try_solve, msg.tid); 
     }
+
 
     if (sol.size()) {
       RGDSolution rsol = {sol, msg.tid, 0, 0, 0, 0};
@@ -976,6 +981,7 @@ uint32_t solve(int shmid, int pipefd) {
       queue_mutex.unlock();
       count++;
     }
+
     /* 
        if (sol.size()) {
        generate_input(sol, input_file, "./ce_output", fid++);

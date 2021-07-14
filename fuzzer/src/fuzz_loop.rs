@@ -293,20 +293,36 @@ pub fn fuzz_loop(
     if id < depot.get_num_inputs() {
 
       let (read_end, write_end) = pipe().unwrap();
-      let handle = thread::spawn(move || {
-          constraint_solver(shmid, read_end);
-          });
+     // let handle = thread::spawn(move || {
+      //    constraint_solver(shmid, read_end);
+       //   });
 
       let t_start = time::Instant::now();
 
       let buf = depot.get_input_buf(id);
-      executor.track(id, &buf, write_end);
+      let mut child = executor.track(id, &buf, write_end);
       close(write_end);
-
+/*
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
+*/
+      constraint_solver(shmid, read_end);
       close(read_end);
+
+      //let timeout = time::Duration::from_secs(90);
+      //child.wait_timeout(timeout);
+      match child.try_wait() {
+    	Ok(Some(status)) => println!("exited with: {}", status),
+    	Ok(None) => {
+        	println!("status not ready yet, let's really wait");
+		child.kill();
+        	let res = child.wait();
+        	println!("result: {:?}", res);
+    	}
+        Err(e) => println!("error attempting to wait: {}", e),
+      }
+    
 
 
       let used_t1 = t_start.elapsed();
