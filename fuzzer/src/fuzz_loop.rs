@@ -41,7 +41,7 @@ pub fn branch_verifier(id: RawFd, addr: u64, ctx: u64,
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>) {
   let mut status = 4; // not reached
   let (labels,mut memcmp_data) = read_pipe(id);
- 
+
   let mut blacklist: HashSet<u64> = HashSet::new();
   blacklist.insert(123145304593908);
   blacklist.insert(123145304594353);
@@ -93,13 +93,13 @@ pub fn branch_checking(
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     ) {
 
-let shmid =  unsafe {
-        libc::shmget(
-            0x2468,
-            0xc00000000,
-            0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
-            )
-      };
+  let shmid =  unsafe {
+    libc::shmget(
+        0x2468,
+        0xc00000000,
+        0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+        )
+  };
 
   let mut executor = Executor::new(
       cmd_opt,
@@ -108,7 +108,7 @@ let shmid =  unsafe {
       shmid,
       );
 
-  
+
 
   //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
   let mut grade_count = 0;
@@ -141,8 +141,8 @@ let shmid =  unsafe {
 
 
       //if (veri_status.load(Ordering::Relaxed) == 4) {
-          
-       //   panic!("branch not reached");
+
+      //   panic!("branch not reached");
       //}
 
       let new_path = executor.run_sync(&buf);
@@ -307,12 +307,12 @@ pub fn fuzz_loop(
       let t_start = time::Instant::now();
 
       executor.track(id as usize, &buf, write_end);
-      close(write_end).map_err(|err| println!("{:?}", err)).ok();
+      close(write_end).map_err(|err| warn!("close write end {:?}", err)).ok();
 
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
-      close(read_end).map_err(|err| println!("{:?}", err)).ok();
+      close(read_end).map_err(|err| warn!("close read end {:?}", err)).ok();
 
 
       let used_t1 = t_start.elapsed();

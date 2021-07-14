@@ -16,6 +16,7 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include <stdio.h>
+#include <condition_variable>
 #include <google/protobuf/io/coded_stream.h>
 #include "rgd.pb.h"
 #include "util.h"
@@ -23,14 +24,13 @@
 #include "gd.h"
 #include "task.h"
 #include "parser.h"
-#include "ctpl.h"
-#include "queue.h"
-#include "pcqueue.h"
+
 using namespace rgd;
 using namespace google::protobuf::io;
 
 #define THREAD_POOL_SIZE 1
 #define DEBUG 1
+
 //global variables
 std::unique_ptr<GradJit> JIT;
 static std::atomic<uint64_t> fid;
@@ -40,24 +40,88 @@ bool USE_CODECACHE;
 bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu, uint64_t addr, bool solve);
 void initZ3Solver();
 void addCons(SearchTask* task);
-//moodycamel::ConcurrentQueue<std::pair<uint32_t, std::unordered_map<uint32_t,uint8_t>>> solution_queue;
-std::vector<std::future<bool>> gresults;
 
 struct RGDSolution {
-    std::unordered_map<uint32_t, uint8_t> sol;
+  std::unordered_map<uint32_t, uint8_t> sol;
   //the intended branch for this solution
-    uint32_t fid;  //the seed
-    uint64_t addr;
-    uint64_t ctx;
-    uint32_t order;
-    uint64_t direction;
+  uint32_t fid;  //the seed
+  uint64_t addr;
+  uint64_t ctx;
+  uint32_t order;
+  uint64_t direction;
 };
 
-moodycamel::ConcurrentQueue<RGDSolution> higher_solution_queue;
-//moodycamel::ConcurrentQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks(10000000);
-folly::ProducerConsumerQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks1(1000000);
-folly::ProducerConsumerQueue<std::pair<std::shared_ptr<SearchTask>, bool>> incoming_tasks_higher(1000000);
+class SolutionQueue 
+{
+  std::deque<RGDSolution> queue_;
+  std::mutex mutex_;
+  std::condition_variable condvar_;
 
+  typedef std::lock_guard<std::mutex> lock;
+  typedef std::unique_lock<std::mutex> ulock;
+
+  public:
+  void push(RGDSolution const &val)
+  {
+    lock l(mutex_); // prevents multiple pushes corrupting queue_
+    bool wake = queue_.empty(); // we may need to wake consumer
+    queue_.push_back(val);
+    if (wake) condvar_.notify_one();
+  }
+
+
+  RGDSolution pop()
+  {
+    lock l(mutex_);
+    RGDSolution retval = queue_.front();
+    queue_.pop_front();
+    return retval;
+  }
+
+  uint32_t get_top_id()
+  {
+    ulock u(mutex_);
+    while (queue_.empty())
+      condvar_.wait(u);
+    // now queue_ is non-empty and we still have the lock
+    RGDSolution retval = queue_.front();
+    return retval.fid;
+  }
+};
+
+class TaskQueue 
+{
+  std::deque< std::pair<std::shared_ptr<SearchTask>, bool> > queue_;
+  std::mutex mutex_;
+  std::condition_variable condvar_;
+
+  typedef std::lock_guard<std::mutex> lock;
+  typedef std::unique_lock<std::mutex> ulock;
+
+  public:
+  void push(std::pair<std::shared_ptr<SearchTask>, bool> const &val)
+  {
+    lock l(mutex_); // prevents multiple pushes corrupting queue_
+    bool wake = queue_.empty(); // we may need to wake consumer
+    queue_.push_back(val);
+    if (wake) condvar_.notify_one();
+  }
+
+
+  std::pair<std::shared_ptr<SearchTask>, bool>  pop()
+  {
+    ulock u(mutex_);
+    while (queue_.empty())
+      condvar_.wait(u);
+    // now queue_ is non-empty and we still have the lock
+    std::pair<std::shared_ptr<SearchTask>, bool> retval = queue_.front();
+    queue_.pop_front();
+    return retval;
+  }
+};
+
+SolutionQueue solution_queue;
+TaskQueue task_queue;
 void save_task(const unsigned char* input, unsigned int input_length) {
   CodedInputStream s(input,input_length);
   s.SetRecursionLimit(10000);
@@ -70,15 +134,9 @@ void save_task(const unsigned char* input, unsigned int input_length) {
 //bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
 void* handle_task(void*) {
   //printTask(task.get());
-  while (1) {
-    std::pair<std::shared_ptr<SearchTask>, bool> task1;
-    //if (incoming_tasks.try_dequeue(task1)) {
-    // let's try higher order first
-    if (incoming_tasks_higher.isEmpty()) {
-        continue;
-    } else {
-      incoming_tasks_higher.read(task1);
-    }
+  while (true) {
+    auto task1 = task_queue.pop();
+    
     std::shared_ptr<SearchTask> task = task1.first;
     bool solve = task1.second;
 
@@ -99,7 +157,7 @@ void* handle_task(void*) {
     fut->rgd_solutions = &rgd_solutions;
     fut->partial_solutions = &partial_solutions;
     fut_opt->rgd_solutions = &rgd_solutions_opt;
-    
+
 #if 0
     gd_search(fut_opt);
     if (rgd_solutions_opt.size() != 0) {
@@ -109,20 +167,6 @@ void* handle_task(void*) {
     } else {
       s_solvable = false;
     }
-#endif
-#if 0
-    fut_opt->flip();
-    fut->flip();
-    gd_search(fut_opt);
-    if (rgd_solutions_opt.size() != 0) {
-      s_solvable = true;
-      //fut->load_hint(rgd_solutions_opt[0]);
-      gd_search(fut);
-    } else {
-      s_solvable = false;
-    }
-    fut_opt->flip();
-    fut->flip();
 #endif
 
 #if 1
@@ -137,26 +181,18 @@ void* handle_task(void*) {
     if (!SAVING_WHOLE) {
       for (auto rgd_solution :  rgd_solutions) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
-        higher_solution_queue.enqueue(sol);
-#if DEBUG
-        //if (solution_queue.size_approx() % 1000 == 0)
-          //printf("queue item is about %u\n", solution_queue.size_approx());
-#endif
+        solution_queue.push(sol);
       }
 
       for (auto rgd_solution :  rgd_solutions_opt) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
-        higher_solution_queue.enqueue(sol);
-#if DEBUG
-        //if (solution_queue.size_approx() % 1000 == 0)
-          //printf("queue item is about %u\n", solution_queue.size_approx());
-#endif
+        solution_queue.push(sol);
       }
 
 
       if (z3_solution.size() != 0) {
         RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
-        higher_solution_queue.enqueue(sol);
+        solution_queue.push(sol);
       }
 
     } else {
@@ -178,119 +214,78 @@ void* handle_task(void*) {
 
     delete fut;
     delete fut_opt;
-    //return n_solvable || s_solvable || z3n_solvable || z3s_solvable ;
   }
   return nullptr;
   }
 
-void init(bool saving_whole, bool use_codecache) {
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
-  llvm::InitializeNativeTargetAsmParser();
-  JIT = std::move(GradJit::Create().get());
-  //pool = new ctpl::thread_pool(THREAD_POOL_SIZE,0);
-  pthread_t thread;
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-  pthread_create(&thread, &attr, handle_task, nullptr);
-  SAVING_WHOLE = saving_whole;
-  USE_CODECACHE = use_codecache;
-  initZ3Solver();
-}
-
-
-void fini() {
-  //delete pool;
-  //pthread_join();
-}
-
-void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
-  std::unordered_map<uint32_t, uint8_t> rgd_solution;
-  std::string old_string = std::to_string(tid);
-  std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-  for(uint32_t i=0;i<size;i++) {
-    //rgd_solution[(uint32_t)index+i] = (uint8_t) (data & 0xff);
-    rgd_solution[(uint32_t)index+i] = data[i];
-    //data = data >> 8 ;
+  void init(bool saving_whole, bool use_codecache) {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+    JIT = std::move(GradJit::Create().get());
+    pthread_t thread;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    pthread_create(&thread, &attr, handle_task, nullptr);
+    SAVING_WHOLE = saving_whole;
+    USE_CODECACHE = use_codecache;
+    initZ3Solver();
   }
-  if (SAVING_WHOLE) {
-    generate_input(rgd_solution, input_file, "./raw_cases", fid++);
-  }
-  else {
-    RGDSolution sol = {rgd_solution, tid, addr, 0, 0};
-    higher_solution_queue.enqueue(sol);
-  }
-}
 
-extern "C" {
-  void submit_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
-      //RGDSolution sol = {rgd_solution, 0, 0, 0, 0};
+
+  void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
+    std::unordered_map<uint32_t, uint8_t> rgd_solution;
+    std::string old_string = std::to_string(tid);
+    std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+    for(uint32_t i=0;i<size;i++) {
+      rgd_solution[(uint32_t)index+i] = data[i];
+    }
+    if (SAVING_WHOLE) {
+      generate_input(rgd_solution, input_file, "./raw_cases", fid++);
+    }
+    else {
+      RGDSolution sol = {rgd_solution, tid, addr, 0, 0};
+      solution_queue.push(sol);
+    }
+  }
+
+  extern "C" {
+    void submit_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
       handle_fmemcmp(data,index,size, tid, addr);
-  }
+    }
 
+    void submit_task(const unsigned char* input, unsigned int input_length, bool solve) {
+      CodedInputStream s(input,input_length);
+      s.SetRecursionLimit(10000);
+      std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
+      task->ParseFromCodedStream(&s);
+      //printTask(task.get());
+      //    handle_task(0,task);
+      //incoming_tasks.enqueue({task, fresh});
+      std::pair<std::shared_ptr<SearchTask>,bool> tt{task,solve};
+      task_queue.push(tt);
+    }
 
-  uint32_t get_queue_length() {
-    return incoming_tasks1.sizeGuess();
-  }
+    void init_core(bool saving_whole, bool use_codecache) { init(saving_whole, use_codecache); }
 
-  void submit_task(const unsigned char* input, unsigned int input_length, bool expect_future, bool solve) {
-    CodedInputStream s(input,input_length);
-    s.SetRecursionLimit(10000);
-    std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
-    task->ParseFromCodedStream(&s);
-    //printTask(task.get());
-/*
-    if (expect_future)
-      gresults.emplace_back(pool->push(handle_task, task));
-    else
-      pool->push(handle_task, task);
-*/
-
-//    handle_task(0,task);
-    //incoming_tasks.enqueue({task, fresh});
-    std::pair<std::shared_ptr<SearchTask>,bool> tt{task,solve};
-    incoming_tasks_higher.write(tt);
-  }
-
-  void init_core(bool saving_whole, bool use_codecache) { init(saving_whole, use_codecache); }
-  void fini_core() { fini(); }
-  void aggregate_results() {
-    int finished = 0;
-    for(auto && r: gresults) {
-      finished += (int)r.get();
+    uint32_t get_next_input_id() {
+      return solution_queue.get_top_id(); 
     } 
-  }
-  
-  void get_input_buf(unsigned char* input) {
-    for(int i=0; i<10;i++) {
-      input[i] = 32;
-    }
-  }
 
-  RGDSolution pending;
-  uint32_t get_next_input_id() {
-    RGDSolution item;
-    if(higher_solution_queue.try_dequeue(item)) {
-      pending = item;
-      return item.fid;
-    } else {
-      return 0xffffffff;
-    }
-  } 
+    void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
+        uint32_t *order, uint32_t *fid, uint64_t *direction, size_t size) {
 
-  void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
-          uint32_t *order, uint32_t *fid, uint64_t *direction, size_t size) {
-      //std::string input_file = "/home/cju/debug/seed.png";
-      for(auto it = pending.sol.begin(); it != pending.sol.end(); ++it) {
+      RGDSolution item = solution_queue.pop();
+      for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
         if (it->first < size)
           input[it->first] = it->second;
       }
-      *addr = pending.addr;
-      *ctx = pending.ctx;
-      *order = pending.order;
-      *fid = pending.fid;
-      *direction = pending.direction;
+      *addr = item.addr;
+      *ctx = item.ctx;
+      *order = item.order;
+      *fid = item.fid;
+      *direction = item.direction;
     }
-};
+  };
 

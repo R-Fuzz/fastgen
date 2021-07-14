@@ -263,8 +263,8 @@ impl Executor {
             Ok(None) => {
                 // Timeout
                 // child hasn't exited yet
-                child.kill().map_err(|err| println!("{:?}", err)).ok();
-                child.wait().map_err(|err| println!("{:?}", err)).ok();
+                child.kill().map_err(|err| warn!("child kill {:?}", err)).ok();
+                child.wait().map_err(|err| warn!("child wait {:?}", err)).ok();
                 StatusType::Timeout
             }
 	    Err(_) => { StatusType::Timeout }
