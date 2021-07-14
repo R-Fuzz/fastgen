@@ -40,7 +40,7 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
   }
 }
 
-pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_data: &mut VecDeque<[u8;1024]>,
+pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_data: &mut VecDeque<Vec<u8>>,
           table: &UnionTable, tainted_size: usize, branch_gencount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>
           , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, buf: &Vec<u8>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
@@ -79,7 +79,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     } else if label.6 == 2 {
       let data = memcmp_data.pop_front().unwrap();
-      unsafe { submit_fmemcmp(data.as_ptr(), label.2, label.1, label.0, label.3); }
+      if data.len() ==  label.2 as usize {
+        unsafe { submit_fmemcmp(data.as_ptr(), label.1, label.2 as u32, label.0, label.3); }
+      }
       continue;
     } else if label.6 == 3 {
       //get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);

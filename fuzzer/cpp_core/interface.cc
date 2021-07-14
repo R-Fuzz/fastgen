@@ -234,7 +234,7 @@ void* handle_task(void*) {
   }
 
 
-  void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
+  void handle_fmemcmp(uint8_t* data, uint32_t index, uint32_t size, uint32_t tid, uint64_t addr) {
     std::unordered_map<uint32_t, uint8_t> rgd_solution;
     std::string old_string = std::to_string(tid);
     std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
@@ -251,7 +251,7 @@ void* handle_task(void*) {
   }
 
   extern "C" {
-    void submit_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
+    void submit_fmemcmp(uint8_t* data, uint32_t index, uint32_t size, uint32_t tid, uint64_t addr) {
       handle_fmemcmp(data,index,size, tid, addr);
     }
 
