@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use num_traits::FromPrimitive;
 use protobuf::Message;
 use protobuf::CodedInputStream;
+use fastgen_common::config;
 
 fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap<u32, HashSet<u32>>) {
   if label==0 {
@@ -496,7 +497,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
   let mut cache = HashMap::new();
   if is_relational_by_dfsan(op) {
     let mut src = AstNode::new();
-    if info.depth > 500  {
+    if info.depth > config::AST_DEPTH  {
       //warn!("large tree skipped depth is {}", info.depth);
       return;
     }
@@ -513,7 +514,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
     let op1 = (info1.op >> 8) as u32;
     if is_relational_by_dfsan(op1) {
       let mut src = AstNode::new();
-      if info.depth > 500  {
+      if info.depth > config::AST_DEPTH  {
         warn!("large tree skipped depth is {}", info.depth);
         return;
       }
@@ -536,7 +537,7 @@ pub fn get_addcons_constraint(label: u32, _direction: u32, dst: &mut AstNode,  t
   let mut cache = HashMap::new();
   if is_relational_by_dfsan(op) {
     let mut src = AstNode::new();
-    if info.depth > 500  {
+    if info.depth > config::AST_DEPTH  {
       warn!("large tree skipped depth is {}", info.depth);
       return;
     }
@@ -551,7 +552,7 @@ pub fn get_addcons_constraint(label: u32, _direction: u32, dst: &mut AstNode,  t
     let op1 = (info1.op >> 8) as u32;
     if is_relational_by_dfsan(op1) {
       let mut src = AstNode::new();
-      if info.depth > 500  {
+      if info.depth > config::AST_DEPTH  {
         warn!("large tree skipped depth is {}", info.depth);
         return;
       }
@@ -573,7 +574,7 @@ pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &U
   let mut right = AstNode::new();
   let mut src = AstNode::new();
 
-  if info.depth > 500  {
+  if info.depth > config::AST_DEPTH  {
     warn!("large tree skipped  depth is {}", info.depth);
     return;
   }
