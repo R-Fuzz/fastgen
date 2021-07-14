@@ -22,6 +22,7 @@
 #include <string>
 #include <unistd.h>
 #include <deque>
+#include <condition_variable>
 #include <atomic>
 #include <mutex>
 
@@ -57,9 +58,47 @@ struct RGDSolution {
   uint64_t direction;
 };
 
-std::deque<RGDSolution> solution_queue;
-std::mutex queue_mutex;
 
+
+class SolutionQueue 
+{
+    std::deque<RGDSolution> queue_;
+    std::mutex mutex_;
+    std::condition_variable condvar_;
+
+    typedef std::lock_guard<std::mutex> lock;
+    typedef std::unique_lock<std::mutex> ulock;
+
+public:
+    void push(RGDSolution const &val)
+    {
+        lock l(mutex_); // prevents multiple pushes corrupting queue_
+        bool wake = queue_.empty(); // we may need to wake consumer
+        queue_.push_back(val);
+        if (wake) condvar_.notify_one();
+    }
+
+
+    RGDSolution pop()
+    {
+	lock l(mutex_);
+        RGDSolution retval = queue_.front();
+        queue_.pop_front();
+        return retval;
+    }
+
+    uint32_t get_top_id()
+    {
+	ulock u(mutex_);
+        while (queue_.empty())
+            condvar_.wait(u);
+        // now queue_ is non-empty and we still have the lock
+        RGDSolution retval = queue_.front();
+        return retval.fid;
+    }
+};
+
+SolutionQueue solution_queue;
 
 // dependencies
 struct dedup_hash {
@@ -380,16 +419,12 @@ static void solve_divisor() {
         generate_solution(m, sol);
         //generate_input(sol, input_file, "./ce_output", fid++);
         RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
-        queue_mutex.lock();
-        solution_queue.push_back(rsol);
-        queue_mutex.unlock();
+        solution_queue.push(rsol);
       } else {
         opt_sol.clear();
         generate_solution(m_opt, opt_sol);
         RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
-        queue_mutex.lock();
-        solution_queue.push_back(rsol);
-        queue_mutex.unlock();
+        solution_queue.push(rsol);
         //generate_input(opt_sol, input_file, "./ce_output", fid++);
       }
     }
@@ -461,16 +496,12 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
         sol.clear();
         generate_solution(m, sol);
         RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
-        queue_mutex.lock();
-        solution_queue.push_back(rsol);
-        queue_mutex.unlock();
+        solution_queue.push(rsol);
       } else {
         opt_sol.clear();
         generate_solution(m_opt, opt_sol);
         RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
-        queue_mutex.lock();
-        solution_queue.push_back(rsol);
-        queue_mutex.unlock();
+        solution_queue.push(rsol);
       }
     }
 
@@ -502,16 +533,12 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
           sol.clear();
           generate_solution(m, sol);
           RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
-          queue_mutex.lock();
-          solution_queue.push_back(rsol);
-          queue_mutex.unlock();
+          solution_queue.push(rsol);
         } else {
           opt_sol.clear();
           generate_solution(m_opt, opt_sol);
           RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
-          queue_mutex.lock();
-          solution_queue.push_back(rsol);
-          queue_mutex.unlock();
+          solution_queue.push(rsol);
         }
       }
     }
@@ -544,16 +571,12 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
           sol.clear();
           generate_solution(m, sol);
           RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
-          queue_mutex.lock();
-          solution_queue.push_back(rsol);
-          queue_mutex.unlock();
+          solution_queue.push(rsol);
         } else {
           opt_sol.clear();
           generate_solution(m_opt, opt_sol);
           RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
-          queue_mutex.lock();
-          solution_queue.push_back(rsol);
-          queue_mutex.unlock();
+          solution_queue.push(rsol);
         }
       }
     }
@@ -877,9 +900,7 @@ void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, 
     //data = data >> 8 ;
   }
   RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0};
-  queue_mutex.lock();
-  solution_queue.push_back(sol);
-  queue_mutex.unlock();
+  solution_queue.push(sol);
 }
 
 
@@ -969,16 +990,12 @@ uint32_t solve(int shmid, int pipefd) {
 
     if (sol.size()) {
       RGDSolution rsol = {sol, msg.tid, 0, 0, 0, 0};
-      queue_mutex.lock();
-      solution_queue.push_back(rsol);
-      queue_mutex.unlock();
+      solution_queue.push(rsol);
       count++;
     }
     if (opt_sol.size()) {
       RGDSolution rsol = {opt_sol, msg.tid, 0, 0, 0, 0};
-      queue_mutex.lock();
-      solution_queue.push_back(rsol);
-      queue_mutex.unlock();
+      solution_queue.push(rsol);
       count++;
     }
 
@@ -1031,14 +1048,9 @@ extern "C" {
   void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
       uint32_t *order, uint32_t *fid, uint64_t *direction, size_t size) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
-    RGDSolution item;
-    //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
     // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
-    queue_mutex.lock();
     //asert(!solutio_queue.empty());
-    if(!solution_queue.empty()) {
-      item = solution_queue.front(); 
-      solution_queue.pop_front();
+      RGDSolution item = solution_queue.pop(); 
       for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
         if (it->first < size)
           input[it->first] = it->second;
@@ -1048,25 +1060,10 @@ extern "C" {
       *order = item.order;
       *fid = item.fid;
       *direction = item.direction;
-    }
-    queue_mutex.unlock();
   }
 
   uint32_t get_next_input_id() {
-    //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
-    RGDSolution item;
-    //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
-    // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
-    queue_mutex.lock();
-    if(!solution_queue.empty()) {
-      item = solution_queue.front(); 
-      queue_mutex.unlock();
-      return item.fid;
-    } else {
-      queue_mutex.unlock();
-      // no next input, return UINT32_MAX
-      return 0xffffffff; 
-    }
+    return solution_queue.get_top_id();
   }
 
 };
