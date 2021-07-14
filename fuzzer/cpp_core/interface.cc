@@ -205,13 +205,6 @@ void fini() {
   //pthread_join();
 }
 
-std::string get_current_dir() {
-   char buff[FILENAME_MAX]; //create string buffer to hold path
-   getcwd( buff, FILENAME_MAX );
-   std::string current_working_dir(buff);
-   return current_working_dir;
-}
-
 void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
   std::string old_string = std::to_string(tid);
@@ -258,9 +251,6 @@ extern "C" {
     //incoming_tasks.enqueue({task, fresh});
     std::pair<std::shared_ptr<SearchTask>,bool> tt{task,solve};
     incoming_tasks_higher.write(tt);
-        //if (incoming_tasks1.size_approx() % 1000 == 0)
-    if (incoming_tasks_higher.sizeGuess() % 1000 == 0 && incoming_tasks_higher.sizeGuess() > 0)
-      printf("queue tasks is about %u\n", incoming_tasks1.sizeGuess());
   }
 
   void init_core(bool saving_whole, bool use_codecache) { init(saving_whole, use_codecache); }

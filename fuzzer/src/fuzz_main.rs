@@ -92,9 +92,8 @@ pub fn fuzz_main(
     let b = global_branches.clone();
     let cmd = command_option.specify(2);
     let bg = branch_gencount.clone();
-    let bs = branch_solcount.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs, restart);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, restart);
         });
     handlers.push(handle);
   }
@@ -123,7 +122,6 @@ fn initialize_directories(in_dir: &str, out_dir: &str, sync_afl: bool) -> (PathB
   };
 
 
-  let mut ce_progress: std::fs::File;
   let restart = in_dir == "-";
   if !restart {
     fs::create_dir(&angora_out_dir).expect("Output directory has existed!");

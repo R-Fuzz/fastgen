@@ -5,7 +5,7 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::fs::File;
 use std::collections::VecDeque;
-use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
+use std::os::unix::io::{FromRawFd, RawFd};
 
 pub fn make_pipe() {
   match unistd::mkfifo("/tmp/wp", stat::Mode::S_IRWXU) {

@@ -2,7 +2,7 @@ use crate::{
   branches::GlobalBranches, command::CommandOpt, depot::Depot,
     executor::Executor,
 };
-use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::sync::{
   atomic::{AtomicBool, Ordering},
     Arc, RwLock,
@@ -11,25 +11,17 @@ use std::sync::{
 use std::time;
 use std::thread;
 
-use protobuf::Message;
 use crate::fifo::*;
 use crate::cpp_interface::*;
 use crate::track_cons::*;
 use crate::union_table::*;
 use crate::file::*;
-use crate::afl::*;
 use fastgen_common::config;
 use std::path::{Path};
-use crate::rgd::*;
 use std::collections::HashSet;
 use std::collections::HashMap;
-use std::io::Read;
-use std::io::Write;
-use std::io::Seek;
-use std::io::SeekFrom;
 //use crate::util::*;
-use wait_timeout::ChildExt;
-use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
+use std::os::unix::io::{RawFd};
 use nix::unistd::pipe;
 use nix::unistd::close;
 
@@ -119,7 +111,6 @@ let shmid =  unsafe {
   
 
   //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
-  let t_start = time::Instant::now();
   let mut grade_count = 0;
   let mut addr: u64 = 0;
   let mut ctx: u64 = 0;
@@ -141,12 +132,12 @@ let shmid =  unsafe {
           });
 
       executor.track(0, &buf, write_end);
-      close(write_end);
+      close(write_end).map_err(|err| println!("{:?}", err)).ok();
 
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
-      close(read_end);
+      close(read_end).map_err(|err| println!("{:?}", err)).ok();
 
 
       //if (veri_status.load(Ordering::Relaxed) == 4) {
@@ -266,16 +257,13 @@ pub fn fuzz_loop(
     depot: Arc<Depot>,
     global_branches: Arc<GlobalBranches>,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
-    branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     restart: bool,
     ) {
 
   let mut id: u32 = 0;
-  let executor_id = cmd_opt.id;
 
-  let mut progress_data = vec![0u8; 4];
-  if (restart) {
-    progress_data = std::fs::read("ce_progress").unwrap();
+  if restart {
+    let progress_data = std::fs::read("ce_progress").unwrap();
     id = (&progress_data[..]).read_u32::<LittleEndian>().unwrap();
     println!("restarting scan from id {}",id);
   }
@@ -301,9 +289,7 @@ pub fn fuzz_loop(
   let ptr = unsafe { libc::shmat(shmid, std::ptr::null(), 0) as *mut UnionTable};
   let table = unsafe { & *ptr };
   let branch_hitcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
-  let mut branch_quota = HashMap::<(u64,u64,u32), u32>::new();
 
-  let mut no_more_seeds = 0;
   while running.load(Ordering::Relaxed) {
     if (id as usize) < depot.get_num_inputs() {
       //thread::sleep(time::Duration::from_millis(10));
@@ -321,12 +307,12 @@ pub fn fuzz_loop(
       let t_start = time::Instant::now();
 
       executor.track(id as usize, &buf, write_end);
-      close(write_end);
+      close(write_end).map_err(|err| println!("{:?}", err)).ok();
 
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
-      close(read_end);
+      close(read_end).map_err(|err| println!("{:?}", err)).ok();
 
 
       let used_t1 = t_start.elapsed();
@@ -335,13 +321,9 @@ pub fn fuzz_loop(
       id = id + 1;
       let mut progress = Vec::new();
       progress.write_u32::<LittleEndian>(id).unwrap();
-      println!("write progress data {:?}", progress);
-      std::fs::write("ce_progress", &progress);
+      std::fs::write("ce_progress", &progress).map_err(|err| println!("{:?}", err)).ok();
     } else {
-      //let mut buf = depot.get_input_buf(depot.next_random());
-      //run_afl_mutator(&mut executor,&mut buf);
       thread::sleep(time::Duration::from_secs(1));
-      //break;
     }
   }
 }

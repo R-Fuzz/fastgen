@@ -173,6 +173,6 @@ impl Drop for Forksrv {
                 warn!("Fail to remove socket file!!  FIN ");
             }
         }
-        self.child.wait();
+        self.child.wait().map_err(|err| println!("{:?}", err)).ok();
     }
 }

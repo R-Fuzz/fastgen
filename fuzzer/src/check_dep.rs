@@ -1,8 +1,9 @@
 use crate::command::CommandOpt;
 use memmap;
-use std::{fs::File, io::prelude::*, path::Path};
+use std::{fs::File, path::Path};
 use twoway;
 
+/*
 static CHECK_CRASH_MSG: &str = r#"
 If your system is configured to send core dump, there will be an
 extended delay after the program crash, which might makes crash to
@@ -10,9 +11,11 @@ misinterpreted as timeouts.
 You can modify /proc/sys/kernel/core_pattern to disable it by:
 # echo core | sudo tee /proc/sys/kernel/core_pattern
 "#;
+*/
 
-static CORE_PATTERN_FILE: &str = "/proc/sys/kernel/core_pattern";
+//static CORE_PATTERN_FILE: &str = "/proc/sys/kernel/core_pattern";
 
+/*
 fn check_crash_handling() {
     let mut f = File::open(CORE_PATTERN_FILE).unwrap();
     let mut buffer = String::new();
@@ -22,6 +25,7 @@ fn check_crash_handling() {
         panic!(CHECK_CRASH_MSG);
     }
 }
+*/
 
 fn check_target_binary(target: &str) {
     let program_path = Path::new(target);

@@ -9,10 +9,7 @@ use std::collections::VecDeque;
 use std::sync::{RwLock,Arc};
 use crate::cpp_interface::*;
 use protobuf::Message;
-use crate::util::*;
-use crate::file::*;
 use crate::union_find::*;
-use protobuf::CodedInputStream;
 
 //each input offset has a coresspdoing slot
 pub struct BranchDep {
@@ -51,10 +48,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
   branch_deps.resize_with(tainted_size, || None);
   //let mut cons_table = HashMap::new();
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
-  let mut nbranches = 0;
   for &label in labels {
     let mut hitcount = 1;
-    let mut gencount = 0;
+    let mut _gencount = 0;
     if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
       hitcount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
       hitcount += 1;
@@ -62,7 +58,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     branch_hitcount.write().unwrap().insert((label.3,label.4,label.5,label.2), hitcount);
 
     if branch_gencount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
-      gencount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
+      _gencount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
     }
     //we have to continue here, the underlying task lookup with check the redudant as well. If it is redudant, the task will be loaded
     //without inserting caching 

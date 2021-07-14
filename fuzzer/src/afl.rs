@@ -3,8 +3,7 @@
 // Random pick offsets, then flip, add/sub ..
 // And GE algorithm.
 
-use super::*;
-use rand::{self, thread_rng, distributions::Uniform, Rng, RngCore};
+use rand::{self, distributions::Uniform, Rng, RngCore};
 use fastgen_common::{config};
 use crate::executor::Executor;
 use crate::interesting_val::*;
@@ -125,7 +124,7 @@ pub fn run_afl_mutator(executor: &mut Executor, buf: &mut Vec<u8>) {
   afl_len(executor, buf);
 
   let mut max_times: usize = config::MAX_SPLICE_TIMES * 5;
-  for i in 0..max_times {
+  for _i in 0..max_times {
     if !splice(executor, buf) {
       break;
     }
@@ -149,7 +148,7 @@ pub fn run_afl_mutator(executor: &mut Executor, buf: &mut Vec<u8>) {
 
   max_times += config::MAX_HAVOC_FLIP_TIMES * 5;
 
-  for i in 0..max_times {
+  for _i in 0..max_times {
     let mut buf = buf.clone();
     havoc_flip(&mut buf, max_stacking, choice_range);
     executor.run_sync(&buf);

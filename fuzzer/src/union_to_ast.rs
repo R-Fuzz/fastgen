@@ -530,7 +530,7 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
 }
 
 //we do not have direction
-pub fn get_addcons_constraint(label: u32, direction: u32, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
+pub fn get_addcons_constraint(label: u32, _direction: u32, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
   let mut cache = HashMap::new();
