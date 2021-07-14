@@ -914,12 +914,13 @@ void cleanup() {
   delete __z3_context;
 }
 
-uint32_t solve(int shmid, int pipefd) {
+void solve(int shmid, int pipefd) {
   // map the union table
+  std::cerr << "shmid " << shmid << " pipefd " <<pipefd << std::endl;
   __union_table = (dfsan_label_info*)shmat(shmid, nullptr, SHM_RDONLY);
   if (__union_table == (void*)(-1)) {
     printf("error %s\n",strerror(errno));
-    return 0;
+    return;
   }
   __z3_context = new z3::context();
   __z3_solver = new z3::solver(*__z3_context, "QF_BV");
@@ -1014,7 +1015,7 @@ uint32_t solve(int shmid, int pipefd) {
   total_time += getTimeStamp() - one_start;
   cleanup();
   if (skip_rest) std::cout << "timeout!" << std::endl;
-  std::cout << "generate count " << count 
+  std::cerr << "generate count " << count 
     << " total count " << total_generation_count 
     << " process_time " << getTimeStamp() - one_start 
     << std::endl;
@@ -1029,8 +1030,8 @@ extern "C" {
     memset(pp_map, 0, kMapSize);
   }
 
-  uint32_t run_solver(int shmid, uint32_t pipefd) {
-    return solve(shmid, pipefd);
+  void run_solver(int shmid, uint32_t pipefd) {
+    solve(shmid, pipefd);
   }
 
   bool try_dry_run(int32_t round, uint32_t seed_id) {

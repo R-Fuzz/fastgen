@@ -308,6 +308,7 @@ pub fn fuzz_loop(
       }
 */
       constraint_solver(shmid, read_end);
+      info!("Done solving {}", id);
       close(read_end);
 
       //let timeout = time::Duration::from_secs(90);
@@ -321,7 +322,7 @@ pub fn fuzz_loop(
         	println!("result: {:?}", res);
     	}
         Err(e) => println!("error attempting to wait: {}", e),
-      }
+     }
     
 
 
