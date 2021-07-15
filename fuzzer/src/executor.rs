@@ -215,7 +215,7 @@ impl Executor {
   }
 
 
-  pub fn random_input_buf(&self) -> Vec<u8> {
+  pub fn random_input_buf(&self) -> Option<Vec<u8>> {
     let id = self.depot.next_random();
     self.depot.get_input_buf(id)
   }

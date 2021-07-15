@@ -77,7 +77,7 @@ impl Depot {
         rand::random::<usize>() % self.num_inputs.load(Ordering::Relaxed)
     }
 
-    pub fn get_input_buf(&self, id: usize) -> Vec<u8> {
+    pub fn get_input_buf(&self, id: usize) -> Option<Vec<u8>> {
         let path = get_file_name(&self.dirs.inputs_dir, id);
         read_from_file(&path)
     }

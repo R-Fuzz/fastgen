@@ -120,8 +120,7 @@ pub fn branch_checking(
   //let mut veri_status: Arc<AtomicU32>;
   while running.load(Ordering::Relaxed) {
     let id = unsafe { get_next_input_id() };
-    if id != std::u32::MAX {
-      let mut buf: Vec<u8> = depot.get_input_buf(id as usize);
+    if let Some(mut buf) = depot.get_input_buf(id as usize) {
       unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, buf.len()) };
       let gsol_count = branch_solcount.clone();
       //let v_status = veri_status.clone();
@@ -193,15 +192,14 @@ pub fn grading_loop(
       //wait untill file fully flushed
       thread::sleep(time::Duration::from_millis(1));
       let buf = read_from_file(&fpath);
-      if buf.len() == 0 {
-        continue;
+      if let Some(buf) = buf {
+        //info!("grading {:?} and length is {}", &fpath, &buf.len());
+        //executor.run_norun(&buf);
+        let new_path = executor.run_sync(&buf);
+        info!("grading input {:?} it is a new input {}, saved as input {}", fpath, new_path.0, new_path.1);
+        //std::fs::remove_file(fpath).unwrap();
+        fid = fid + 1;
       }
-      //info!("grading {:?} and length is {}", &fpath, &buf.len());
-      //executor.run_norun(&buf);
-      let new_path = executor.run_sync(&buf);
-      info!("grading input {:?} it is a new input {}, saved as input {}", fpath, new_path.0, new_path.1);
-      //std::fs::remove_file(fpath).unwrap();
-      fid = fid + 1;
     }
   } else {
     let mut grade_count = 0;
@@ -214,8 +212,7 @@ pub fn grading_loop(
     let mut direction: u64 = 0;
     while running.load(Ordering::Relaxed) {
       let id = unsafe { get_next_input_id() };
-      if id != std::u32::MAX {
-        let mut buf: Vec<u8> = depot.get_input_buf(id as usize);
+      if let Some(mut buf) = depot.get_input_buf(id as usize) {
         unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, buf.len()) };
         let new_path = executor.run_sync(&buf);
         let mut solcount = 1;
@@ -293,50 +290,50 @@ pub fn fuzz_loop(
   while running.load(Ordering::Relaxed) {
     if (id as usize) < depot.get_num_inputs() {
       //thread::sleep(time::Duration::from_millis(10));
-      let buf = depot.get_input_buf(id as usize);
-      let buf_cloned = buf.clone();
-      //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
-      let gbranch_hitcount = branch_hitcount.clone();
-      let gbranch_gencount = branch_gencount.clone();
+      if let Some(buf) = depot.get_input_buf(id as usize) {
+        let buf_cloned = buf.clone();
+        //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
+        let gbranch_hitcount = branch_hitcount.clone();
+        let gbranch_gencount = branch_gencount.clone();
 
-      let (read_end, write_end) = pipe().unwrap();
+        let (read_end, write_end) = pipe().unwrap();
 
-      let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
-          dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
-          }).unwrap();
+        let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
+            dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
+            }).unwrap();
 
 
-      let t_start = time::Instant::now();
+        let t_start = time::Instant::now();
 
-      executor.track(id as usize, &buf, write_end);
-      close(write_end).map_err(|err| warn!("close write end {:?}", err)).ok();
+        executor.track(id as usize, &buf, write_end);
+        close(write_end).map_err(|err| warn!("close write end {:?}", err)).ok();
 
-      if handle.join().is_err() {
-        error!("Error happened in listening thread!");
+        if handle.join().is_err() {
+          error!("Error happened in listening thread!");
+        }
+        //dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
+        close(read_end).map_err(|err| warn!("close read end {:?}", err)).ok();
+        /*
+           match child.try_wait() {
+           Ok(Some(status)) => println!("exited with: {}", status),
+           Ok(None) => {
+           println!("status not ready yet, let's really wait");
+           child.kill();
+           let res = child.wait();
+           println!("result: {:?}", res);
+           }
+           Err(e) => println!("error attempting to wait: {}", e),
+           }
+         */
+
+        let used_t1 = t_start.elapsed();
+        let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
+        trace!("track time {}", used_us1);
+        id = id + 1;
+        let mut progress = Vec::new();
+        progress.write_u32::<LittleEndian>(id).unwrap();
+        std::fs::write("ce_progress", &progress).map_err(|err| println!("{:?}", err)).ok();
       }
-      //dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
-      close(read_end).map_err(|err| warn!("close read end {:?}", err)).ok();
-      /*
-         match child.try_wait() {
-         Ok(Some(status)) => println!("exited with: {}", status),
-         Ok(None) => {
-         println!("status not ready yet, let's really wait");
-         child.kill();
-         let res = child.wait();
-         println!("result: {:?}", res);
-         }
-         Err(e) => println!("error attempting to wait: {}", e),
-         }
-       */
-
-
-      let used_t1 = t_start.elapsed();
-      let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
-      trace!("track time {}", used_us1);
-      id = id + 1;
-      let mut progress = Vec::new();
-      progress.write_u32::<LittleEndian>(id).unwrap();
-      std::fs::write("ce_progress", &progress).map_err(|err| println!("{:?}", err)).ok();
     } else {
       thread::sleep(time::Duration::from_secs(1));
     }

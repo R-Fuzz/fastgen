@@ -9,6 +9,7 @@ use std::{
     fs::File,
     io::{self, Read},
 };
+use std::io::BufRead;
 
 
 struct PipeMsg {
@@ -50,6 +51,49 @@ pub fn make_pipe() {
   }
 }
 
+
+pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<Vec<u8>>) {
+  let f = unsafe { File::from_raw_fd(piped) };
+  let mut reader = BufReader::new(f);
+  let mut ret = Vec::new();
+  let mut retdata = VecDeque::new();
+  loop {
+    let mut buffer = String::new();
+    let num_bytes = reader.read_line(&mut buffer).expect("read pipe failed");
+    //if not EOF
+    if num_bytes !=0  {
+      let tokens: Vec<&str> = buffer.trim().split(',').collect();
+      let tid = tokens[0].trim().parse::<u32>().expect("we expect u32 number in each line");
+      let label = tokens[1].trim().parse::<u32>().expect("we expect u32 number in each line");
+      let direction = tokens[2].trim().parse::<u64>().expect("we expect u32 number in each line");
+      let addr = tokens[3].trim().parse::<u64>().expect("we expect u64 number in each line");
+      let ctx = tokens[4].trim().parse::<u64>().expect("we expect u64 number in each line");
+      let order = tokens[5].trim().parse::<u32>().expect("we expect u32 number in each line");
+      let isgep = tokens[6].trim().parse::<u32>().expect("we expect u32 number in each line");
+      ret.push((tid,label,direction,addr,ctx,order,isgep));
+      if isgep == 2 {
+        let mut buffer = String::new();
+        let num_bytes = reader.read_line(&mut buffer).expect("read pipe failed");
+        let size = label;
+        let mut data = Vec::new();
+        if num_bytes !=0 {
+          let tokens: Vec<&str> = buffer.trim().split(',').collect();
+          for i in 0..size as usize {
+            data.push(tokens[i].trim().parse::<u8>().expect("we expect u8"));
+          }
+          retdata.push_back(data);
+        } else {
+          break;
+        }
+      }
+    } else  {
+      break;
+    }
+  }
+  (ret,retdata)
+}
+
+/*
 pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<Vec<u8>>) {
   let f = unsafe { File::from_raw_fd(piped) };
   let mut reader = BufReader::new(f);
@@ -86,6 +130,7 @@ pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<
   }
   (ret,retdata)
 }
+*/
 
 #[cfg(test)]
 mod tests {
