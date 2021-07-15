@@ -64,7 +64,7 @@ impl Executor {
         );
 
     let fd = pipe_fd::PipeFd::new(&cmd.out_file);
-    let forksrv = Some(forksrv::Forksrv::new(
+    let forksrv = forksrv::Forksrv::new(
           &cmd.forksrv_socket_path,
           &cmd.main,
           &envs,
@@ -73,7 +73,7 @@ impl Executor {
           cmd.uses_asan,
           cmd.time_limit,
           cmd.mem_limit,
-          ));
+          );
 
     Self {
       cmd,
@@ -103,7 +103,7 @@ impl Executor {
         self.cmd.time_limit,
         self.cmd.mem_limit,
         );
-    self.forksrv = Some(fs);
+    self.forksrv = fs;
   }
 
   pub fn track(&mut self, id: usize, buf: &Vec<u8>, pipeid: RawFd) {
@@ -119,7 +119,7 @@ impl Executor {
     self.write_test(buf);
 
     compiler_fence(Ordering::SeqCst);
-    let ret_status = self.run_target(
+    let ret_status = self.run_track(
         &self.cmd.track,
         config::MEM_LIMIT_TRACK,
         //self.cmd.time_limit *
@@ -202,13 +202,16 @@ impl Executor {
     self.branches.clear_trace();
 
     compiler_fence(Ordering::SeqCst);
-    let ret_status = if let Some(ref mut fs) = self.forksrv {
-      fs.run()
+    let mut ret_status = StatusType::Error;
+    if let Some(ref mut fs) = self.forksrv {
+      ret_status = fs.run()
     } else {
       warn!("run does not go through forksrv");
-      self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit);
-      StatusType::Normal
+      ret_status = self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit);
     };
+    if ret_status == StatusType::Error {
+      ret_status = self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit);
+    }
     compiler_fence(Ordering::SeqCst);
 
     ret_status
@@ -226,7 +229,6 @@ impl Executor {
       self.fd.rewind();
     }
   }
-
 
   fn run_target(
       &self,
@@ -251,6 +253,55 @@ impl Executor {
 
     let timeout = time::Duration::from_secs(time_limit);
     let ret = match child.wait_timeout(timeout) {
+    //let ret = match child.try_wait() {
+      Ok(Some(status)) => {
+        if let Some(status_code) = status.code() {
+          if self.cmd.uses_asan && status_code == defs::MSAN_ERROR_CODE
+          {
+            StatusType::Crash
+          } else {
+            StatusType::Normal
+          }
+        } else {
+          StatusType::Crash
+        }
+      }
+      Ok(None) => {
+        // Timeout
+        // child hasn't exited yet
+        child.kill().map_err(|err| warn!("child kill {:?}", err)).ok();
+        child.wait().map_err(|err| warn!("child wait {:?}", err)).ok();
+        StatusType::Timeout
+      }
+      Err(_) => { StatusType::Timeout }
+    };
+    ret
+  }
+
+  fn run_track(
+      &self,
+      target: &(String, Vec<String>),
+      mem_limit: u64,
+      time_limit: u64,
+      ) -> StatusType {
+    let mut cmd = Command::new(&target.0);
+    let mut child = cmd
+      .args(&target.1)
+      //  .stdin(Stdio::null())
+      .env_clear()
+      .envs(&self.envs)
+      .stdout(Stdio::null())
+      .stderr(Stdio::null())
+      .mem_limit(mem_limit.clone())
+      .setsid()
+      .pipe_stdin(self.fd.as_raw_fd(), self.cmd.is_stdin)
+      .spawn()
+      .expect("Could not run target");
+
+
+    //let timeout = time::Duration::from_secs(time_limit);
+    //let ret = match child.wait_timeout(timeout) {
+    let ret = match child.try_wait() {
       Ok(Some(status)) => {
         if let Some(status_code) = status.code() {
           if self.cmd.uses_asan && status_code == defs::MSAN_ERROR_CODE

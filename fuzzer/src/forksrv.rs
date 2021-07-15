@@ -41,13 +41,14 @@ impl Forksrv {
         uses_asan: bool,
         time_limit: u64,
         mem_limit: u64,
-    ) -> Forksrv {
+    ) -> Option<Forksrv> {
         debug!("socket_path: {:?}", socket_path);
         let listener = match UnixListener::bind(socket_path) {
             Ok(sock) => sock,
             Err(e) => {
                 error!("FATAL: Failed to bind to socket: {:?}", e);
-                panic!();
+                //panic!();
+                return None;
             }
         };
 
@@ -69,7 +70,8 @@ impl Forksrv {
             Ok(a) => a,
             Err(e) => {
                 error!("FATAL: failed to accept from socket: {:?}", e);
-                panic!();
+                //panic!();
+                return None;
             }
         };
 
@@ -82,13 +84,13 @@ impl Forksrv {
 
         debug!("All right -- Init ForkServer {} successfully!", socket_path);
 
-        Forksrv {
+        Some(Forksrv {
             path: socket_path.to_owned(),
             socket,
             uses_asan,
             is_stdin,
             child: c,     
-        }
+        })
     }
 
     pub fn run(&mut self) -> StatusType {
