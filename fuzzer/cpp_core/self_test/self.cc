@@ -16,12 +16,11 @@
 using namespace google::protobuf::io;
 
 using namespace rgd;
-extern ctpl::thread_pool* pool;
-bool handle_task(int tid, std::shared_ptr<SearchTask> task);
-extern std::vector<std::future<bool>> gresults;
+
+extern TaskQueue task_queue;
 
 int main() {
-  init(false , true);
+  init(false, true);
   int fd = open("../regression.data",O_RDONLY);
   ZeroCopyInputStream* rawInput = new google::protobuf::io::FileInputStream(fd);
   bool suc = false;
@@ -29,17 +28,14 @@ int main() {
   int finished = 0;
   do {
     std::shared_ptr<SearchTask>  task = std::make_shared<SearchTask>();
-
     suc = readDelimitedFrom(rawInput,task.get());
-/*
-    if (suc) {
-      gresults.emplace_back(pool->push(handle_task, task));
-    }
-*/
+    printf("run here\n");
+    bool solve = true;
+    std::pair<std::shared_ptr<SearchTask>,bool> tt{task,solve};
+    task_queue.push(tt);
   } while (suc);
-  for(auto && r: gresults)
-    finished += (int)r.get();
-  printf("finished %d\n",finished);
-  fini();
+  printf("returning\n");
+  while (true) {}
+  return 0;
 }
 

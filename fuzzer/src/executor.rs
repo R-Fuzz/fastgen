@@ -106,7 +106,7 @@ impl Executor {
     self.forksrv = fs;
   }
 
-  pub fn track(&mut self, id: usize, buf: &Vec<u8>, pipeid: RawFd) {
+  pub fn track(&mut self, id: usize, buf: &Vec<u8>, pipeid: RawFd) -> std::process::Child {
     //FIXME
     let e = format!("taint_file={} tid={} shmid={} pipeid={}", &self.cmd.out_file, &id, &self.shmid, pipeid.to_string());
     info!("Track {}, e is {}", &id, e);
@@ -119,15 +119,15 @@ impl Executor {
     self.write_test(buf);
 
     compiler_fence(Ordering::SeqCst);
-    let ret_status = self.run_track(
+    let child = self.run_track(
         &self.cmd.track,
         config::MEM_LIMIT_TRACK,
         //self.cmd.time_limit *
         config::TIME_LIMIT_TRACK,
         );
     compiler_fence(Ordering::SeqCst);
-
-
+    child
+/*
     if ret_status != StatusType::Normal {
       error!(
           "Crash or hang while tracking! -- {:?},  id: {}",
@@ -136,6 +136,7 @@ impl Executor {
       return;
     }
 
+*/
   }
 
 
@@ -179,6 +180,7 @@ impl Executor {
   fn check_timeout(&mut self, status: StatusType) -> StatusType {
     let mut ret_status = status;
     if ret_status == StatusType::Error {
+      warn!("timeout we are rebinding forksrv");
       self.rebind_forksrv();
       ret_status = StatusType::Timeout;
     }
@@ -206,12 +208,10 @@ impl Executor {
     if let Some(ref mut fs) = self.forksrv {
       ret_status = fs.run()
     } else {
-      warn!("run does not go through forksrv");
+      warn!("run does not go through forksrv and we rebinding");
       ret_status = self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit);
+      self.rebind_forksrv();
     };
-    if ret_status == StatusType::Error {
-      ret_status = self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit);
-    }
     compiler_fence(Ordering::SeqCst);
 
     ret_status
@@ -283,7 +283,7 @@ impl Executor {
       target: &(String, Vec<String>),
       mem_limit: u64,
       time_limit: u64,
-      ) -> StatusType {
+      ) -> std::process::Child {
     let mut cmd = Command::new(&target.0);
     let mut child = cmd
       .args(&target.1)
@@ -298,10 +298,10 @@ impl Executor {
       .spawn()
       .expect("Could not run target");
 
-
-    //let timeout = time::Duration::from_secs(time_limit);
-    //let ret = match child.wait_timeout(timeout) {
-    let ret = match child.try_wait() {
+    child
+/*
+    let timeout = time::Duration::from_secs(time_limit);
+    let ret = match child.wait_timeout(timeout) {
       Ok(Some(status)) => {
         if let Some(status_code) = status.code() {
           if self.cmd.uses_asan && status_code == defs::MSAN_ERROR_CODE
@@ -324,7 +324,7 @@ impl Executor {
       Err(_) => { StatusType::Timeout }
     };
     ret
-
+*/
   }
 
 }

@@ -24,7 +24,7 @@
 #include "gd.h"
 #include "task.h"
 #include "parser.h"
-
+#include "interface.h"
 using namespace rgd;
 using namespace google::protobuf::io;
 
@@ -89,36 +89,7 @@ class SolutionQueue
   }
 };
 
-class TaskQueue 
-{
-  std::deque< std::pair<std::shared_ptr<SearchTask>, bool> > queue_;
-  std::mutex mutex_;
-  std::condition_variable condvar_;
 
-  typedef std::lock_guard<std::mutex> lock;
-  typedef std::unique_lock<std::mutex> ulock;
-
-  public:
-  void push(std::pair<std::shared_ptr<SearchTask>, bool> const &val)
-  {
-    lock l(mutex_); // prevents multiple pushes corrupting queue_
-    bool wake = queue_.empty(); // we may need to wake consumer
-    queue_.push_back(val);
-    if (wake) condvar_.notify_one();
-  }
-
-
-  std::pair<std::shared_ptr<SearchTask>, bool>  pop()
-  {
-    ulock u(mutex_);
-    while (queue_.empty())
-      condvar_.wait(u);
-    // now queue_ is non-empty and we still have the lock
-    std::pair<std::shared_ptr<SearchTask>, bool> retval = queue_.front();
-    queue_.pop_front();
-    return retval;
-  }
-};
 
 SolutionQueue solution_queue;
 TaskQueue task_queue;
@@ -133,6 +104,7 @@ void save_task(const unsigned char* input, unsigned int input_length) {
 
 void* handle_task_z3(void*) {
   //printTask(task.get());
+
   while (true) {
     auto task1 = task_queue.pop();
     
@@ -186,7 +158,6 @@ void* handle_task(void*) {
     fut->rgd_solutions = &rgd_solutions;
     fut->partial_solutions = &partial_solutions;
     fut_opt->rgd_solutions = &rgd_solutions_opt;
-
     gd_search(fut_opt);
     if (rgd_solutions_opt.size() != 0) {
       //fut->load_hint(rgd_solutions_opt[0]);
@@ -200,6 +171,7 @@ void* handle_task(void*) {
       }
 
       for (auto rgd_solution :  rgd_solutions_opt) {
+        printf("adding solutions\n");
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
         solution_queue.push(sol);
       }

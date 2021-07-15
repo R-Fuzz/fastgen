@@ -163,7 +163,7 @@ impl Forksrv {
 
 impl Drop for Forksrv {
     fn drop(&mut self) {
-        debug!("Exit Forksrv");
+        warn!("Exit Forksrv");
         // Tell the child process to exit
         let fin = [0u8; 2];
         if self.socket.write(&fin).is_err() {

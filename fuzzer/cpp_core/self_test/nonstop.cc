@@ -16,14 +16,11 @@
 using namespace google::protobuf::io;
 
 using namespace rgd;
-extern ctpl::thread_pool* pool;
-bool handle_task(int tid, std::shared_ptr<SearchTask> task);
-bool handle_task_v2(int tid, std::shared_ptr<SearchTask> task);
-extern std::vector<std::future<bool>> gresults;
+extern TaskQueue task_queue;
 
 int main() {
   init(false, true);
-  int fd = open("../switch.data",O_RDONLY);
+  int fd = open("../regression.data",O_RDONLY);
   ZeroCopyInputStream* rawInput = new google::protobuf::io::FileInputStream(fd);
   bool suc = false;
   int fid = 1;
@@ -37,7 +34,9 @@ int main() {
       //handle_task(0,task);
     }
   }
+  printf("out of loop\n");
   delete rawInput;
-  fini();
+  printf("returning \n");
+  return 0;
 }
 
