@@ -157,7 +157,6 @@ uint64_t distance(MutInput &input, struct FUT* fut) {
     std::shared_ptr<Cons> c = fut->constraints[i];
     printf("input_args size is %d\n", c->input_args.size());
     for (auto arg : c->input_args) {
-      if (arg_idx >= (fut->inputs.size() + fut->max_const_num)) printf("oob dected arg_idx is %d and size is %d\n", arg_idx, fut->inputs.size() + fut->max_const_num);
       if (arg.first) {// symbolic
         fut->scratch_args[2+arg_idx] = (uint64_t)input.value[arg.second];
       }

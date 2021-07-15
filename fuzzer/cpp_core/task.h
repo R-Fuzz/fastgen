@@ -82,7 +82,7 @@ struct FUT {
 	uint64_t* scratch_args;
 	//void allocate_scratch_args(int size) {scratch_args = (uint8_t*)aligned_alloc(64,size);}
   void flip() { if (direction_flipped) direction_flipped = false; else direction_flipped = true; }
-	void finalize() {
+	int finalize() {
 	  //aggregate the contraints, fill input_args's index, build global inputs
 		std::unordered_map<uint32_t,uint32_t> sym_map;
 		uint32_t gidx = 0;
@@ -106,8 +106,10 @@ struct FUT {
 				max_const_num = constraints[i]->const_num;
 		}
 
-		scratch_args = (uint64_t*)malloc((2 + inputs.size() + max_const_num) * sizeof(uint64_t));
+    //FIXME: it may overflow
+		scratch_args = (uint64_t*)malloc((2 + inputs.size() + max_const_num + 100) * sizeof(uint64_t));
     ctx = new SContext(inputs.size(), constraints.size());
+    
 	}
 
   void load_hint(std::unordered_map<uint32_t,uint8_t> &hint_solution) {// load hint
