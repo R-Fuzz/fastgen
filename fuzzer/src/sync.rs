@@ -40,7 +40,7 @@ pub fn sync_afl(
     sync_dir: &Path,
     sync_ids: &mut HashMap<String, usize>,
 ) {
-    executor.rebind_forksrv();
+    //executor.rebind_forksrv();
 
     if let Ok(entries) = sync_dir.read_dir() {
         for entry in entries {
