@@ -171,7 +171,6 @@ void* handle_task(void*) {
       }
 
       for (auto rgd_solution :  rgd_solutions_opt) {
-        printf("adding solutions\n");
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
         solution_queue.push(sol);
       }

@@ -82,7 +82,7 @@ struct FUT {
 	uint64_t* scratch_args;
 	//void allocate_scratch_args(int size) {scratch_args = (uint8_t*)aligned_alloc(64,size);}
   void flip() { if (direction_flipped) direction_flipped = false; else direction_flipped = true; }
-	int finalize() {
+	void finalize() {
 	  //aggregate the contraints, fill input_args's index, build global inputs
 		std::unordered_map<uint32_t,uint32_t> sym_map;
 		uint32_t gidx = 0;
