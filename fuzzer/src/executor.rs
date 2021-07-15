@@ -209,8 +209,11 @@ impl Executor {
       ret_status = fs.run()
     } else {
       warn!("run does not go through forksrv and we rebinding");
-      ret_status = self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit);
+      //ret_status = self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit);
       self.rebind_forksrv();
+      if let Some(ref mut fs) = self.forksrv {
+        ret_status = fs.run()
+      }
     };
     compiler_fence(Ordering::SeqCst);
 
