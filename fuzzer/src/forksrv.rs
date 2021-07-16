@@ -139,7 +139,7 @@ impl Forksrv {
       uses_asan: bool,
       time_limit: u64,
       mem_limit: u64,
-      ) -> Result<Self,&'static str> {
+      ) -> Option<Self> {
     debug!("socket_path: {:?}", socket_path);
 
     // status pipe and ctrl pipe
@@ -170,7 +170,8 @@ impl Forksrv {
               "Could not spawn the forkserver: {:#?}",
               err
               );
-          return Err("can't spawn");
+          //return Err("can't spawn");
+          return None;
         }
       }
 
@@ -179,7 +180,7 @@ impl Forksrv {
 
     debug!("All right -- Init ForkServer {} successfully!", socket_path);
 
-    Ok(Forksrv {
+    Some(Forksrv {
         uses_asan,
         is_stdin,
         child_pid: Pid::from_raw(0),
@@ -299,3 +300,15 @@ impl Forksrv {
   }
 }
 
+impl Drop for Forksrv {
+    fn drop(&mut self) {
+        debug!("Exit Forksrv");
+        // Tell the child process to exit
+        let fin = [0u8; 2];
+        if write(self.ctl_write_end, &fin).is_err() {
+            debug!("Fail to write socket !!  FIN ");
+        }
+        close(self.st_read_end);
+        close(self.ctl_write_end);
+    }
+}

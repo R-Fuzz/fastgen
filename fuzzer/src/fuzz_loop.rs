@@ -106,6 +106,7 @@ pub fn branch_checking(
       global_branches,
       depot.clone(),
       shmid,
+      false, //not grading
       );
 
 
@@ -176,6 +177,7 @@ pub fn grading_loop(
       global_branches,
       depot.clone(),
       0,
+      true, //grading
       );
 
   //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
@@ -281,6 +283,7 @@ pub fn fuzz_loop(
       global_branches,
       depot.clone(),
       shmid,
+      false, //not grading
       );
 
   let ptr = unsafe { libc::shmat(shmid, std::ptr::null(), 0) as *mut UnionTable};

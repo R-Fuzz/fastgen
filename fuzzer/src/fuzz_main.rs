@@ -60,8 +60,10 @@ pub fn fuzz_main(
       command_option.specify(0),
       global_branches.clone(),
       depot.clone(),
-      0,
+      0,  //shmid is zero
+      false, //not grading
       );
+
 
   sync::sync_depot(&mut executor, running.clone(), &depot.dirs.seeds_dir);
 
@@ -169,6 +171,7 @@ fn main_thread_sync(
   sync_afl: bool,
   running: Arc<AtomicBool>,
   executor: &mut executor::Executor,
+//  depot: Arc<Depot>,
 ) {
   let sync_dir = Path::new(out_dir);
   let mut synced_ids = HashMap::new();

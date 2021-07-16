@@ -26,7 +26,8 @@ pub struct Executor {
   pub cmd: command::CommandOpt,
       pub branches: branches::Branches,
       envs: HashMap<String, String>,
-      forksrv: Result<Forksrv,&'static str>,
+      //forksrv: Result<Forksrv,&'static str>,
+      forksrv: Option<Forksrv>,
       depot: Arc<depot::Depot>,
       fd: PipeFd,
       tmout_cnt: usize,
@@ -40,6 +41,7 @@ impl Executor {
       global_branches: Arc<branches::GlobalBranches>,
       depot: Arc<depot::Depot>,
       shmid: i32,
+      is_grading: bool,
       ) -> Self {
     // ** Share Memory **
     let branches = branches::Branches::new(global_branches);
@@ -64,7 +66,7 @@ impl Executor {
         );
 
     let fd = pipe_fd::PipeFd::new(&cmd.out_file);
-    let forksrv = forksrv::Forksrv::new(
+    let forksrv = if is_grading { forksrv::Forksrv::new(
           &cmd.forksrv_socket_path,
           &cmd.main,
           &envs,
@@ -73,7 +75,9 @@ impl Executor {
           cmd.uses_asan,
           cmd.time_limit,
           cmd.mem_limit,
-          );
+          ) } else {
+            None
+          };
 
     Self {
       cmd,
@@ -89,10 +93,10 @@ impl Executor {
   }
 
   pub fn rebind_forksrv(&mut self) {
-/*
+
     {
       // delete the old forksrv
-      self.forksrv = Err;
+      self.forksrv = None;
     }
     let fs = forksrv::Forksrv::new(
         &self.cmd.forksrv_socket_path,
@@ -105,7 +109,7 @@ impl Executor {
         self.cmd.mem_limit,
         );
     self.forksrv = fs;
-*/
+
   }
 
   pub fn track(&mut self, id: usize, buf: &Vec<u8>, pipeid: RawFd) -> std::process::Child {
@@ -207,13 +211,13 @@ impl Executor {
 
     compiler_fence(Ordering::SeqCst);
     let mut ret_status = StatusType::Error;
-    if let Ok(ref mut fs) = self.forksrv {
+    if let Some(ref mut fs) = self.forksrv {
       ret_status = fs.run()
     } else {
       warn!("run does not go through forksrv and we rebinding");
       //ret_status = self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit);
       self.rebind_forksrv();
-      if let Ok(ref mut fs) = self.forksrv {
+      if let Some(ref mut fs) = self.forksrv {
         ret_status = fs.run()
       }
     };

@@ -25,7 +25,8 @@ pub fn sync_depot(executor: &mut Executor, running: Arc<AtomicBool>, dir: &Path)
                 if file_len < config::MAX_INPUT_LEN {
                     let buf = read_from_file(path);
                     if let Some(rawbuf) = buf {
-                      executor.run_sync(&rawbuf);
+                      //executor.run_sync(&rawbuf);
+                      executor.run_norun(&rawbuf);
                     }
                 } else {
                     warn!("Seed discarded, too long: {:?}", path);
