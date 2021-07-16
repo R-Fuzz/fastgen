@@ -277,6 +277,10 @@ pub fn fuzz_loop(
 
   info!("start fuzz loop with shmid {}",shmid);
 
+  //FIXME: we sleep one sec waiting for grading loop's forkserver is ready. 
+  // Because if both threads call pipe(), one would be blocked in treading
+  thread::sleep(time::Duration::from_secs(1));
+
   let mut executor = Executor::new(
       cmd_opt,
       global_branches,
