@@ -26,7 +26,7 @@ pub struct Executor {
   pub cmd: command::CommandOpt,
       pub branches: branches::Branches,
       envs: HashMap<String, String>,
-      forksrv: Option<Forksrv>,
+      forksrv: Result<Forksrv,&'static str>,
       depot: Arc<depot::Depot>,
       fd: PipeFd,
       tmout_cnt: usize,
@@ -89,9 +89,10 @@ impl Executor {
   }
 
   pub fn rebind_forksrv(&mut self) {
+/*
     {
       // delete the old forksrv
-      self.forksrv = None;
+      self.forksrv = Err;
     }
     let fs = forksrv::Forksrv::new(
         &self.cmd.forksrv_socket_path,
@@ -104,6 +105,7 @@ impl Executor {
         self.cmd.mem_limit,
         );
     self.forksrv = fs;
+*/
   }
 
   pub fn track(&mut self, id: usize, buf: &Vec<u8>, pipeid: RawFd) -> std::process::Child {
@@ -205,13 +207,13 @@ impl Executor {
 
     compiler_fence(Ordering::SeqCst);
     let mut ret_status = StatusType::Error;
-    if let Some(ref mut fs) = self.forksrv {
+    if let Ok(ref mut fs) = self.forksrv {
       ret_status = fs.run()
     } else {
       warn!("run does not go through forksrv and we rebinding");
       //ret_status = self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit);
       self.rebind_forksrv();
-      if let Some(ref mut fs) = self.forksrv {
+      if let Ok(ref mut fs) = self.forksrv {
         ret_status = fs.run()
       }
     };
