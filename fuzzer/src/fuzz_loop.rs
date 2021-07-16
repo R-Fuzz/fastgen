@@ -131,8 +131,7 @@ pub fn branch_checking(
           branch_verifier(read_end, addr, ctx,order,direction,fid,gsol_count);
           });
 
-      executor.track(0, &buf, write_end);
-      close(write_end).map_err(|err| println!("{:?}", err)).ok();
+      executor.track(0, &buf, read_end, write_end);
 
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
@@ -308,7 +307,7 @@ pub fn fuzz_loop(
 
         let t_start = time::Instant::now();
 
-        let mut child = executor.track(id as usize, &buf, write_end);
+        let mut child = executor.track(id as usize, &buf, read_end,write_end);
         close(write_end).map_err(|err| warn!("close write end {:?}", err)).ok();
 
         if handle.join().is_err() {

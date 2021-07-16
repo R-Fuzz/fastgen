@@ -21,6 +21,50 @@ use std::{
 };
 use wait_timeout::ChildExt;
 use std::os::unix::io::RawFd;
+use std::os::unix::process::CommandExt;
+use std::io::{self};
+
+pub fn dup2(fd: i32, device: i32) -> Result<(), &'static str> {
+  match unsafe { libc::dup2(fd, device) } {
+    -1 => Err("dup2 failed"),
+      _ => Ok(()),
+  }
+}
+
+pub trait ConfigTrack {
+  fn setpipe(
+      &mut self,
+      track_read: RawFd,
+      track_write: RawFd,
+      ) -> &mut Self;
+}
+
+
+impl ConfigTrack for Command {
+  fn setpipe(
+      &mut self,
+      track_read: RawFd,
+      track_write: RawFd,
+      ) -> &mut Self {
+    let func = move || {
+
+      match dup2(track_write, 200) {
+        Ok(_) => (),
+        Err(_) => {
+          return Err(io::Error::last_os_error());
+        }
+      }
+      unsafe {
+        libc::close(track_read);
+        libc::close(track_write);
+      }
+      Ok(())
+    };
+
+    unsafe { self.pre_exec(func) }
+  }
+}
+
 
 pub struct Executor {
   pub cmd: command::CommandOpt,
@@ -112,9 +156,9 @@ impl Executor {
 
   }
 
-  pub fn track(&mut self, id: usize, buf: &Vec<u8>, pipeid: RawFd) -> std::process::Child {
+  pub fn track(&mut self, id: usize, buf: &Vec<u8>, track_read: RawFd, track_write: RawFd) -> std::process::Child {
     //FIXME
-    let e = format!("taint_file={} tid={} shmid={} pipeid={}", &self.cmd.out_file, &id, &self.shmid, pipeid.to_string());
+    let e = format!("taint_file={} tid={} shmid={} pipeid={}", &self.cmd.out_file, &id, &self.shmid, track_write.to_string());
     info!("Track {}, e is {}", &id, e);
     self.envs.insert(
         defs::TAINT_OPTIONS.to_string(),
@@ -130,6 +174,8 @@ impl Executor {
         config::MEM_LIMIT_TRACK,
         //self.cmd.time_limit *
         config::TIME_LIMIT_TRACK,
+        track_read,
+        track_write,
         );
     compiler_fence(Ordering::SeqCst);
     child
@@ -292,6 +338,8 @@ impl Executor {
       target: &(String, Vec<String>),
       mem_limit: u64,
       time_limit: u64,
+      track_read: RawFd,
+      track_write: RawFd,
       ) -> std::process::Child {
     let mut cmd = Command::new(&target.0);
     let mut child = cmd
@@ -303,6 +351,7 @@ impl Executor {
       .stderr(Stdio::null())
       .mem_limit(mem_limit.clone())
       .setsid()
+      .setpipe(track_read, track_write)
       .pipe_stdin(self.fd.as_raw_fd(), self.cmd.is_stdin)
       .spawn()
       .expect("Could not run target");
