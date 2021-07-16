@@ -1166,7 +1166,8 @@ static void dfsan_init(int argc, char **argv, char **envp) {
     }
   //}
   //mypipe = open("/tmp/wp", O_WRONLY | O_NONBLOCK);
-  mypipe = __pipeid;
+  mypipe = 200;
+  //mypipe = __pipeid;
   //else {
   //   printf("segment containts: \n\%s\n", shmp->buf);
   //}
