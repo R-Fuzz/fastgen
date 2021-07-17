@@ -15,7 +15,7 @@ use std::{
     process::{Command, Stdio},
     sync::{
       atomic::{compiler_fence, Ordering},
-      Arc,
+      Arc, Mutex,
     },
     time,
 };
@@ -23,6 +23,7 @@ use wait_timeout::ChildExt;
 use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
 use std::io::{self};
+use nix::unistd::{close, pipe, read, write};
 
 pub fn dup2(fd: i32, device: i32) -> Result<(), &'static str> {
   match unsafe { libc::dup2(fd, device) } {
@@ -77,6 +78,7 @@ pub struct Executor {
       tmout_cnt: usize,
       pub has_new_path: bool,
       pub shmid: i32,
+      pub fl: Arc<Mutex<u32>>,
 }
 
 impl Executor {
@@ -86,6 +88,7 @@ impl Executor {
       depot: Arc<depot::Depot>,
       shmid: i32,
       is_grading: bool,
+      forklock: Arc<Mutex<u32>>,
       ) -> Self {
     // ** Share Memory **
     let branches = branches::Branches::new(global_branches);
@@ -119,6 +122,7 @@ impl Executor {
           cmd.uses_asan,
           cmd.time_limit,
           cmd.mem_limit,
+          forklock.clone(),
           ) } else {
             None
           };
@@ -133,6 +137,7 @@ impl Executor {
         tmout_cnt: 0,
         has_new_path: false,
         shmid,
+        fl: forklock.clone(),
     }
   }
 
@@ -151,14 +156,15 @@ impl Executor {
         self.cmd.uses_asan,
         self.cmd.time_limit,
         self.cmd.mem_limit,
+        self.fl.clone(),
         );
     self.forksrv = fs;
 
   }
 
-  pub fn track(&mut self, id: usize, buf: &Vec<u8>, track_read: RawFd, track_write: RawFd) -> std::process::Child {
+  pub fn track(&mut self, id: usize, buf: &Vec<u8>) -> (std::process::Child, RawFd) {
     //FIXME
-    let e = format!("taint_file={} tid={} shmid={} pipeid={}", &self.cmd.out_file, &id, &self.shmid, track_write.to_string());
+    let e = format!("taint_file={} tid={} shmid={} pipeid=0", &self.cmd.out_file, &id, &self.shmid);
     info!("Track {}, e is {}", &id, e);
     self.envs.insert(
         defs::TAINT_OPTIONS.to_string(),
@@ -169,16 +175,14 @@ impl Executor {
     self.write_test(buf);
 
     compiler_fence(Ordering::SeqCst);
-    let child = self.run_track(
+    let (child, read_end) = self.run_track(
         &self.cmd.track,
         config::MEM_LIMIT_TRACK,
         //self.cmd.time_limit *
         config::TIME_LIMIT_TRACK,
-        track_read,
-        track_write,
         );
     compiler_fence(Ordering::SeqCst);
-    child
+    (child,read_end)
 /*
     if ret_status != StatusType::Normal {
       error!(
@@ -338,9 +342,9 @@ impl Executor {
       target: &(String, Vec<String>),
       mem_limit: u64,
       time_limit: u64,
-      track_read: RawFd,
-      track_write: RawFd,
-      ) -> std::process::Child {
+      ) -> (std::process::Child, RawFd) {
+    let guard = self.fl.lock().unwrap();
+    let (read_end, write_end) = pipe().unwrap();
     let mut cmd = Command::new(&target.0);
     let mut child = cmd
       .args(&target.1)
@@ -351,12 +355,13 @@ impl Executor {
       .stderr(Stdio::null())
       .mem_limit(mem_limit.clone())
       .setsid()
-      .setpipe(track_read, track_write)
+      .setpipe(read_end, write_end)
       .pipe_stdin(self.fd.as_raw_fd(), self.cmd.is_stdin)
       .spawn()
       .expect("Could not run target");
 
-    child
+    close(write_end);
+    (child, read_end)
 /*
     let timeout = time::Duration::from_secs(time_limit);
     let ret = match child.wait_timeout(timeout) {

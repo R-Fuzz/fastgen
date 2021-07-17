@@ -5,7 +5,7 @@ use crate::{
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::sync::{
   atomic::{AtomicBool, Ordering},
-    Arc, RwLock,
+    Arc, RwLock, Mutex
 };
 
 use std::time;
@@ -34,9 +34,9 @@ pub fn dispatcher(table: &UnionTable,
   let (labels,mut memcmp_data) = read_pipe(id);
   scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &branch_gencount, &branch_hitcount, buf);
 }
-
+/*
 //check the status
-pub fn branch_verifier(id: RawFd, addr: u64, ctx: u64, 
+pub fn branch_verifier(addr: u64, ctx: u64, 
     order: u32, direction: u64, fid: u32,
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>) {
   let mut status = 4; // not reached
@@ -79,7 +79,8 @@ pub fn branch_verifier(id: RawFd, addr: u64, ctx: u64,
   }
   branch_solcount.write().unwrap().insert((addr,ctx,order,direction), status_to_update);
 }
-
+*/
+/*
 pub fn branch_checking(
     running: Arc<AtomicBool>,
     cmd_opt: CommandOpt,
@@ -91,6 +92,7 @@ pub fn branch_checking(
     // 2 -> reached not flipped
     // 3 -> not reached
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    forklock: Arc<Mutex<u32>>,
     ) {
 
   let shmid =  unsafe {
@@ -107,6 +109,7 @@ pub fn branch_checking(
       depot.clone(),
       shmid,
       false, //not grading
+      forklock.clone(),
       );
 
 
@@ -126,17 +129,15 @@ pub fn branch_checking(
       let gsol_count = branch_solcount.clone();
       //let v_status = veri_status.clone();
 
-      let (read_end, write_end) = pipe().unwrap();
       let handle = thread::spawn(move || {
-          branch_verifier(read_end, addr, ctx,order,direction,fid,gsol_count);
+          branch_verifier(addr, ctx,order,direction,fid,gsol_count);
           });
 
-      executor.track(0, &buf, read_end, write_end);
+      executor.track(0, &buf);
 
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
-      close(read_end).map_err(|err| println!("{:?}", err)).ok();
 
 
       //if (veri_status.load(Ordering::Relaxed) == 4) {
@@ -160,7 +161,7 @@ pub fn branch_checking(
     }
   }
 }
-
+*/
 
 
 pub fn grading_loop(
@@ -170,13 +171,17 @@ pub fn grading_loop(
     global_branches: Arc<GlobalBranches>,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    forklock: Arc<Mutex<u32>>,
     ) {
+
+
   let mut executor = Executor::new(
       cmd_opt,
       global_branches,
       depot.clone(),
       0,
       true, //grading
+      forklock.clone(),
       );
 
   //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
@@ -256,6 +261,7 @@ pub fn fuzz_loop(
     global_branches: Arc<GlobalBranches>,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     restart: bool,
+    forklock: Arc<Mutex<u32>>,
     ) {
 
   let mut id: u32 = 0;
@@ -277,16 +283,13 @@ pub fn fuzz_loop(
 
   info!("start fuzz loop with shmid {}",shmid);
 
-  //FIXME: we sleep one sec waiting for grading loop's forkserver is ready. 
-  // Because if both threads call pipe(), one would be blocked in treading
-  thread::sleep(time::Duration::from_secs(1));
-
   let mut executor = Executor::new(
       cmd_opt,
       global_branches,
       depot.clone(),
       shmid,
       false, //not grading
+      forklock.clone(),
       );
 
   let ptr = unsafe { libc::shmat(shmid, std::ptr::null(), 0) as *mut UnionTable};
@@ -302,17 +305,17 @@ pub fn fuzz_loop(
         let gbranch_hitcount = branch_hitcount.clone();
         let gbranch_gencount = branch_gencount.clone();
 
-        let (read_end, write_end) = pipe().unwrap();
+        forklock.lock();
 
-        let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
-            dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
-            }).unwrap();
 
 
         let t_start = time::Instant::now();
 
-        let mut child = executor.track(id as usize, &buf, read_end,write_end);
-        close(write_end).map_err(|err| warn!("close write end {:?}", err)).ok();
+        let (mut child, read_end) = executor.track(id as usize, &buf);
+
+        let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
+            dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
+            }).unwrap();
 
         if handle.join().is_err() {
           error!("Error happened in listening thread!");

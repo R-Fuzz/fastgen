@@ -17,6 +17,7 @@ use std::{
     process::{Command, Stdio},
     time::Duration,
 };
+use std::sync::{Arc, Mutex};
 use nix::unistd::{close, pipe, read, write};
 
 use crate::status_type::StatusType;
@@ -139,10 +140,12 @@ impl Forksrv {
       uses_asan: bool,
       time_limit: u64,
       mem_limit: u64,
+      forklock: Arc<Mutex<u32>>,
       ) -> Option<Self> {
     debug!("socket_path: {:?}", socket_path);
 
     // status pipe and ctrl pipe
+    let data = forklock.lock().unwrap();
     let (ctl_read_end, ctl_write_end) = pipe().unwrap();
     let (st_read_end, st_write_end) = pipe().unwrap();
 
