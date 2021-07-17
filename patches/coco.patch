@@ -1,0 +1,1394 @@
+commit 04cacd2e618b23d5f791c8fd579929e2ee0fd585
+Author: Ju Chen <chenju2k6@gmail.com>
+Date:   Sat Jun 19 23:22:18 2021 -0700
+
+    cocofuzz in rust
+    
+    Signed-off-by: Ju Chen <chenju2k6@gmail.com>
+
+diff --git a/fuzzer/Cargo.toml b/fuzzer/Cargo.toml
+index 10a4725..89b1184 100644
+--- a/fuzzer/Cargo.toml
++++ b/fuzzer/Cargo.toml
+@@ -23,6 +23,7 @@ wait-timeout = "0.2"
+ twoway = "0.2.0"
+ memmap = "0.7.0"
+ rand = "0.7"
++twox-hash = "1.6.0"
+ 
+ [build-dependencies]
+ protoc-rust = "2.0"
+diff --git a/fuzzer/cpp_core/interface.cc b/fuzzer/cpp_core/interface.cc
+index 2d05ff0..c8a60e1 100644
+--- a/fuzzer/cpp_core/interface.cc
++++ b/fuzzer/cpp_core/interface.cc
+@@ -37,19 +37,27 @@ static std::atomic<uint64_t> fid;
+ static std::atomic<uint64_t> task_id;
+ bool SAVING_WHOLE; 
+ bool USE_CODECACHE;
+-bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu);
++int sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu);
+ void initZ3Solver();
+ //moodycamel::ConcurrentQueue<std::pair<uint32_t, std::unordered_map<uint32_t,uint8_t>>> solution_queue;
+ std::vector<std::future<bool>> gresults;
+ 
+ struct RGDSolution {
+-    std::unordered_map<uint32_t, uint8_t> sol;
++  std::unordered_map<uint32_t, uint8_t> sol;
+   //the intended branch for this solution
+-    uint32_t fid;  //the seed
+-    uint64_t addr;
+-    uint64_t ctx;
+-    uint32_t order;
+-    uint64_t direction;
++  uint32_t fid;  //the seed
++  uint64_t addr;
++  uint64_t ctx;
++  uint32_t order;
++  uint64_t direction;
++  //0: nested SAT
++  //1: nested TIMEOUT last SAT
++  //2: nested UNSAT last SAT
++  //3: nested TIMEOUT last TIMEOUT
++  //4: nested TIMEOUT last UNSAT
++  //5: nested UNSAT last TIMEOUT
++  //6: nested UNSAT last UNSAT
++  uint32_t status_code;
+ };
+ 
+ moodycamel::ConcurrentQueue<RGDSolution> solution_queue;
+@@ -67,6 +75,34 @@ void save_task(const unsigned char* input, unsigned int input_length) {
+   saveRequest(task, "regression.data");
+ }
+ 
++uint32_t get_code(uint32_t nes_status, uint32_t single_status) {
++  if (nes_status) {
++    if (nes_status == 1) {
++      if (single_status == 0) { return 1; }
++      else if (single_status == 1) { return 3; }
++      else { return 4; }
++    } else {
++      if (single_status == 0) { return 2; }
++      else if (single_status == 1) { return 5; }
++      else { return 6; }
++    }
++  } else {
++    return 0;
++  }
++}
++
++void handle_task_sync(std::shared_ptr<SearchTask> task) {
++  std::unordered_map<uint32_t, uint8_t> z3_solution;
++  int status_nes = 0;
++  int status_single = 0;
++  status_nes = sendZ3Solver(false, task.get(), z3_solution);
++  if (status_nes)
++    status_single = sendZ3Solver(true, task.get(), z3_solution);
++  uint32_t status_code = get_code(status_nes,status_single);
++  RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction(), status_code};
++  solution_queue.enqueue(sol);
++}
++
+ //bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
+ void* handle_task(void*) {
+   //printTask(task.get());
+@@ -140,68 +176,68 @@ void* handle_task(void*) {
+     if (!SAVING_WHOLE) {
+       for (auto rgd_solution :  rgd_solutions) {
+         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+-	if (fresh)
+-        higher_solution_queue.enqueue(sol);
+-	else
+-        solution_queue.enqueue(sol);
++        if (fresh)
++          higher_solution_queue.enqueue(sol);
++        else
++          solution_queue.enqueue(sol);
+ #if DEBUG
+         //if (solution_queue.size_approx() % 1000 == 0)
+-          //printf("queue item is about %u\n", solution_queue.size_approx());
++        //printf("queue item is about %u\n", solution_queue.size_approx());
+ #endif
+       }
+-/*
+-      for (auto rgd_solution :  rgd_solutions_opt) {
+-        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+-        if (fresh)
+-        higher_solution_queue.enqueue(sol);
+-	else
+-        solution_queue.enqueue(sol);
++      /*
++         for (auto rgd_solution :  rgd_solutions_opt) {
++         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
++         if (fresh)
++         higher_solution_queue.enqueue(sol);
++         else
++         solution_queue.enqueue(sol);
+ #if DEBUG
+-        //if (solution_queue.size_approx() % 1000 == 0)
+-          //printf("queue item is about %u\n", solution_queue.size_approx());
++    //if (solution_queue.size_approx() % 1000 == 0)
++    //printf("queue item is about %u\n", solution_queue.size_approx());
+ #endif
+-      }
+-*/
+-      for (auto rgd_solution :  partial_solutions) {
+-        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+-        solution_queue.enqueue(sol);
++}
++       */
++for (auto rgd_solution :  partial_solutions) {
++  RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
++  solution_queue.enqueue(sol);
+ #if DEBUG
+-        if (solution_queue.size_approx() % 1000 == 0)
+-          printf("queue item is about %u\n", solution_queue.size_approx());
++  if (solution_queue.size_approx() % 1000 == 0)
++    printf("queue item is about %u\n", solution_queue.size_approx());
+ #endif
+-      }
++}
+ 
+-      if (z3_solution.size() != 0) {
+-        RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+-        solution_queue.enqueue(sol);
+-      }
++if (z3_solution.size() != 0) {
++  RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
++  solution_queue.enqueue(sol);
++}
+ 
+-    } else {
+-      // std::string old_string = std::to_string(task->fid());
+-      std::string input_file = "/home/cju/fastgen/test/seed";
+-      // std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
+-      //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+-      for (auto rgd_solution : rgd_solutions) {
+-        generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+-      }
+-      for (auto rgd_solution : rgd_solutions_opt) {
+-        generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+-      }
+-      for (auto rgd_solution : partial_solutions) {
+-        generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+-      }
++} else {
++  // std::string old_string = std::to_string(task->fid());
++  std::string input_file = "/home/cju/fastgen/test/seed";
++  // std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
++  //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
++  for (auto rgd_solution : rgd_solutions) {
++    generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
++  }
++  for (auto rgd_solution : rgd_solutions_opt) {
++    generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
++  }
++  for (auto rgd_solution : partial_solutions) {
++    generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
++  }
+ 
+-      if (z3_solution.size() != 0)
+-        generate_input(z3_solution, input_file, "/home/cju/test", fid++);
++  if (z3_solution.size() != 0)
++    generate_input(z3_solution, input_file, "/home/cju/test", fid++);
+ 
+-    }
++}
+ 
+-    //delete fut;
+-    //delete fut_opt;
+-    //return n_solvable || s_solvable || z3n_solvable || z3s_solvable ;
+-  }
+-  return nullptr;
+-  }
++//delete fut;
++//delete fut_opt;
++//return n_solvable || s_solvable || z3n_solvable || z3s_solvable ;
++}
++return nullptr;
++}
+ 
+ void init(bool saving_whole, bool use_codecache) {
+   llvm::InitializeNativeTarget();
+@@ -226,16 +262,16 @@ void fini() {
+ }
+ 
+ std::string get_current_dir() {
+-   char buff[FILENAME_MAX]; //create string buffer to hold path
+-   getcwd( buff, FILENAME_MAX );
+-   std::string current_working_dir(buff);
+-   return current_working_dir;
++  char buff[FILENAME_MAX]; //create string buffer to hold path
++  getcwd( buff, FILENAME_MAX );
++  std::string current_working_dir(buff);
++  return current_working_dir;
+ }
+ 
+ void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
+   std::unordered_map<uint32_t, uint8_t> rgd_solution;
+   std::string input_file = "/home/cju/fastgen/test/seed";
+- // std::string old_string = std::to_string(tid);
++  // std::string old_string = std::to_string(tid);
+   //std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
+   //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+   for(uint32_t i=0;i<size;i++) {
+@@ -247,15 +283,16 @@ void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid,
+     generate_input(rgd_solution, input_file, "/home/cju/test", fid++);
+   }
+   else {
+-    RGDSolution sol = {rgd_solution, tid, addr, 0, 0};
++    //we don't assign ctx,order and direction for fmemecmp
++    RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0, 0};
+     solution_queue.enqueue(sol);
+   }
+ }
+ 
+ extern "C" {
+   void submit_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
+-      //RGDSolution sol = {rgd_solution, 0, 0, 0, 0};
+-      handle_fmemcmp(data,index,size, tid, addr);
++    //RGDSolution sol = {rgd_solution, 0, 0, 0, 0};
++    handle_fmemcmp(data,index,size, tid, addr);
+   }
+ 
+   void append_fid(uint64_t addr, uint64_t ctx, uint32_t order, uint64_t direction, uint32_t fid) {
+@@ -266,20 +303,28 @@ extern "C" {
+     return incoming_tasks1.sizeGuess();
+   }
+ 
++  void submit_task_sync(const unsigned char* input, unsigned int input_length) {
++    CodedInputStream s(input,input_length);
++    s.SetRecursionLimit(10000);
++    std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
++    task->ParseFromCodedStream(&s);
++    handle_task_sync(task);
++  }
++
+   void submit_task(const unsigned char* input, unsigned int input_length, bool expect_future, bool fresh) {
+     CodedInputStream s(input,input_length);
+     s.SetRecursionLimit(10000);
+     std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
+     task->ParseFromCodedStream(&s);
+     //printTask(task.get());
+-/*
+-    if (expect_future)
+-      gresults.emplace_back(pool->push(handle_task, task));
+-    else
+-      pool->push(handle_task, task);
+-*/
+-
+-//    handle_task(0,task);
++    /*
++       if (expect_future)
++       gresults.emplace_back(pool->push(handle_task, task));
++       else
++       pool->push(handle_task, task);
++     */
++
++    //    handle_task(0,task);
+     //incoming_tasks.enqueue({task, fresh});
+     std::pair<std::shared_ptr<SearchTask>,bool> tt{task,fresh};
+     if (fresh)
+@@ -301,18 +346,18 @@ extern "C" {
+       finished += (int)r.get();
+     } 
+   }
+-  
++
+   void get_input_buf(unsigned char* input) {
+     for(int i=0; i<10;i++) {
+       input[i] = 32;
+     }
+   }
+ 
+-  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, uint32_t *order, uint32_t *fid, uint64_t *direction ) {
++  uint32_t get_next_input_sync(unsigned char* input, uint64_t *addr, uint64_t *ctx, uint32_t *order, uint32_t *fid, uint64_t *direction, uint32_t *status_code ) {
+     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
+     RGDSolution item;
+     //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
+-     // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
++    // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
+     if(higher_solution_queue.try_dequeue(item)) {
+       std::string old_string = std::to_string(item.fid);
+       std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+@@ -327,20 +372,61 @@ extern "C" {
+       *direction = item.direction;
+       return size;
+     } else if (solution_queue.try_dequeue(item)) {
+-      //smapling output
+-      uint32_t random_fid = get_random_fid(item.addr, item.ctx, item.order, item.direction);
+-      if (random_fid == -1) random_fid = item.fid;
+-      std::string old_string = std::to_string(random_fid);
++      *addr = item.addr;
++      *ctx = item.ctx;
++      *order = item.order;
++      *fid = item.fid;
++      *direction = item.direction;
++      *status_code = item.status_code;
++      if (item.status_code != 0 || item.status_code != 1 || item.status_code != 4) {
++        return 0; 
++      }
++      std::string old_string = std::to_string(item.fid);
+       std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+       //std::string input_file = "/home/cju/debug/seed.png";
+       uint32_t size = load_input(input_file, input);
+       for(auto it = item.sol.begin(); it != item.sol.end(); ++it)
+         input[it->first] = it->second;
++      return size;
++    } else {
++      return 0; 
++    }
++  }
++
++
++  uint32_t get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, uint32_t *order, uint32_t *fid, uint64_t *direction) {
++    //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
++    RGDSolution item;
++    //if (solution_queue.size_approx() % 1000 == 0 && solution_queue.size_approx() > 0)
++    // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
++    if(higher_solution_queue.try_dequeue(item)) {
++      std::string old_string = std::to_string(item.fid);
++      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
++      //std::string input_file = "/home/cju/debug/seed.png";
++      uint32_t size = load_input(input_file, input);
++      for(auto it = item.sol.begin(); it != item.sol.end(); ++it)
++        input[it->first] = it->second;
++      *addr = item.addr;
++      *ctx = item.ctx;
++      *order = item.order;
++      *fid = item.fid;
++      *direction = item.direction;
++      return size;
++    } else if (solution_queue.try_dequeue(item)) {
+       *addr = item.addr;
+       *ctx = item.ctx;
+       *order = item.order;
+       *fid = item.fid;
+       *direction = item.direction;
++      if (item.status_code != 0 || item.status_code != 1 || item.status_code != 4) {
++        return 0; 
++      }
++      std::string old_string = std::to_string(item.fid);
++      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
++      //std::string input_file = "/home/cju/debug/seed.png";
++      uint32_t size = load_input(input_file, input);
++      for(auto it = item.sol.begin(); it != item.sol.end(); ++it)
++        input[it->first] = it->second;
+       return size;
+     } else {
+       return 0; 
+diff --git a/fuzzer/cpp_core/z3solver.cc b/fuzzer/cpp_core/z3solver.cc
+index 9bda52e..e9f4169 100644
+--- a/fuzzer/cpp_core/z3solver.cc
++++ b/fuzzer/cpp_core/z3solver.cc
+@@ -55,7 +55,7 @@ bool Solver::checkonly() {
+ }
+ 
+ 
+-bool Solver::check(std::unordered_map<uint32_t,uint8_t> &solu) {
++int Solver::check(std::unordered_map<uint32_t,uint8_t> &solu) {
+   uint64_t before = getTimeStamp();
+   z3::check_result res;
+   try {
+@@ -75,13 +75,14 @@ bool Solver::check(std::unordered_map<uint32_t,uint8_t> &solu) {
+           //std::cout << " generate_input index is " << name.to_int() << " and value is " << (int)value << std::endl;
+         }
+       }
+-      return true;
++      return 0;
+     }	else {
+       //std::cout << "branch NOT solved in check()" << std::endl;
+-      return false;
++      return 2;
+     }
+   } catch (z3::exception e) {
+     //std::cout << "Z3 alert: " << e.msg() << std::endl;
++    return 1;
+   }
+ }
+ 
+@@ -288,7 +289,7 @@ z3::expr Solver::serialize(const AstNode* req,
+ 
+ 
+ std::unordered_map<uint64_t,z3::expr>  session_cache(1000000);
+-bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu) {
++int sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu) {
+   g_solver->reset();
+   int num_expr = 0;
+   if (opti)
+@@ -317,7 +318,7 @@ bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint
+       //std::cout << "z3 simplified: " << z3expr.simplify().to_string() << std::endl;
+     } catch (z3::exception e) {
+       //std::cout << "z3 alert: " << e.msg() << std::endl;
+-      return false;
++      return 1;
+     }
+   }
+   return g_solver->check(solu);
+diff --git a/fuzzer/cpp_core/z3solver.h b/fuzzer/cpp_core/z3solver.h
+index 1ea3ff3..24db545 100644
+--- a/fuzzer/cpp_core/z3solver.h
++++ b/fuzzer/cpp_core/z3solver.h
+@@ -18,7 +18,7 @@ public:
+   Solver();
+   void add(z3::expr expr);
+ 	void reset();
+-  bool check(std::unordered_map<uint32_t,uint8_t> &solu);
++  int check(std::unordered_map<uint32_t,uint8_t> &solu);
+   bool checkonly();
+ 	z3::expr serialize(const AstNode* req, 
+ 						std::unordered_map<uint32_t,z3::expr> &expr_cache);
+diff --git a/fuzzer/src/cpp_interface.rs b/fuzzer/src/cpp_interface.rs
+index 19ccf67..3bcda83 100644
+--- a/fuzzer/src/cpp_interface.rs
++++ b/fuzzer/src/cpp_interface.rs
+@@ -5,6 +5,7 @@
+ #[link(name = "z3")]
+ extern {
+   pub fn submit_task(input: *const u8, input_length: u32, expect_future: bool, fresh: bool);
++  pub fn submit_task_sync(input: *const u8, input_length: u32);
+   pub fn submit_fmemcmp(data: *const u8, index: u64, size: u32, tid: u32, addr: u64);
+   pub fn append_fid(addr: u64, ctx: u64, order: u32, direction: u64, fid: u32);
+   pub fn get_queue_length() -> u32;
+@@ -12,5 +13,6 @@ extern {
+   pub fn aggregate_results();
+   pub fn get_input_buf(input: *mut u8);
+   pub fn get_next_input(input: *mut u8, addr: *mut u64, ctx: *mut u64, order: *mut u32, fid: *mut u32, direction: *mut u64) -> u32;
++  pub fn get_next_input_sync(input: *mut u8, addr: *mut u64, ctx: *mut u64, order: *mut u32, fid: *mut u32, direction: *mut u64, status_code: *mut u32) -> u32;
+   pub fn fini_core();
+ }
+diff --git a/fuzzer/src/fuzz_loop.rs b/fuzzer/src/fuzz_loop.rs
+index 1d6bba5..bff8cd7 100644
+--- a/fuzzer/src/fuzz_loop.rs
++++ b/fuzzer/src/fuzz_loop.rs
+@@ -25,6 +25,71 @@ use std::collections::HashMap;
+ //use crate::util::*;
+ use wait_timeout::ChildExt;
+ 
++pub fn grading_loop_sync(
++    running: Arc<AtomicBool>,
++    cmd_opt: CommandOpt,
++    depot: Arc<Depot>,
++    global_branches: Arc<GlobalBranches>,
++    branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
++    branch_stats: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
++    ) {
++  let mut executor = Executor::new(
++      cmd_opt,
++      global_branches,
++      depot.clone(),
++      0,
++      );
++
++  //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
++  let t_start = time::Instant::now();
++  let mut grade_count = 0;
++  let mut buf: Vec<u8> = Vec::with_capacity(config::MAX_INPUT_LEN);
++  buf.resize(config::MAX_INPUT_LEN, 0);
++  let mut addr: u64 = 0;
++  let mut ctx: u64 = 0;
++  let mut order: u32 = 0;
++  let mut fid: u32 = 0;
++  let mut direction: u64 = 0;
++  let mut status_code: u32 = 0;
++  let mut stats: [u32;8] = [0;8];
++  while running.load(Ordering::Relaxed) {
++    let len = unsafe { get_next_input_sync(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut status_code) };
++    // update branch stats
++    let mut status = 0;
++    if branch_stats.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
++      status = *branch_stats.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
++      if status_code < status {
++        status = status_code;
++      }
++      //info!("gencount is {}",count);
++    } else {
++      branch_stats.write().unwrap().insert((addr,ctx,order,direction), status_code);
++    }
++    if len != 0 {
++      buf.resize(len as usize, 0);
++      let new_path = executor.run_sync(&buf);
++      if new_path.0 {
++        info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {}, it is a new input {}, saved as input #{}", fid, addr, ctx, order, new_path.0, new_path.1);
++        let mut count = 1;
++        if addr != 0 && branch_hitcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
++          count = *branch_hitcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
++          count += 1;
++          //info!("gencount is {}",count);
++        }
++        branch_hitcount.write().unwrap().insert((addr,ctx,order,direction), count);
++        //info!("next input addr is {:} ctx is {}",addr,ctx);
++      }
++      grade_count = grade_count + 1;
++    }
++    if grade_count % 1000 == 0 {
++      for &value in branch_stats.read().unwrap().values() {
++        stats[value as usize] += 1;
++      }
++      info!("stats is {:?}", stats);
++    }
++  }
++}
++
+ pub fn grading_loop(
+     running: Arc<AtomicBool>,
+     cmd_opt: CommandOpt,
+@@ -80,9 +145,9 @@ pub fn grading_loop(
+         let new_path = executor.run_sync(&buf);
+         let mut solcount = 1;
+         if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
+-            solcount = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
+-            solcount += 1;
+-            //info!("gencount is {}",count);
++          solcount = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
++          solcount += 1;
++          //info!("gencount is {}",count);
+         }
+         branch_solcount.write().unwrap().insert((addr,ctx,order,direction), solcount);
+         if new_path.0 {
+@@ -101,7 +166,7 @@ pub fn grading_loop(
+       if grade_count % 1000 == 0 {
+         let used_t1 = t_start.elapsed().as_secs() as u32;
+         if used_t1 != 0 {
+-       //   warn!("Grading throughput is {}", grade_count / used_t1);
++          //   warn!("Grading throughput is {}", grade_count / used_t1);
+         }
+       }
+     }
+@@ -118,6 +183,14 @@ pub fn dispatcher(table: &UnionTable, global_tasks: Arc<RwLock<Vec<SearchTask>>>
+   scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &dedup, &branch_hitcount, &global_tasks, buf);
+ }
+ 
++pub fn dispatcher_sync(table: &UnionTable, 
++    branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
++    buf: &Vec<u8>, id: usize, pp_map: Arc<RwLock<[u8;134217728]>>) {
++
++  solve_cocofuzz_sync(id, table, config::MAX_INPUT_LEN, &branch_hitcount, buf, &pp_map);
++}
++
++
+ pub fn fuzz_loop(
+     running: Arc<AtomicBool>,
+     cmd_opt: CommandOpt,
+@@ -132,20 +205,20 @@ pub fn fuzz_loop(
+ 
+   let shmid = match executor_id { 
+     2 => unsafe {
+-    libc::shmget(
+-        0x1234,
+-        0xc00000000,
+-        0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+-        )
+-    },
+-    3 => unsafe {
+-    libc::shmget(
+-        0x2468,
+-        0xc00000000,
+-        0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+-        )
++      libc::shmget(
++          0x1234,
++          0xc00000000,
++          0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
++          )
+     },
+-    _ => 0,
++      3 => unsafe {
++        libc::shmget(
++            0x2468,
++            0xc00000000,
++            0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
++            )
++      },
++      _ => 0,
+   };
+ 
+   info!("start fuzz loop with shmid {}",shmid);
+@@ -178,7 +251,7 @@ pub fn fuzz_loop(
+       let builder = thread::Builder::new().stack_size(64 * 1024 * 1024);
+       let handle = builder.spawn(move || {
+           dispatcher(table, gtasks, gdedup, gbranch_hitcount, &buf_cloned, executor_id);
+-      }).unwrap();
++          }).unwrap();
+ 
+       let t_start = time::Instant::now();
+ 
+@@ -197,7 +270,7 @@ pub fn fuzz_loop(
+       let mut buf = depot.get_input_buf(depot.next_random());
+       run_afl_mutator(&mut executor,&mut buf);
+       if !config::SAMPLING || unsafe { get_queue_length() } > 100000 {
+-      //if !config::SAMPLING {
++        //if !config::SAMPLING {
+         continue;
+       }
+       no_more_seeds = no_more_seeds + 1;
+@@ -207,22 +280,22 @@ pub fn fuzz_loop(
+         let cloned_branchhit: HashMap<(u64,u64,u32,u64),u32> = branch_hitcount.read().unwrap().clone();
+         let cloned_branchgen: HashMap<(u64,u64,u32,u64),u32> = branch_gencount.read().unwrap().clone();
+         let cloned_branchsol: HashMap<(u64,u64,u32,u64),u32> = branch_solcount.read().unwrap().clone();
+-/*
+-        let mut hitcount_vec: Vec<(&(u64,u64,u32), &u32)> = cloned_branchhit.iter().collect();
+-        let mut gencount_vec: Vec<(&(u64,u64,u32,u64), &u32)> = cloned_branchgen.iter().collect();
+-        hitcount_vec.sort_by(|a, b| a.1.cmp(b.1));
+-        gencount_vec.sort_by(|a, b| b.1.cmp(a.1));
+-
+-        for item in hitcount_vec {
+-          println!("Most frequently hit branch are {:?}, count is {}", item.0, item.1);
+-        }
++        /*
++           let mut hitcount_vec: Vec<(&(u64,u64,u32), &u32)> = cloned_branchhit.iter().collect();
++           let mut gencount_vec: Vec<(&(u64,u64,u32,u64), &u32)> = cloned_branchgen.iter().collect();
++           hitcount_vec.sort_by(|a, b| a.1.cmp(b.1));
++           gencount_vec.sort_by(|a, b| b.1.cmp(a.1));
+ 
+-        warn!("gencount items is {}", gencount_vec.len());
++           for item in hitcount_vec {
++           println!("Most frequently hit branch are {:?}, count is {}", item.0, item.1);
++           }
+ 
+-        for item in gencount_vec {
+-          println!("Most frequently gen branch are {:?}, count is {}", item.0, item.1);
+-        }
+-*/
++           warn!("gencount items is {}", gencount_vec.len());
++
++           for item in gencount_vec {
++           println!("Most frequently gen branch are {:?}, count is {}", item.0, item.1);
++           }
++         */
+ 
+         let mut scheduled_count = 0;
+         let mut zero_count = 0;
+@@ -248,111 +321,196 @@ pub fn fuzz_loop(
+ 
+           let hitcount = match cloned_branchhit.get(&(task.get_addr(), task.get_ctx(), task.get_order(), task.get_direction())) {
+             Some(&x) => x,
+-            None => 0,
++              None => 0,
+           };
+ 
+           let gencount = match cloned_branchgen.get(&(task.get_addr(), task.get_ctx(), task.get_order(), task.get_direction())) {
+             Some(&x) => x,
+-            None => 0,
++              None => 0,
+           };
+ 
+           let solcount = match cloned_branchsol.get(&(task.get_addr(), task.get_ctx(), task.get_order(), task.get_direction())) {
+             Some(&x) => x,
+-            None => 0,
++              None => 0,
+           };
+ 
+           if (gencount == 0 && solcount == 0) {
+-                zero_count += 1;
+-            }
++            zero_count += 1;
++          }
+           if (gencount == 0 && solcount != 0) {
+-                divergence_count += 1;
+-                info!("divergent task is addr {}, direction {}", task.get_addr(),task.get_direction());
+-            }
++            divergence_count += 1;
++            info!("divergent task is addr {}, direction {}", task.get_addr(),task.get_direction());
++          }
+ 
+           if (gencount == 1) {
+-                one_count += 1;
+-            }
++            one_count += 1;
++          }
+           if (gencount > 1) {
+-                other_count += 1;
+-            }
++            other_count += 1;
++          }
+           if if_quota || (!if_quota && (gencount > 1 || hitcount < 5)) {
+-          //if hitcount < 5 || gencount > 1 {
++            //if hitcount < 5 || gencount > 1 {
+             if (gencount > 4) {
+               info!("gencount {} solcount {} addr {}", gencount, solcount, task.get_addr());
+             }
+-            
++
+             scheduled_count += 1;
+             let task_ser = task.write_to_bytes().unwrap();
+             unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, false); }
+           }
++          }
++          info!("scheduled_count {}", scheduled_count);
++          info!("zero_count {} divergenct_count {} one_count {} other_count {}", zero_count, divergence_count, one_count, other_count);
++          //thread::sleep(time::Duration::from_secs(scheduled_count/1000));
++          //break;
+         }
+-        info!("scheduled_count {}", scheduled_count);
+-        info!("zero_count {} divergenct_count {} one_count {} other_count {}", zero_count, divergence_count, one_count, other_count);
+-        //thread::sleep(time::Duration::from_secs(scheduled_count/1000));
+-        //break;
++      }
+       }
+     }
+-  }
+-}
+-
+ 
+-#[cfg(test)]
+-mod tests {
+-  use super::*;
+-  use std::fs;
+-  use std::path::PathBuf;
+-  use crate::depot;
+-  use crate::command;
+-  use crate::branches;
++pub fn fuzz_loop_sync(
++    running: Arc<AtomicBool>,
++    cmd_opt: CommandOpt,
++    depot: Arc<Depot>,
++    global_branches: Arc<GlobalBranches>,
++    branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
++    ) {
+ 
+-#[test]
+-  fn test_pointer() {
+-    let mut buf: Vec<u8> = Vec::with_capacity(10);
+-    buf.resize(10, 0);
+-    unsafe { get_input_buf(buf.as_mut_ptr()); }
+-    println!("{}",buf[0])
+-  }
++  let mut id: usize = 0;
++  let mut rerun_id: usize = 0;
++  let executor_id = cmd_opt.id;
+ 
+-#[test]
+-  fn test_grading() {
+-    let angora_out_dir = PathBuf::from("output");
+-    let seeds_dir = PathBuf::from("input");
+-    let args = vec!["./size.fast".to_string(), "@@".to_string()];
+-    fs::create_dir(&angora_out_dir).expect("Output directory has existed!");
++  let shmid = match executor_id { 
++    2 => unsafe {
++      libc::shmget(
++          0x1234,
++          0xc00000000,
++          0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
++          )
++    },
++      3 => unsafe {
++        libc::shmget(
++            0x2468,
++            0xc00000000,
++            0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
++            )
++      },
++      _ => 0,
++  };
+ 
+-    let cmd_opt = command::CommandOpt::new("./size.track", args, &angora_out_dir, 200, 1);
++  info!("start fuzz loop with shmid {}",shmid);
+ 
+-    let depot = Arc::new(depot::Depot::new(seeds_dir, &angora_out_dir));
++  let mut executor = Executor::new(
++      cmd_opt,
++      global_branches,
++      depot.clone(),
++      shmid,
++      );
+ 
+-    let global_branches = Arc::new(branches::GlobalBranches::new());
++  let ptr = unsafe { libc::shmat(shmid, std::ptr::null(), 0) as *mut UnionTable};
++  let table = unsafe { & *ptr };
++  //let mymap: [u8; 134217728] = [0; 134217728];
++  let pp_map = Arc::new(RwLock::new([0 as u8; 134217728]));
++  let mut branch_quota = HashMap::<(u64,u64,u32), u32>::new();
+ 
+-    let mut executor = Executor::new(
+-        cmd_opt.specify(1),
+-        global_branches.clone(),
+-        depot.clone(),
+-        0);
++  let mut no_more_seeds = 0;
++  while running.load(Ordering::Relaxed) {
++    let mut cur_id = 0;
++    if id < depot.get_num_inputs() {
++      cur_id = id;
++      id = id + 1;
++    } else {
++      if rerun_id < depot.get_num_inputs() {
++        cur_id = rerun_id;
++        rerun_id = rerun_id + 1;
++      } else {
++        cur_id = 0;
++        rerun_id = 0;
++      }
++    }
++    //thread::sleep(time::Duration::from_millis(10));
++    let buf = depot.get_input_buf(cur_id);
++    let buf_cloned = buf.clone();
++    //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
++    let gbranch_hitcount = branch_hitcount.clone();
++    let gpp_map = pp_map.clone();
++    let builder = thread::Builder::new().stack_size(64 * 1024 * 1024);
++    let handle = builder.spawn(move || {
++        dispatcher_sync(table, gbranch_hitcount, &buf_cloned, executor_id, gpp_map);
++        }).unwrap();
+ 
+     let t_start = time::Instant::now();
+-    let mut fid = 0;
+-    let dirpath = Path::new("/home/cju/test");
+-    let mut count = 0;
+-    loop {
+-      let file_name = format!("id-{:08}", fid);
+-      println!("file name is {:?}",file_name);
+-      let fpath = dirpath.join(file_name);
+-      if !fpath.exists() {
+-        break;
+-      }
+-      let buf = read_from_file(&fpath);
+-      println!("grading {:?}, len {}", &fpath,buf.len() );
+-      let newpath = executor.run_sync(&buf);
+-      println!("grading {}",newpath.0);
+-      fid = fid + 1;
+-      count = count + 1;
++
++    executor.track(id, &buf);
++
++    if handle.join().is_err() {
++      error!("Error happened in listening thread!");
+     }
++
+     let used_t1 = t_start.elapsed();
+-    if used_t1.as_secs() as u32 !=0  {
+-      println!("throught put is {}", count / used_t1.as_secs() as u32);
+-    }
++    let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
++    trace!("track time {}", used_us1);
+   }
+ }
++
++
++#[cfg(test)]
++    mod tests {
++      use super::*;
++      use std::fs;
++      use std::path::PathBuf;
++      use crate::depot;
++      use crate::command;
++      use crate::branches;
++
++#[test]
++      fn test_pointer() {
++        let mut buf: Vec<u8> = Vec::with_capacity(10);
++        buf.resize(10, 0);
++        unsafe { get_input_buf(buf.as_mut_ptr()); }
++        println!("{}",buf[0])
++      }
++
++#[test]
++      fn test_grading() {
++        let angora_out_dir = PathBuf::from("output");
++        let seeds_dir = PathBuf::from("input");
++        let args = vec!["./size.fast".to_string(), "@@".to_string()];
++        fs::create_dir(&angora_out_dir).expect("Output directory has existed!");
++
++        let cmd_opt = command::CommandOpt::new("./size.track", args, &angora_out_dir, 200, 1);
++
++        let depot = Arc::new(depot::Depot::new(seeds_dir, &angora_out_dir));
++
++        let global_branches = Arc::new(branches::GlobalBranches::new());
++
++        let mut executor = Executor::new(
++            cmd_opt.specify(1),
++            global_branches.clone(),
++            depot.clone(),
++            0);
++
++        let t_start = time::Instant::now();
++        let mut fid = 0;
++        let dirpath = Path::new("/home/cju/test");
++        let mut count = 0;
++        loop {
++          let file_name = format!("id-{:08}", fid);
++          println!("file name is {:?}",file_name);
++          let fpath = dirpath.join(file_name);
++          if !fpath.exists() {
++            break;
++          }
++          let buf = read_from_file(&fpath);
++          println!("grading {:?}, len {}", &fpath,buf.len() );
++          let newpath = executor.run_sync(&buf);
++          println!("grading {}",newpath.0);
++          fid = fid + 1;
++          count = count + 1;
++        }
++        let used_t1 = t_start.elapsed();
++        if used_t1.as_secs() as u32 !=0  {
++          println!("throught put is {}", count / used_t1.as_secs() as u32);
++        }
++      }
++    }
+diff --git a/fuzzer/src/fuzz_main.rs b/fuzzer/src/fuzz_main.rs
+index f6ae27c..befb812 100644
+--- a/fuzzer/src/fuzz_main.rs
++++ b/fuzzer/src/fuzz_main.rs
+@@ -52,6 +52,8 @@ pub fn fuzz_main(
+   let global_branches = Arc::new(branches::GlobalBranches::new());
+   let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
+   let branch_solcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
++  let branch_hitcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
++  let branch_stats = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
+   let running = Arc::new(AtomicBool::new(true));
+   set_sigint_handler(running.clone());
+ 
+@@ -78,8 +80,11 @@ pub fn fuzz_main(
+     let cmd = command_option.specify(4+g);
+     let bg = branch_gencount.clone();
+     let bs = branch_solcount.clone();
++    let bh = branch_hitcount.clone();
++    let bt = branch_stats.clone();
+     let handle = thread::spawn(move || {
+-        fuzz_loop::grading_loop(r, cmd, d, b, bg, bs);
++        //fuzz_loop::grading_loop(r, cmd, d, b, bg, bs);
++        fuzz_loop::grading_loop_sync(r, cmd, d, b, bh, bt);
+         });
+     handlers.push(handle);
+   }
+@@ -91,8 +96,10 @@ pub fn fuzz_main(
+     let cmd = command_option.specify(2);
+     let bg = branch_gencount.clone();
+     let bs = branch_solcount.clone();
++    let bh = branch_hitcount.clone();
+     let handle = thread::spawn(move || {
+-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs);
++        //fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs);
++        fuzz_loop::fuzz_loop_sync(r, cmd, d, b, bh);
+         });
+     handlers.push(handle);
+   }
+diff --git a/fuzzer/src/track_cons.rs b/fuzzer/src/track_cons.rs
+index 9ee5ea8..d7f0af2 100644
+--- a/fuzzer/src/track_cons.rs
++++ b/fuzzer/src/track_cons.rs
+@@ -13,19 +13,40 @@ use crate::util::*;
+ use crate::file::*;
+ use crate::union_find::*;
+ use protobuf::CodedInputStream;
++use twox_hash::XxHash64;
++use std::hash::BuildHasherDefault;
++use std::hash::Hasher;
++use std::fs::File;
++use std::io::BufReader;
++use std::io::BufRead;
++use std::time;
+ 
+ //each input offset has a coresspdoing slot
+ pub struct BranchDep {
+   //the dependent expr labels associated with this input
+   pub expr_labels: HashSet<u32>,
+-  // the dependent input offsets associated with this input offset
++      // the dependent input offsets associated with this input offset
++}
++
++pub fn mark_pp(digest: u64, pp_map: &Arc<RwLock<[u8;134217728]>>) {
++  let slot = digest % 1073741824;
++  let idx = slot / 8;
++  let mask  = 1 << (slot % 8);
++  pp_map.write().unwrap()[idx as usize] |= mask;
++}
++
++pub fn check_pp(digest: u64, pp_map: &Arc<RwLock<[u8;134217728]>>) -> bool {
++  let slot = digest % 1073741824;
++  let idx = slot / 8;
++  let mask  = 1 << (slot % 8);
++  return pp_map.read().unwrap()[idx as usize] & mask == 0;
+ }
+ 
+ //label 0: fid  label 1: label  label 2: direction/result label 3: addr, label4: ctx, label5, order label6: is gep
+ pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
+-                  tasks: &mut Vec<SearchTask>,
+-                  table: &UnionTable,
+-                  buf: &Vec<u8>) {
++    tasks: &mut Vec<SearchTask>,
++    table: &UnionTable,
++    buf: &Vec<u8>) {
+   for &label in labels {
+     let mut node = AstNode::new();
+     let mut cons = Constraint::new();
+@@ -43,13 +64,182 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
+   }
+ }
+ 
++//label 0: fid  label 1: label  label 2: direction/result label 3: addr, label4: ctx, label5, order label6: is gep
++//dedup based on <addr,ctx,order,direction>
++//branch hitcount <addr,ctx,order,direction>
++// input buf: for initial value setup
++pub fn solve_cocofuzz_sync(pipeid: usize,
++    table: &UnionTable, tainted_size: usize, 
++    branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, 
++    buf: &Vec<u8>,
++    pp_map: &Arc<RwLock<[u8;134217728]>>) {
++  let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
++  let mut uf = UnionFind::new(tainted_size);
++  branch_deps.resize_with(tainted_size, || None);
++
++  let f = match pipeid {
++      2 => File::open("/tmp/wp2").expect("open pipe failed"),
++      3 => File::open("/tmp/wp3").expect("open pipe failed"),
++      _ => File::open("/tmp/wp2").expect("open pipe failed"),
++  };
++
++  let mut reader = BufReader::new(f);
++
++  let mut path_prefix: XxHash64 = XxHash64::default();
++  let t_start = time::Instant::now();
++  loop {
++    //reserve a place in branch hitcount. We mark each branch as "1" only when it is flipped
++    let mut buffer = String::new();
++    let num_bytes = reader.read_line(&mut buffer).expect("read pipe failed");
++
++    if num_bytes != 0 {
++      let mut count = 0;
++      let tokens: Vec<&str> = buffer.trim().split(',').collect();
++      let tid = tokens[0].trim().parse::<u32>().expect("we expect u32 number in each line");
++      let lbl = tokens[1].trim().parse::<u32>().expect("we expect u32 number in each line");
++      let direction = tokens[2].trim().parse::<u64>().expect("we expect u32 number in each line");
++      let addr = tokens[3].trim().parse::<u64>().expect("we expect u64 number in each line");
++      let ctx = tokens[4].trim().parse::<u64>().expect("we expect u64 number in each line");
++      let order = tokens[5].trim().parse::<u32>().expect("we expect u32 number in each line");
++      let isgep = tokens[6].trim().parse::<u32>().expect("we expect u32 number in each line");
++
++      let label = (tid,lbl,direction,addr,ctx,order,isgep);
++
++      if !branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
++        branch_hitcount.write().unwrap().insert((label.3,label.4,label.5, label.2), 0);
++      } else {
++        count = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
++      }
++
++      let mut node = AstNode::new();
++      let mut cons = Constraint::new();
++      //let mut cons_reverse = Constraint::new();
++      let mut inputs = HashSet::new();
++      if label.6 == 0 {   //gep constraints
++        //timeout
++        let used_t1 = t_start.elapsed().as_secs() as u32;
++        if used_t1 > 90 {
++          continue;
++        }
++        //roll in pp
++        path_prefix.write_u64(label.3);
++        let mut tmp: XxHash64 = path_prefix.clone();
++        path_prefix.write_u64(label.2);
++        tmp.write_u64(1 - label.2);
++        mark_pp(path_prefix.finish(), &pp_map);
++        if check_pp(tmp.finish(), &pp_map) && count == 0 {
++          get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
++          mark_pp(tmp.finish(), &pp_map);
++        } else {
++          mark_pp(tmp.finish(), &pp_map);
++          continue;
++        }
++      } else if label.6 == 1 {  //comparison
++        if count == 0 {
++          get_gep_constraint(label.1, label.2, &mut node, table, &mut inputs);
++        } else {
++          continue;
++        }
++      } else if label.6 == 2 {  //specifal op: fmemcmp
++        let mut buffer = String::new();
++        let num_byters = reader.read_line(&mut buffer).expect("read pipe faled");
++        let size = lbl;
++        let mut data = [0;1024];
++        if num_bytes !=0 {
++          let tokens: Vec<&str> = buffer.trim().split(',').collect();
++          for i in 0..size as usize {
++            data[i] = tokens[i].trim().parse::<u8>().expect("we expect u8");
++          }
++          if (count == 0) {
++            unsafe { submit_fmemcmp(data.as_ptr(), label.2, label.1, label.0, label.3); }
++          }
++        } else {
++          // no bytes
++          break;
++        }
++        //we don't need to serialize this one
++        continue;
++      } else if label.6 == 3 {  //add constraints
++        // get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
++      }
++
++
++      if inputs.is_empty() { warn!("Skip constraint!"); continue; }
++
++      let mut init = false;
++      //build union table
++      let mut v0 = 0;
++      for &v in inputs.iter() {
++        if !init {
++          v0 = v;
++          init = true;
++        }
++        uf.union(v as usize, v0 as usize);
++      }
++      //step 2: add constraints
++      let mut added = HashSet::new();
++      for off in uf.get_set(v0 as usize) {
++        let deps_opt = &branch_deps[off as usize];
++        if let Some(deps) = deps_opt {
++          for &l in deps.expr_labels.iter() {
++            added.insert(l);
++          }
++        }
++      }
++      //we dont solve add_cons
++      // add constraints
++      cons.set_node(node);
++      analyze_meta(&mut cons, buf);
++      cons.set_label(label.1);
++
++      let mut task = SearchTask::new();
++      //cons_table.insert(label.1, cons.clone());
++      task.mut_constraints().push(cons);
++      for &l in added.iter() {
++        //let mut c = cons_table[l].clone();
++        //flip_op(c.mut_node());
++        let mut c = Constraint::new();
++        c.set_label(l);
++        task.mut_constraints().push(c);
++      }
++      task.set_fid(label.0);
++      task.set_addr(label.3);
++      task.set_ctx(label.4);
++      task.set_order(label.5);
++      task.set_direction(label.2);
++
++      let task_ser = task.write_to_bytes().unwrap();
++      unsafe { submit_task_sync(task_ser.as_ptr(), task_ser.len() as u32); }
++      //step 3: nested branch
++      for &off in inputs.iter() {
++        let mut is_empty = false;
++        {
++          let deps_opt = &branch_deps[off as usize];
++          if deps_opt.is_none() {
++            is_empty = true;
++          }
++        }
++        if is_empty {
++          branch_deps[off as usize] =
++            Some(BranchDep {expr_labels: HashSet::new()});
++        }
++        let deps_opt = &mut branch_deps[off as usize];
++        let deps = deps_opt.as_mut().unwrap(); 
++        deps.expr_labels.insert(label.1);
++      }
++    } else {
++      break;
++    }
++  }
++}
++
+ 
+ //label 0: fid  label 1: label  label 2: direction/result label 3: addr, label4: ctx, label5, order label6: is gep
+ //dedup based on <addr,ctx,order,direction>
+ //branch hitcount <addr,ctx,order,direction>
+ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_data: &mut VecDeque<[u8;1024]>,
+-          table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>
+-          , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, global_tasks: &Arc<RwLock<Vec<SearchTask>>>, buf: &Vec<u8>) {
++    table: &UnionTable, tainted_size: usize, dedup: &Arc<RwLock<HashSet<(u64,u64,u32, u64)>>>
++    , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, global_tasks: &Arc<RwLock<Vec<SearchTask>>>, buf: &Vec<u8>) {
+   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
+   let mut uf = UnionFind::new(tainted_size);
+   branch_deps.resize_with(tainted_size, || None);
+@@ -86,7 +276,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
+       unsafe { submit_fmemcmp(data.as_ptr(), label.2, label.1, label.0, label.3); }
+       continue;
+     } else if label.6 == 3 {  //add constraints
+-     // get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
++      // get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
+     }
+ 
+ 
+@@ -102,74 +292,74 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
+       }
+       uf.union(v as usize, v0 as usize);
+     }
+-      //step 2: add constraints
+-      let mut added = HashSet::new();
+-      for off in uf.get_set(v0 as usize) {
+-        let deps_opt = &branch_deps[off as usize];
+-        if let Some(deps) = deps_opt {
+-          for &l in deps.expr_labels.iter() {
+-            added.insert(l);
+-          }
++    //step 2: add constraints
++    let mut added = HashSet::new();
++    for off in uf.get_set(v0 as usize) {
++      let deps_opt = &branch_deps[off as usize];
++      if let Some(deps) = deps_opt {
++        for &l in deps.expr_labels.iter() {
++          added.insert(l);
+         }
+       }
++    }
+ 
+-      //we dont solve add_cons
+-      // add constraints
+-      cons.set_node(node);
++    //we dont solve add_cons
++    // add constraints
++    cons.set_node(node);
+ 
+ 
+-      analyze_meta(&mut cons, buf);
+-      cons.set_label(label.1);
+-/*
+-      let bytes = cons.write_to_bytes().unwrap();
+-      let mut stream = CodedInputStream::from_bytes(&bytes);
+-      stream.set_recursion_limit(1000);
+-      cons_reverse.merge_from(&mut stream).expect("merge failed");
+-*/
+-      let mut task = SearchTask::new();
+-      //cons_table.insert(label.1, cons.clone());
+-      task.mut_constraints().push(cons);
+-      for &l in added.iter() {
+-        //let mut c = cons_table[l].clone();
+-        //flip_op(c.mut_node());
+-        let mut c = Constraint::new();
+-        c.set_label(l);
+-        task.mut_constraints().push(c);
+-      }
+-      task.set_fid(label.0);
+-      task.set_addr(label.3);
+-      task.set_ctx(label.4);
+-      task.set_order(label.5);
+-      task.set_direction(label.2);
++    analyze_meta(&mut cons, buf);
++    cons.set_label(label.1);
++    /*
++       let bytes = cons.write_to_bytes().unwrap();
++       let mut stream = CodedInputStream::from_bytes(&bytes);
++       stream.set_recursion_limit(1000);
++       cons_reverse.merge_from(&mut stream).expect("merge failed");
++     */
++    let mut task = SearchTask::new();
++    //cons_table.insert(label.1, cons.clone());
++    task.mut_constraints().push(cons);
++    for &l in added.iter() {
++      //let mut c = cons_table[l].clone();
++      //flip_op(c.mut_node());
++      let mut c = Constraint::new();
++      c.set_label(l);
++      task.mut_constraints().push(c);
++    }
++    task.set_fid(label.0);
++    task.set_addr(label.3);
++    task.set_ctx(label.4);
++    task.set_order(label.5);
++    task.set_direction(label.2);
+ 
+-      let task_ser = task.write_to_bytes().unwrap();
+-      unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
+-      global_tasks.write().unwrap().push(task);
+-/*
+-      if label.2 <= 1 {
+-        let mut task_reverse = SearchTask::new();
+-        //cons_table.insert(label.1, cons.clone());
+-        flip_op(cons_reverse.mut_node());
+-        task_reverse.mut_constraints().push(cons_reverse);
+-        for &l in added.iter() {
+-          // let mut c = cons_table[l].clone();
+-          // flip_op(c.mut_node());
+-          let mut c = Constraint::new();
+-          c.set_label(l);
+-          task_reverse.mut_constraints().push(c);
+-        }
+-        task_reverse.set_fid(label.0);
+-        task_reverse.set_addr(label.3);
+-        task_reverse.set_ctx(label.4);
+-        task_reverse.set_order(label.5);
+-        task_reverse.set_direction(1 - label.2);
++    let task_ser = task.write_to_bytes().unwrap();
++    unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
++    global_tasks.write().unwrap().push(task);
++    /*
++       if label.2 <= 1 {
++       let mut task_reverse = SearchTask::new();
++    //cons_table.insert(label.1, cons.clone());
++    flip_op(cons_reverse.mut_node());
++    task_reverse.mut_constraints().push(cons_reverse);
++    for &l in added.iter() {
++    // let mut c = cons_table[l].clone();
++    // flip_op(c.mut_node());
++    let mut c = Constraint::new();
++    c.set_label(l);
++    task_reverse.mut_constraints().push(c);
++    }
++    task_reverse.set_fid(label.0);
++    task_reverse.set_addr(label.3);
++    task_reverse.set_ctx(label.4);
++    task_reverse.set_order(label.5);
++    task_reverse.set_direction(1 - label.2);
+ 
+ 
+-        let task_ser = task_reverse.write_to_bytes().unwrap();
+-        unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
+-        global_tasks.write().unwrap().push(task_reverse);
+-      }
+-*/
++    let task_ser = task_reverse.write_to_bytes().unwrap();
++    unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
++    global_tasks.write().unwrap().push(task_reverse);
++    }
++     */
+     //step 3: nested branch
+     for &off in inputs.iter() {
+       let mut is_empty = false;
+@@ -181,7 +371,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
+       }
+       if is_empty {
+         branch_deps[off as usize] =
+-            Some(BranchDep {expr_labels: HashSet::new()});
++          Some(BranchDep {expr_labels: HashSet::new()});
+       }
+       let deps_opt = &mut branch_deps[off as usize];
+       let deps = deps_opt.as_mut().unwrap(); 
+@@ -191,11 +381,11 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
+ }
+ 
+ fn append_meta(cons: &mut Constraint, 
+-              local_map: &HashMap<u32,u32>, 
+-              shape: &HashMap<u32,u32>, 
+-              input_args: &Vec<(bool,u64)>,
+-              inputs: &Vec<(u32,u8)>,
+-              const_num: u32) {
++    local_map: &HashMap<u32,u32>, 
++    shape: &HashMap<u32,u32>, 
++    input_args: &Vec<(bool,u64)>,
++    inputs: &Vec<(u32,u8)>,
++    const_num: u32) {
+   let mut meta = NodeMeta::new();
+   for (&k,&v) in local_map.iter() {
+     let mut amap = Mapping::new();
+@@ -272,15 +462,15 @@ mod tests {
+     scan_nested_tasks(&labels, &mut fmemcmpdata, table, 15000, &dedup, &branch_hit, &buf);
+     println!("after scanning\n");
+ 
+-//    scan_tasks(&labels, &mut tasks, table);
+-/*
+-    for task in tasks {
+-      println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
+-      print_task(&task);
+-      let task_ser = task.write_to_bytes().unwrap();
+-      unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
+-    }
+-*/
++    //    scan_tasks(&labels, &mut tasks, table);
++    /*
++       for task in tasks {
++       println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
++       print_task(&task);
++       let task_ser = task.write_to_bytes().unwrap();
++       unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
++       }
++     */
+     unsafe { aggregate_results(); }
+     unsafe { fini_core(); }
+   }
