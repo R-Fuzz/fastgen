@@ -105,7 +105,8 @@ void save_task(const unsigned char* input, unsigned int input_length) {
 
 void* handle_task_z3(void*) {
   //printTask(task.get());
-
+  int solve_count = 0;
+  uint64_t start = getTimeStamp();
   while (true) {
     auto task1 = task_queue.pop();
     
@@ -134,6 +135,12 @@ void* handle_task_z3(void*) {
       if (z3_solution.size() != 0)
         generate_input(z3_solution, input_file, "./raw_cases", fid++);
 
+    }
+    solve_count++; 
+    if (solve_count % 1000 == 0) {
+      uint64_t time_elapsed = (getTimeStamp() - start) / 1000000;
+      if (time_elapsed !=0)
+        printf("solve count is %d throughput is %u/milli\n", solve_count, solve_count/time_elapsed);
     }
 
   }
