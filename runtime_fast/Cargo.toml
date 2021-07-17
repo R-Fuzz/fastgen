@@ -11,7 +11,7 @@ crate-type = ["staticlib"] # "cdylib"
 [dependencies]
 libc = "0.2"
 lazy_static = "1.1"
-#nix = "0.22.0"
+nix = "0.22.0"
 byteorder = "1.2"
 fastgen_common = { path = "../common" }
 ctor = "0.1.9"
