@@ -158,6 +158,10 @@ void* handle_task(void*) {
 
     FUT* fut = nullptr;
     FUT* fut_opt = nullptr;
+    if (!solve) {
+	addCons(task.get());
+	continue;
+    }
 
     lookup_or_construct(task.get(), &fut, &fut_opt, task1.second);
 
@@ -167,11 +171,13 @@ void* handle_task(void*) {
     fut->rgd_solutions = &rgd_solutions;
     fut->partial_solutions = &partial_solutions;
     fut_opt->rgd_solutions = &rgd_solutions_opt;
+    if (solve) {
     gd_search(fut_opt);
     if (rgd_solutions_opt.size() != 0) {
       //fut->load_hint(rgd_solutions_opt[0]);
       gd_search(fut);
     }
+     }
 
     if (!SAVING_WHOLE) {
       for (auto rgd_solution :  rgd_solutions) {

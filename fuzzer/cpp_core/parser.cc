@@ -165,9 +165,9 @@ struct cons_hash {
 std::unordered_map<uint32_t,Constraint> cons_cache(100000);
 
 
+static uint32_t old_fid = -1;
 void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bool fresh) {
   int i = 0;
-  static uint32_t old_fid = -1;
   static uint32_t count = 0;
   //for (Constraint c : task->constraints()) {
   if (task->fid() != old_fid) {
@@ -284,5 +284,9 @@ void lookup_or_construct(SearchTask* task, struct FUT** fut, struct FUT** fut_op
 
 void addCons(SearchTask* task){
     //cons_cache.insert({{task->fid(),task->constraints(0).label()}, task->constraints(0)});
-    cons_cache.insert({task->constraints(0).label(), task->constraints(0)});
+  if (task->fid() != old_fid) {
+    cons_cache.clear();
+    old_fid = task->fid();
+  }
+  cons_cache.insert({task->constraints(0).label(), task->constraints(0)});
 }

@@ -51,7 +51,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
   let mut count = 0;
   for &label in labels {
     let mut hitcount = 1;
-    let mut _gencount = 0;
+    let mut gencount = 0;
     if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
       hitcount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
       hitcount += 1;
@@ -59,15 +59,15 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     branch_hitcount.write().unwrap().insert((label.3,label.4,label.5,label.2), hitcount);
 
     if branch_gencount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
-      _gencount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
+      gencount = *branch_gencount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
     }
     //we have to continue here, the underlying task lookup with check the redudant as well. If it is redudant, the task will be loaded
     //without inserting caching 
     if hitcount > 1 {
       if label.6 == 2 {
         memcmp_data.pop_front().unwrap();
-      	continue;
       }
+      //continue;
     }
 
     let mut node = AstNode::new();
@@ -85,7 +85,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       }
       continue;
     } else if label.6 == 3 {
-      //get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
+      get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     }
 
 
@@ -145,15 +145,17 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
       let task_ser = task.write_to_bytes().unwrap();
 
-        count = count +1;
-      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
-/*
+      //  count = count + 1;
+     // 	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
+
+
       if hitcount <= 1 && gencount == 0 && label.6 !=3 {
-      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, true); }
+      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
       } else {
-      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false, false); }
+      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
       }
-*/
+
+
 
       
 
