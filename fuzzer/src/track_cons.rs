@@ -48,6 +48,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
   branch_deps.resize_with(tainted_size, || None);
   //let mut cons_table = HashMap::new();
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
+  let mut count = 0;
   for &label in labels {
     let mut hitcount = 1;
     let mut _gencount = 0;
@@ -144,7 +145,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
       let task_ser = task.write_to_bytes().unwrap();
 
-
+        count = count +1;
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
 /*
       if hitcount <= 1 && gencount == 0 && label.6 !=3 {
@@ -174,6 +175,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       deps.expr_labels.insert(label.1);
     }
   }
+  info!("submitted {} tasks", count);
 }
 
 fn append_meta(cons: &mut Constraint, 

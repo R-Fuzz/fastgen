@@ -168,11 +168,15 @@ std::unordered_map<uint32_t,Constraint> cons_cache(100000);
 void construct_task(SearchTask* task, struct FUT** fut, struct FUT** fut_opt, bool fresh) {
   int i = 0;
   static uint32_t old_fid = -1;
+  static uint32_t count = 0;
   //for (Constraint c : task->constraints()) {
   if (task->fid() != old_fid) {
+    printf("all the previous %d tasks are handled with old_fid %d\n", count, old_fid);
+    count = 0;
     cons_cache.clear();
     old_fid = task->fid();
   }
+  count++;
   Constraint c;
   for (int i =0; i< task->constraints_size(); i++) {
     if (i == 0) { c = task->constraints(0);

@@ -244,7 +244,7 @@ pub fn grading_loop(
       if grade_count % 1000 == 0 {
         let used_t1 = t_start.elapsed().as_secs() as u32;
         if used_t1 != 0 {
-          //   warn!("Grading throughput is {}", grade_count / used_t1);
+             warn!("Grading throughput is {}", grade_count / used_t1);
         }
       }
     }
