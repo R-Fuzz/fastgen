@@ -138,7 +138,7 @@ void* handle_task_z3(void*) {
     }
     solve_count++; 
     if (solve_count % 10 == 0 && solve_count > 0) {
-      uint64_t time_elapsed = (getTimeStamp() - start) / 1000000;
+      uint64_t time_elapsed = getTimeStamp() - start;
       printf("solve count is %d flipping spped  %u/branch\n", solve_count, time_elapsed/solve_count);
     }
 
@@ -199,8 +199,8 @@ void* handle_task(void*) {
     delete fut;
     delete fut_opt;
     solve_count++; 
-    if (solve_count % 1000 == 0 && solve_count > 0) {
-      uint64_t time_elapsed = (getTimeStamp() - start) / 1000000;
+    if (solve_count % 10 == 0 && solve_count > 0) {
+      uint64_t time_elapsed = getTimeStamp() - start;
       printf("solve count is %d flipping speed  %u/branch\n", solve_count, time_elapsed/solve_count);
     }
     
