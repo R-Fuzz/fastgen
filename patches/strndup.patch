@@ -1,0 +1,28 @@
+commit 06c622f6687b4d9f667762fdbf340f53016b09b2
+Author: Ju Chen <chenju2k6@gmail.com>
+Date:   Fri Jan 15 00:03:25 2021 +0000
+
+    Add strndup
+    
+    Signed-off-by: Ju Chen <chenju2k6@gmail.com>
+
+diff --git a/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc b/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
+index 0638536..4f89ea8 100644
+--- a/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
++++ b/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
+@@ -373,6 +373,15 @@ __dfsw___strdup(const char *s, dfsan_label s_label, dfsan_label *ret_label) {
+   return static_cast<char *>(p);
+ }
+ 
++SANITIZER_INTERFACE_ATTRIBUTE char *
++__dfsw___strndup(const char *s, size_t len, dfsan_label s_label, dfsan_label *ret_label) {
++  void *p = malloc(len);
++  dfsan_memcpy(p, s, len);
++  *ret_label = 0;
++  return static_cast<char *>(p);
++}
++
++
+ SANITIZER_INTERFACE_ATTRIBUTE char *
+ __dfsw_strncpy(char *s1, const char *s2, size_t n, dfsan_label s1_label,
+                dfsan_label s2_label, dfsan_label n_label,
