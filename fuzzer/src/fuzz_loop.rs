@@ -37,129 +37,129 @@ pub fn dispatcher(table: &UnionTable,
 /*
 //check the status
 pub fn branch_verifier(addr: u64, ctx: u64, 
-    order: u32, direction: u64, fid: u32,
-    branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>) {
-  let mut status = 4; // not reached
-  let (labels,mut memcmp_data) = read_pipe(id);
+order: u32, direction: u64, fid: u32,
+branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>) {
+let mut status = 4; // not reached
+let (labels,mut memcmp_data) = read_pipe(id);
 
-  let mut blacklist: HashSet<u64> = HashSet::new();
-  blacklist.insert(123145304593908);
-  blacklist.insert(123145304594353);
-  blacklist.insert(123145304595949);
-  blacklist.insert(123145304594728);
-  blacklist.insert(123145304669312);
-  blacklist.insert(123145304669035);
-  blacklist.insert(123145304660330);
-  blacklist.insert(123145304602306);
-  for label in labels {
-    if label.6 == 2 {
-      memcmp_data.pop_front().unwrap();
-      continue;
-    }
-    if label.6 == 0 {
-      if label.3 == addr && label.4 == ctx && label.5 == order {
-        status = 2; //reached
-        if label.2 == 1-direction {
-          status = 1; //flipped
-        }
-      }
-    }
-  }
-
-  println!("verify ({},{},{},{},{}), status {}", addr,ctx,order,direction,fid, status);
-  if status == 4 && !blacklist.contains(&addr) && (direction == 0 || direction == 1) {
-    std::process::exit(1);
-  }
-  let mut status_to_update = 3;
-  if branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
-    status_to_update = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
-  }
-  if status < status_to_update {
-    status_to_update = status;
-  }
-  branch_solcount.write().unwrap().insert((addr,ctx,order,direction), status_to_update);
+let mut blacklist: HashSet<u64> = HashSet::new();
+blacklist.insert(123145304593908);
+blacklist.insert(123145304594353);
+blacklist.insert(123145304595949);
+blacklist.insert(123145304594728);
+blacklist.insert(123145304669312);
+blacklist.insert(123145304669035);
+blacklist.insert(123145304660330);
+blacklist.insert(123145304602306);
+for label in labels {
+if label.6 == 2 {
+memcmp_data.pop_front().unwrap();
+continue;
 }
-*/
+if label.6 == 0 {
+if label.3 == addr && label.4 == ctx && label.5 == order {
+status = 2; //reached
+if label.2 == 1-direction {
+status = 1; //flipped
+}
+}
+}
+}
+
+println!("verify ({},{},{},{},{}), status {}", addr,ctx,order,direction,fid, status);
+if status == 4 && !blacklist.contains(&addr) && (direction == 0 || direction == 1) {
+std::process::exit(1);
+}
+let mut status_to_update = 3;
+if branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
+status_to_update = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
+}
+if status < status_to_update {
+status_to_update = status;
+}
+branch_solcount.write().unwrap().insert((addr,ctx,order,direction), status_to_update);
+}
+ */
 /*
-pub fn branch_checking(
-    running: Arc<AtomicBool>,
-    cmd_opt: CommandOpt,
-    depot: Arc<Depot>,
-    global_branches: Arc<GlobalBranches>,
-    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
-    // let's use this for the solving status
-    // 1 -> flipped
-    // 2 -> reached not flipped
-    // 3 -> not reached
-    branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
-    forklock: Arc<Mutex<u32>>,
-    ) {
+   pub fn branch_checking(
+running: Arc<AtomicBool>,
+cmd_opt: CommandOpt,
+depot: Arc<Depot>,
+global_branches: Arc<GlobalBranches>,
+branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+// let's use this for the solving status
+// 1 -> flipped
+// 2 -> reached not flipped
+// 3 -> not reached
+branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+forklock: Arc<Mutex<u32>>,
+) {
 
-  let shmid =  unsafe {
-    libc::shmget(
-        0x2468,
-        0xc00000000,
-        0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
-        )
-  };
+let shmid =  unsafe {
+libc::shmget(
+0x2468,
+0xc00000000,
+0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+)
+};
 
-  let mut executor = Executor::new(
-      cmd_opt,
-      global_branches,
-      depot.clone(),
-      shmid,
-      false, //not grading
-      forklock.clone(),
-      );
-
-
-
-  //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
-  let mut grade_count = 0;
-  let mut addr: u64 = 0;
-  let mut ctx: u64 = 0;
-  let mut order: u32 = 0;
-  let mut fid: u32 = 0;
-  let mut direction: u64 = 0;
-  //let mut veri_status: Arc<AtomicU32>;
-  while running.load(Ordering::Relaxed) {
-    let id = unsafe { get_next_input_id() };
-    if let Some(mut buf) = depot.get_input_buf(id as usize) {
-      unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, buf.len()) };
-      let gsol_count = branch_solcount.clone();
-      //let v_status = veri_status.clone();
-
-      let handle = thread::spawn(move || {
-          branch_verifier(addr, ctx,order,direction,fid,gsol_count);
-          });
-
-      executor.track(0, &buf);
-
-      if handle.join().is_err() {
-        error!("Error happened in listening thread!");
-      }
+let mut executor = Executor::new(
+cmd_opt,
+global_branches,
+depot.clone(),
+shmid,
+false, //not grading
+forklock.clone(),
+);
 
 
-      //if (veri_status.load(Ordering::Relaxed) == 4) {
 
-      //   panic!("branch not reached");
-      //}
+//let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
+let mut grade_count = 0;
+let mut addr: u64 = 0;
+let mut ctx: u64 = 0;
+let mut order: u32 = 0;
+let mut fid: u32 = 0;
+let mut direction: u64 = 0;
+//let mut veri_status: Arc<AtomicU32>;
+while running.load(Ordering::Relaxed) {
+let id = unsafe { get_next_input_id() };
+if let Some(mut buf) = depot.get_input_buf(id as usize) {
+unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, buf.len()) };
+let gsol_count = branch_solcount.clone();
+//let v_status = veri_status.clone();
 
-      let new_path = executor.run_sync(&buf);
-      if new_path.0 {
-        info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {}, it is a new input {}, saved as input #{}", fid, addr, ctx, order, new_path.0, new_path.1);
-        let mut count = 1;
-        if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
-          count = *branch_gencount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
-          count += 1;
-          //info!("gencount is {}",count);
-        }
-        branch_gencount.write().unwrap().insert((addr,ctx,order,direction), count);
-        //info!("next input addr is {:} ctx is {}",addr,ctx);
-      }
-      grade_count = grade_count + 1;
-    }
-  }
+let handle = thread::spawn(move || {
+branch_verifier(addr, ctx,order,direction,fid,gsol_count);
+});
+
+executor.track(0, &buf);
+
+if handle.join().is_err() {
+error!("Error happened in listening thread!");
+}
+
+
+//if (veri_status.load(Ordering::Relaxed) == 4) {
+
+//   panic!("branch not reached");
+//}
+
+let new_path = executor.run_sync(&buf);
+if new_path.0 {
+info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {}, it is a new input {}, saved as input #{}", fid, addr, ctx, order, new_path.0, new_path.1);
+let mut count = 1;
+if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
+count = *branch_gencount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
+count += 1;
+//info!("gencount is {}",count);
+}
+branch_gencount.write().unwrap().insert((addr,ctx,order,direction), count);
+//info!("next input addr is {:} ctx is {}",addr,ctx);
+}
+grade_count = grade_count + 1;
+}
+}
 }
 */
 
@@ -305,35 +305,33 @@ pub fn fuzz_loop(
         let gbranch_hitcount = branch_hitcount.clone();
         let gbranch_gencount = branch_gencount.clone();
 
-        forklock.lock();
-
-
 
         let t_start = time::Instant::now();
 
         let (mut child, read_end) = executor.track(id as usize, &buf);
-
-        let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
-            dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
-            }).unwrap();
-
-        if handle.join().is_err() {
-          error!("Error happened in listening thread!");
-        }
-        //dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
-        close(read_end).map_err(|err| warn!("close read end {:?}", err)).ok();
         
-           match child.try_wait() {
-           Ok(Some(status)) => println!("exited with: {}", status),
-           Ok(None) => {
-           println!("status not ready yet, let's really wait");
-           child.kill();
-           let res = child.wait();
-           println!("result: {:?}", res);
-           }
-           Err(e) => println!("error attempting to wait: {}", e),
+           let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
+           dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
+           }).unwrap();
+
+           if handle.join().is_err() {
+           error!("Error happened in listening thread!");
            }
          
+        //dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
+        close(read_end).map_err(|err| warn!("close read end {:?}", err)).ok();
+
+        match child.try_wait() {
+          Ok(Some(status)) => println!("exited with: {}", status),
+            Ok(None) => {
+              warn!("status not ready yet, let's really wait");
+              child.kill();
+              let res = child.wait();
+              println!("result: {:?}", res);
+            }
+          Err(e) => println!("error attempting to wait: {}", e),
+        }
+
 
         let used_t1 = t_start.elapsed();
         let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;

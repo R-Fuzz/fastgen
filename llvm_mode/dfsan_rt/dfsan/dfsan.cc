@@ -1138,6 +1138,7 @@ static void dfsan_fini() {
     *(reinterpret_cast<u32*>(trace_id)) = __current_index;
     shmdt(trace_id);
   }
+  printf("finishing and closing\n");
   close(mypipe);
   shmdt(shmp);
 }
