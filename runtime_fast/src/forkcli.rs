@@ -5,8 +5,18 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use libc;
 use std::{io::prelude::*, os::unix::net::UnixStream, process, time::Duration};
 use nix::unistd::{read, write};
+use nix::fcntl;
 
 pub fn start_forkcli() {
+  //check if the fd is opened
+  if let Ok(ret) = fcntl::fcntl(199, fcntl::F_GETFD)  {
+    if ret == -1 {
+      return;
+    }
+  } else {
+    return;
+  }
+
   let mut sig_buf = [0; 4];
   unsafe { super::context::reset_context(); }
   loop {
