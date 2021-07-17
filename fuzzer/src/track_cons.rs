@@ -66,8 +66,8 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     if hitcount > 1 {
       if label.6 == 2 {
         memcmp_data.pop_front().unwrap();
+        continue;
       }
-      //continue;
     }
 
     let mut node = AstNode::new();
