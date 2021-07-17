@@ -31,6 +31,7 @@ using namespace google::protobuf::io;
 #define THREAD_POOL_SIZE 1
 #define DEBUG 1
 
+uint64_t getTimeStamp();
 //global variables
 std::unique_ptr<GradJit> JIT;
 static std::atomic<uint64_t> fid;
@@ -141,6 +142,8 @@ void* handle_task_z3(void*) {
 
 //bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
 void* handle_task(void*) {
+  int solve_count = 0;
+  uint64_t start = getTimeStamp();
   while (true) {
     auto task1 = task_queue.pop();
     
@@ -189,6 +192,13 @@ void* handle_task(void*) {
 
     delete fut;
     delete fut_opt;
+    solve_count++; 
+    if (solve_count % 1000 == 0) {
+      uint64_t time_elapsed = (getTimeStamp() - start) / 1000000;
+      if (time_elapsed !=0)
+        printf("solve count is %d throughput is %u/milli\n", solve_count, solve_count/time_elapsed);
+    }
+    
   }
   return nullptr;
 }
