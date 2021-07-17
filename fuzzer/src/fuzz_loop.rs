@@ -12,6 +12,7 @@ use std::time;
 use std::thread;
 
 use crate::fifo::*;
+use crate::afl::*;
 use crate::cpp_interface::*;
 use crate::track_cons::*;
 use crate::union_table::*;
@@ -288,7 +289,7 @@ pub fn fuzz_loop(
       global_branches,
       depot.clone(),
       shmid,
-      false, //not grading
+      true, //not grading
       forklock.clone(),
       );
 
@@ -342,7 +343,15 @@ pub fn fuzz_loop(
         std::fs::write("ce_progress", &progress).map_err(|err| println!("{:?}", err)).ok();
       }
     } else {
-      thread::sleep(time::Duration::from_secs(1));
+      if config::RUNAFL {
+        info!("run afl mutator");
+        if let Some(mut buf) = depot.get_input_buf(depot.next_random()) {
+          run_afl_mutator(&mut executor,&mut buf);
+        }
+        thread::sleep(time::Duration::from_millis(10));
+      } else {
+        thread::sleep(time::Duration::from_secs(1));
+      }
     }
   }
 }
