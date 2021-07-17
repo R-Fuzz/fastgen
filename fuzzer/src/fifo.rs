@@ -10,6 +10,7 @@ use std::{
     io::{self, Read},
 };
 use std::io::BufRead;
+use std::time;
 
 
 struct PipeMsg {
@@ -57,6 +58,7 @@ pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<
   let mut reader = BufReader::new(f);
   let mut ret = Vec::new();
   let mut retdata = VecDeque::new();
+  let t_start = time::Instant::now();
   loop {
     let mut buffer = String::new();
     let num_bytes = reader.read_line(&mut buffer).expect("read pipe failed");
@@ -83,6 +85,10 @@ pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<
           }
           retdata.push_back(data);
         } else {
+          break;
+        }
+        let used_t1 = t_start.elapsed().as_micros() as u32;
+        if (used_t1 > 1000000)  {//1s
           break;
         }
       }
