@@ -10,6 +10,7 @@ use std::sync::{RwLock,Arc};
 use crate::cpp_interface::*;
 use protobuf::Message;
 use crate::union_find::*;
+use std::time;
 
 //each input offset has a coresspdoing slot
 pub struct BranchDep {
@@ -48,6 +49,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
   branch_deps.resize_with(tainted_size, || None);
   //let mut cons_table = HashMap::new();
   //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
+  let t_start = time::Instant::now();
   let mut count = 0;
   for &label in labels {
     let mut hitcount = 1;
@@ -149,7 +151,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
      // 	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
 
 
-      if hitcount <= 1 && gencount == 0 && label.6 !=3 {
+      if hitcount <= 5 && gencount == 0 && label.6 !=3 {
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
       } else {
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
@@ -176,6 +178,10 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       let deps = deps_opt.as_mut().unwrap(); 
       deps.expr_labels.insert(label.1);
     }
+  let used_t1 = t_start.elapsed().as_secs() as u32;
+        if (used_t1 > 90)  {//1s
+          break;
+        }
   }
   info!("submitted {} tasks", count);
 }

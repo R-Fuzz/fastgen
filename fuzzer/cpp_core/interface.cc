@@ -146,6 +146,57 @@ void* handle_task_z3(void*) {
   return nullptr;
 }
 
+void handle_task_sync(std::shared_ptr<SearchTask> task, bool solve) {
+    FUT* fut = nullptr;
+    FUT* fut_opt = nullptr;
+    if (!solve) {
+	addCons(task.get());
+  return;
+    }
+
+    lookup_or_construct(task.get(), &fut, &fut_opt, solve);
+
+    std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions;
+    std::vector<std::unordered_map<uint32_t, uint8_t>> partial_solutions;
+    std::vector<std::unordered_map<uint32_t, uint8_t>> rgd_solutions_opt;
+    fut->rgd_solutions = &rgd_solutions;
+    fut->partial_solutions = &partial_solutions;
+    fut_opt->rgd_solutions = &rgd_solutions_opt;
+    if (solve) {
+    gd_search(fut_opt);
+    if (rgd_solutions_opt.size() != 0) {
+      //fut->load_hint(rgd_solutions_opt[0]);
+      gd_search(fut);
+    }
+     }
+
+    if (!SAVING_WHOLE) {
+      for (auto rgd_solution :  rgd_solutions) {
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+        solution_queue.push(sol);
+      }
+
+      for (auto rgd_solution :  rgd_solutions_opt) {
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+        solution_queue.push(sol);
+      }
+    } else {
+      std::string old_string = std::to_string(task->fid());
+      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      // std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
+      //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      for (auto rgd_solution : rgd_solutions) {
+        generate_input(rgd_solution, input_file, "./raw_cases", fid++);
+      }
+      for (auto rgd_solution : rgd_solutions_opt) {
+        generate_input(rgd_solution, input_file, "./raw_cases", fid++);
+      }
+    }
+
+    delete fut;
+    delete fut_opt;
+}
+
 //bool handle_task(int tid, std::shared_ptr<SearchTask> task) {
 void* handle_task(void*) {
   int solve_count = 0;
@@ -259,8 +310,9 @@ void* handle_task(void*) {
       //printTask(task.get());
       //    handle_task(0,task);
       //incoming_tasks.enqueue({task, fresh});
-      std::pair<std::shared_ptr<SearchTask>,bool> tt{task,solve};
-      task_queue.push(tt);
+      //std::pair<std::shared_ptr<SearchTask>,bool> tt{task,solve};
+      //task_queue.push(tt);
+      handle_task_sync(task,solve);
     }
 
     void init_core(bool saving_whole, bool use_codecache) { init(saving_whole, use_codecache); }
