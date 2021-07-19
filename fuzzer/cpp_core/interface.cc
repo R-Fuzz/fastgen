@@ -103,6 +103,32 @@ void save_task(const unsigned char* input, unsigned int input_length) {
   saveRequest(task, "regression.data");
 }
 
+void handle_task_z3_sync(std::shared_ptr<SearchTask> task, bool solve) {
+    std::unordered_map<uint32_t, uint8_t> z3_solution;
+
+    //if (rgd_solutions.size() == 0) {
+    bool ret = sendZ3Solver(false, task.get(), z3_solution, task->addr(), solve);
+    if (!ret)
+      sendZ3Solver(true, task.get(), z3_solution, task->addr(), solve);
+    //}
+
+
+    if (!SAVING_WHOLE) {
+      if (z3_solution.size() != 0) {
+        RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+        solution_queue.push(sol);
+      }
+
+    } else {
+      std::string old_string = std::to_string(task->fid());
+      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      if (z3_solution.size() != 0)
+        generate_input(z3_solution, input_file, "./raw_cases", fid++);
+
+    }
+  return;
+}
+
 void* handle_task_z3(void*) {
   //printTask(task.get());
   int solve_count = 0;
@@ -312,7 +338,7 @@ void* handle_task(void*) {
       //incoming_tasks.enqueue({task, fresh});
       //std::pair<std::shared_ptr<SearchTask>,bool> tt{task,solve};
       //task_queue.push(tt);
-      handle_task_sync(task,solve);
+      handle_task_z3_sync(task,solve);
     }
 
     void init_core(bool saving_whole, bool use_codecache) { init(saving_whole, use_codecache); }
