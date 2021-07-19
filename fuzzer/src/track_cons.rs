@@ -80,8 +80,8 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     } else if label.6 == 2 {
       let data = memcmp_data.pop_front().unwrap();
-      if data.len() ==  label.2 as usize {
-        unsafe { submit_fmemcmp(data.as_ptr(), label.1, label.2 as u32, label.0, label.3); }
+      if data.len() ==  label.1 as usize {
+        unsafe { submit_fmemcmp(data.as_ptr(), label.2 as u32, label.1, label.0, label.3); }
       }
       continue;
     } else if label.6 == 3 {
