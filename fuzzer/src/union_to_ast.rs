@@ -565,6 +565,32 @@ pub fn get_addcons_constraint(label: u32, _direction: u32, dst: &mut AstNode,  t
   }
 }
 
+pub fn get_fmemcmp_constraint(label: u32, table: &UnionTable, deps: &mut HashSet<u32>) -> (u32,usize) {
+  let mut cache = HashMap::new();
+
+  let info = &table[label as usize];
+  let mut left = AstNode::new();
+
+  if info.depth > config::AST_DEPTH  {
+    warn!("large tree skipped  depth is {}", info.depth);
+    return (0,0);
+  }
+  do_uta(label, &mut left, table, &mut cache);
+  
+  for &v in &cache[&label] {
+    deps.insert(v);
+  }
+
+  let mut min_v = u32::MAX;
+  let len = deps.len();
+  for v in deps.iter() {
+    if v < &min_v {
+      min_v = *v;
+    }
+  }
+
+  (min_v, len)
+}
 
 pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
   let mut cache = HashMap::new();

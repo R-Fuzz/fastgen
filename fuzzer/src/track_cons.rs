@@ -65,12 +65,14 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     }
     //we have to continue here, the underlying task lookup with check the redudant as well. If it is redudant, the task will be loaded
     //without inserting caching 
+/*
     if hitcount > 1 {
       if label.6 == 2 {
         memcmp_data.pop_front().unwrap();
         continue;
       }
     }
+*/
 
     let mut node = AstNode::new();
     let mut cons = Constraint::new();
@@ -82,8 +84,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
     } else if label.6 == 2 {
       let data = memcmp_data.pop_front().unwrap();
-      if data.len() ==  label.1 as usize {
-        unsafe { submit_fmemcmp(data.as_ptr(), label.2 as u32, label.1, label.0, label.3); }
+      let (index, size) = get_fmemcmp_constraint(label.2 as u32, table, &mut inputs);
+      if data.len() >= size {
+        unsafe { submit_fmemcmp(data.as_ptr(), index, size as u32, label.0, label.3); }
       }
       continue;
     } else if label.6 == 3 {
@@ -147,16 +150,17 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
       let task_ser = task.write_to_bytes().unwrap();
 
-      //  count = count + 1;
-     // 	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
+        count = count + 1;
+      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
 
-
+/*
       if hitcount <= 5 && gencount == 0 && label.6 !=3 {
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
       } else {
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
       }
 
+*/
 
 
       

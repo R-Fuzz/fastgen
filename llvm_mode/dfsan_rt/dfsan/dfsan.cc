@@ -724,15 +724,16 @@ static dfsan_label rejectBranch(dfsan_label label) {
 }
 
 
-static bool get_fmemcmp(dfsan_label label, u64* index, u64* size, u8* data) {
+static bool get_fmemcmp(dfsan_label label, dfsan_label *ret_label, u64* size, u8* data) {
   dfsan_label_info *info = get_label_info(label); 
   //we only support const == Load
   if (info->l1 >= CONST_OFFSET || info->l2 < CONST_OFFSET)
     return false; 
-  dfsan_label_info *info2 = get_label_info(info->l2);
+  //dfsan_label_info *info2 = get_label_info(info->l2);
+  *ret_label = info->l2;
   //if (info2->op != Load)
    // return false;
-  *index = get_label_info(info2->l1)->op1;
+  //*index = get_label_info(info2->l1)->op1;
   *size = info->size;
   if (*size<=1024)
   read_data(data, (u8)*size, info->op1);
@@ -757,13 +758,13 @@ static void __solve_cond(dfsan_label label,
         //printLabel(label);
         //sending fmemcmp special 
         if (reason > 2) { //fmemcmp 
-          u64 index = 0;
+          dfsan_label ret_label = 0;
           u64 size = 0;
           u8 data[1024];
-          get_fmemcmp(reason, &index, &size, data);
+          get_fmemcmp(reason, &ret_label, &size, data);
           if (size <=  1024) {
           //printf("get_fmemp index: %lu, size: %lu, data: %lu\n",index,size,data);
-            sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, size, index, (uint64_t)addr, ctx, (uint32_t)order);
+            sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, size, ret_label, (uint64_t)addr, ctx, (uint32_t)order);
             write(mypipe,content,strlen(content));
             fsync(mypipe);
             char fmemcmpdata[10000];
