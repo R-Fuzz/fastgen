@@ -50,6 +50,9 @@ struct RGDSolution {
   uint64_t ctx;
   uint32_t order;
   uint64_t direction;
+  uint32_t vari;
+  uint32_t index; //field start
+  uint32_t size;  //field size
 };
 
 class SolutionQueue 
@@ -311,15 +314,22 @@ void* handle_task(void*) {
     std::unordered_map<uint32_t, uint8_t> rgd_solution;
     std::string old_string = std::to_string(tid);
     std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-    for(uint32_t i=0;i<size;i++) {
+    for(uint32_t i=0;i<strlen((const char *)data);i++) {
       rgd_solution[(uint32_t)index+i] = data[i];
     }
+    printf("index is %u and size is %u, data is %s, len is %d\n", index,size,data, strlen((const char *)data));
     if (SAVING_WHOLE) {
       generate_input(rgd_solution, input_file, "./raw_cases", fid++);
     }
     else {
-      RGDSolution sol = {rgd_solution, tid, addr, 0, 0};
+      if (strlen((const char *)data) != size) {
+        //when we need change the field size
+        RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0, 1, index, size};
       solution_queue.push(sol);
+      } else  {
+        RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0 , 0, 0, 0};
+      solution_queue.push(sol);
+      }
     }
   }
 
@@ -351,9 +361,24 @@ void* handle_task(void*) {
         uint32_t *order, uint32_t *fid, uint64_t *direction, size_t size) {
 
       RGDSolution item = solution_queue.pop();
-      for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
-        if (it->first < size)
-          input[it->first] = it->second;
+      if (item.vari == 1) {
+        printf("varying field\n");
+        unsigned char tmp[size];
+        memcpy(tmp, input, size);
+        //copying the original portion index+size to new place index+solution_size
+        for(int i = 0; i< size-item.index-item.size && i<size-item.index-item.sol.size(); i++) {
+          tmp[item.index + item.sol.size() + i] =  input[item.index + item.size + i];
+        }
+        for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
+          if (it->first < size)
+            tmp[it->first] = it->second;
+        }
+        memcpy(input, tmp, size);
+      } else {
+        for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
+          if (it->first < size)
+            input[it->first] = it->second;
+        }
       }
       *addr = item.addr;
       *ctx = item.ctx;
