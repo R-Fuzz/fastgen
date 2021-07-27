@@ -210,17 +210,31 @@ pub fn grading_loop(
     }
   } else {
     let mut grade_count = 0;
-    let mut buf: Vec<u8> = Vec::with_capacity(config::MAX_INPUT_LEN);
-    buf.resize(config::MAX_INPUT_LEN, 0);
+    //let mut buf: Vec<u8> = Vec::with_capacity(config::MAX_INPUT_LEN);
     let mut addr: u64 = 0;
     let mut ctx: u64 = 0;
     let mut order: u32 = 0;
     let mut fid: u32 = 0;
     let mut direction: u64 = 0;
     while running.load(Ordering::Relaxed) {
-      let id = unsafe { get_next_input_id() };
+      let mut id = 0;
+      let mut field_size = 0;
+      let mut new_field_size = 0;
+      unsafe { get_next_input_info(&mut id, &mut field_size, 
+                                  &mut new_field_size) };
       if let Some(mut buf) = depot.get_input_buf(id as usize) {
-        unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, buf.len()) };
+        //zero-extended the buffer if new field is larger
+        if new_field_size > field_size {
+          let old_size = buf.len();
+          buf.resize(old_size + new_field_size - field_size, 0);
+        }
+        unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, 
+                        &mut order, &mut fid, &mut direction, buf.len()) };
+        //truncate the buffer if new field is smaller
+        if new_field_size < field_size {
+          let old_size = buf.len();
+          buf.resize(old_size + new_field_size - field_size, 0);
+        }
         let new_path = executor.run_sync(&buf);
         let mut solcount = 1;
         if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
@@ -230,7 +244,10 @@ pub fn grading_loop(
         }
         branch_solcount.write().unwrap().insert((addr,ctx,order,direction), solcount);
         if new_path.0 {
-          info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {}, it is a new input {}, saved as input #{}", fid, addr, ctx, order, new_path.0, new_path.1);
+          info!("grading input derived from on input {} by 
+              flipping branch@ {:#01x} ctx {:#01x} order {}, 
+              it is a new input {}, saved as input #{}", 
+              fid, addr, ctx, order, new_path.0, new_path.1);
           let mut count = 1;
           if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
             count = *branch_gencount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();

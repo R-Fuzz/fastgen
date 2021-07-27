@@ -38,7 +38,9 @@ static std::atomic<uint64_t> fid;
 static std::atomic<uint64_t> task_id;
 bool SAVING_WHOLE; 
 bool USE_CODECACHE;
-bool sendZ3Solver(bool opti, SearchTask* task, std::unordered_map<uint32_t, uint8_t> &solu, uint64_t addr, bool solve);
+bool sendZ3Solver(bool opti, SearchTask* task, 
+          std::unordered_map<uint32_t, uint8_t> &solu, 
+          uint64_t addr, bool solve);
 void initZ3Solver();
 void addCons(SearchTask* task);
 
@@ -50,9 +52,8 @@ struct RGDSolution {
   uint64_t ctx;
   uint32_t order;
   uint64_t direction;
-  uint32_t vari;
-  uint32_t index; //field start
-  uint32_t size;  //field size
+  uint32_t field_index; //field start
+  uint32_t field_size;  //field size
 };
 
 class SolutionQueue 
@@ -82,14 +83,16 @@ class SolutionQueue
     return retval;
   }
 
-  uint32_t get_top_id()
+  void get_top_info(uint32_t* id, size_t* field_size, size_t* new_field_size)
   {
     ulock u(mutex_);
     while (queue_.empty())
       condvar_.wait(u);
     // now queue_ is non-empty and we still have the lock
     RGDSolution retval = queue_.front();
-    return retval.fid;
+    *id = retval.fid;
+    *field_size = retval.field_size;
+    *new_field_size = retval.sol.size();
   }
 };
 
@@ -118,13 +121,15 @@ void handle_task_z3_sync(std::shared_ptr<SearchTask> task, bool solve) {
 
     if (!SAVING_WHOLE) {
       if (z3_solution.size() != 0) {
-        RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+        RGDSolution sol = {z3_solution, task->fid(), task->addr(), 
+                        task->ctx(), task->order(), task->direction()};
         solution_queue.push(sol);
       }
 
     } else {
       std::string old_string = std::to_string(task->fid());
-      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      std::string input_file = "corpus/angora/queue/id:" + 
+                    std::string(6-old_string.size(),'0') + old_string;
       if (z3_solution.size() != 0)
         generate_input(z3_solution, input_file, "./raw_cases", fid++);
 
@@ -146,7 +151,8 @@ void* handle_task_z3(void*) {
     std::unordered_map<uint32_t, uint8_t> z3_solution;
 
     //if (rgd_solutions.size() == 0) {
-    bool ret = sendZ3Solver(false, task.get(), z3_solution, task->addr(), solve);
+    bool ret = sendZ3Solver(false, task.get(), z3_solution, 
+                            task->addr(), solve);
     if (!ret)
       sendZ3Solver(true, task.get(), z3_solution, task->addr(), solve);
     //}
@@ -154,13 +160,15 @@ void* handle_task_z3(void*) {
 
     if (!SAVING_WHOLE) {
       if (z3_solution.size() != 0) {
-        RGDSolution sol = {z3_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+        RGDSolution sol = {z3_solution, task->fid(), task->addr(), 
+                          task->ctx(), task->order(), task->direction()};
         solution_queue.push(sol);
       }
 
     } else {
       std::string old_string = std::to_string(task->fid());
-      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      std::string input_file = "corpus/angora/queue/id:" + 
+                      std::string(6-old_string.size(),'0') + old_string;
       if (z3_solution.size() != 0)
         generate_input(z3_solution, input_file, "./raw_cases", fid++);
 
@@ -168,7 +176,8 @@ void* handle_task_z3(void*) {
     solve_count++; 
     if (solve_count % 10 == 0 && solve_count > 0) {
       uint64_t time_elapsed = getTimeStamp() - start;
-      printf("solve count is %d flipping spped  %u/branch\n", solve_count, time_elapsed/solve_count);
+      printf("solve count is %d flipping spped  %u/branch\n", 
+              solve_count, time_elapsed/solve_count);
     }
 
   }
@@ -201,19 +210,20 @@ void handle_task_sync(std::shared_ptr<SearchTask> task, bool solve) {
 
     if (!SAVING_WHOLE) {
       for (auto rgd_solution :  rgd_solutions) {
-        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), 
+                        task->ctx(), task->order(), task->direction()};
         solution_queue.push(sol);
       }
 
       for (auto rgd_solution :  rgd_solutions_opt) {
-        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), 
+                        task->ctx(), task->order(), task->direction()};
         solution_queue.push(sol);
       }
     } else {
       std::string old_string = std::to_string(task->fid());
-      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-      // std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
-      //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      std::string input_file = "corpus/angora/queue/id:" + 
+                    std::string(6-old_string.size(),'0') + old_string;
       for (auto rgd_solution : rgd_solutions) {
         generate_input(rgd_solution, input_file, "./raw_cases", fid++);
       }
@@ -261,19 +271,20 @@ void* handle_task(void*) {
 
     if (!SAVING_WHOLE) {
       for (auto rgd_solution :  rgd_solutions) {
-        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), 
+                      task->ctx(), task->order(), task->direction()};
         solution_queue.push(sol);
       }
 
       for (auto rgd_solution :  rgd_solutions_opt) {
-        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), task->ctx(), task->order(), task->direction()};
+        RGDSolution sol = {rgd_solution, task->fid(), task->addr(), 
+                      task->ctx(), task->order(), task->direction()};
         solution_queue.push(sol);
       }
     } else {
       std::string old_string = std::to_string(task->fid());
-      std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-      // std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
-      //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+      std::string input_file = "corpus/angora/queue/id:" + 
+                      std::string(6-old_string.size(),'0') + old_string;
       for (auto rgd_solution : rgd_solutions) {
         generate_input(rgd_solution, input_file, "./raw_cases", fid++);
       }
@@ -287,7 +298,8 @@ void* handle_task(void*) {
     solve_count++; 
     if (solve_count % 10 == 0 && solve_count > 0) {
       uint64_t time_elapsed = getTimeStamp() - start;
-      printf("solve count is %d flipping speed  %u/branch\n", solve_count, time_elapsed/solve_count);
+      printf("solve count is %d flipping speed  %u/branch\n", 
+            solve_count, time_elapsed/solve_count);
     }
     
   }
@@ -310,35 +322,34 @@ void* handle_task(void*) {
   }
 
 
-  void handle_fmemcmp(uint8_t* data, uint32_t index, uint32_t size, uint32_t tid, uint64_t addr) {
+  void handle_fmemcmp(uint8_t* data, uint32_t field_index, 
+                    uint32_t field_size, uint32_t tid, uint64_t addr) {
     std::unordered_map<uint32_t, uint8_t> rgd_solution;
     std::string old_string = std::to_string(tid);
-    std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
+    std::string input_file = "corpus/angora/queue/id:" + 
+                      std::string(6-old_string.size(),'0') + old_string;
     for(uint32_t i=0;i<strlen((const char *)data);i++) {
-      rgd_solution[(uint32_t)index+i] = data[i];
+      rgd_solution[(uint32_t)field_index+i] = data[i];
     }
-    printf("index is %u and size is %u, data is %s, len is %d\n", index,size,data, strlen((const char *)data));
+    printf("index is %u and size is %u, data is %s, len is %d\n", 
+                field_index,field_size,data, strlen((const char *)data));
     if (SAVING_WHOLE) {
       generate_input(rgd_solution, input_file, "./raw_cases", fid++);
     }
     else {
-      if (strlen((const char *)data) != size) {
-        //when we need change the field size
-        RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0, 1, index, size};
+      RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0, field_index, field_size};
       solution_queue.push(sol);
-      } else  {
-        RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0 , 0, 0, 0};
-      solution_queue.push(sol);
-      }
     }
   }
 
   extern "C" {
-    void submit_fmemcmp(uint8_t* data, uint32_t index, uint32_t size, uint32_t tid, uint64_t addr) {
+    void submit_fmemcmp(uint8_t* data, uint32_t index, 
+                  uint32_t size, uint32_t tid, uint64_t addr) {
       handle_fmemcmp(data,index,size, tid, addr);
     }
 
-    void submit_task(const unsigned char* input, unsigned int input_length, bool solve) {
+    void submit_task(const unsigned char* input, 
+                    unsigned int input_length, bool solve) {
       CodedInputStream s(input,input_length);
       s.SetRecursionLimit(10000);
       std::shared_ptr<SearchTask> task = std::make_shared<SearchTask>();
@@ -351,32 +362,43 @@ void* handle_task(void*) {
       handle_task_z3_sync(task,solve);
     }
 
-    void init_core(bool saving_whole, bool use_codecache) { init(saving_whole, use_codecache); }
+    void init_core(bool saving_whole, bool use_codecache) { 
+      init(saving_whole, use_codecache); 
+    }
 
-    uint32_t get_next_input_id() {
-      return solution_queue.get_top_id(); 
+    void get_next_input_info(uint32_t* id, 
+                            size_t *field_size,
+                            size_t *new_field_size) {
+      solution_queue.get_top_info(id, field_size, new_field_size); 
     } 
 
+    //if we increase the size of the seed, 
+    //the new_size is the new size of the input zero_extended
+    //if we decrease the size of the seed, 
+    //the new_size is the size of the original input
     void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
-        uint32_t *order, uint32_t *fid, uint64_t *direction, size_t size) {
+        uint32_t *order, uint32_t *fid, uint64_t *direction, size_t new_size) {
 
       RGDSolution item = solution_queue.pop();
-      if (item.vari == 1) {
-        printf("varying field\n");
-        unsigned char tmp[size];
-        memcpy(tmp, input, size);
-        //copying the original portion index+size to new place index+solution_size
-        for(int i = 0; i< size-item.index-item.size && i<size-item.index-item.sol.size(); i++) {
-          tmp[item.index + item.sol.size() + i] =  input[item.index + item.size + i];
+      //the field size is changed
+      if (item.field_size != item.sol.size()) {
+        unsigned char tmp[new_size];
+        memcpy(tmp, input, new_size);
+        //copy bytes after field
+        for(int i = 0; 
+          i < new_size - item.field_index-item.field_size &&
+          i < new_size - item.field_index-item.sol.size(); i++) {
+          tmp[item.field_index + item.sol.size() + i] = 
+              input[item.field_index + item.field_size + i];
         }
         for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
-          if (it->first < size)
+          if (it->first < new_size)
             tmp[it->first] = it->second;
         }
-        memcpy(input, tmp, size);
+        memcpy(input, tmp, new_size);
       } else {
         for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
-          if (it->first < size)
+          if (it->first < new_size)
             input[it->first] = it->second;
         }
       }

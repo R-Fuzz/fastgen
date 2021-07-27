@@ -11,5 +11,6 @@ extern {
   pub fn aggregate_results();
   pub fn get_next_input(input: *mut u8, addr: *mut u64, ctx: *mut u64, 
         order: *mut u32, fid: *mut u32, direction: *mut u64, size: usize);
-  pub fn get_next_input_id() -> u32;
+  pub fn get_next_input_info(id: *mut u32, field_size: *mut usize, 
+                          new_field_size: *mut usize);
 }
