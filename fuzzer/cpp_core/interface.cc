@@ -122,7 +122,8 @@ void handle_task_z3_sync(std::shared_ptr<SearchTask> task, bool solve) {
     if (!SAVING_WHOLE) {
       if (z3_solution.size() != 0) {
         RGDSolution sol = {z3_solution, task->fid(), task->addr(), 
-                        task->ctx(), task->order(), task->direction()};
+                        task->ctx(), task->order(), task->direction(),
+                        0, z3_solution.size()};
         solution_queue.push(sol);
       }
 
@@ -161,7 +162,8 @@ void* handle_task_z3(void*) {
     if (!SAVING_WHOLE) {
       if (z3_solution.size() != 0) {
         RGDSolution sol = {z3_solution, task->fid(), task->addr(), 
-                          task->ctx(), task->order(), task->direction()};
+                          task->ctx(), task->order(), task->direction(),
+                          0, z3_solution.size()};
         solution_queue.push(sol);
       }
 
@@ -211,13 +213,15 @@ void handle_task_sync(std::shared_ptr<SearchTask> task, bool solve) {
     if (!SAVING_WHOLE) {
       for (auto rgd_solution :  rgd_solutions) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), 
-                        task->ctx(), task->order(), task->direction()};
+                        task->ctx(), task->order(), task->direction(),
+                        0, rgd_solution.size()};
         solution_queue.push(sol);
       }
 
       for (auto rgd_solution :  rgd_solutions_opt) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), 
-                        task->ctx(), task->order(), task->direction()};
+                        task->ctx(), task->order(), task->direction(),
+                        0, rgd_solution.size()};
         solution_queue.push(sol);
       }
     } else {
@@ -272,13 +276,15 @@ void* handle_task(void*) {
     if (!SAVING_WHOLE) {
       for (auto rgd_solution :  rgd_solutions) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), 
-                      task->ctx(), task->order(), task->direction()};
+                      task->ctx(), task->order(), task->direction(),
+                        0, rgd_solution.size()};
         solution_queue.push(sol);
       }
 
       for (auto rgd_solution :  rgd_solutions_opt) {
         RGDSolution sol = {rgd_solution, task->fid(), task->addr(), 
-                      task->ctx(), task->order(), task->direction()};
+                      task->ctx(), task->order(), task->direction(),
+                        0, rgd_solution.size()};
         solution_queue.push(sol);
       }
     } else {
