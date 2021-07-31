@@ -27,7 +27,7 @@ using __sanitizer::u8;
 #else
 # define AOUT(...)                                       \
   do {                                                  \
-    if (0)  {                                           \
+    if (1)  {                                           \
       Printf("[RT] (%s:%d) ", __FUNCTION__, __LINE__);  \
       Printf(__VA_ARGS__);                              \
     }                                                   \

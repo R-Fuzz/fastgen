@@ -14,12 +14,20 @@ fn fast_init() {
 
 #[no_mangle]
 pub extern "C" fn __angora_trace_cmp(
+  condition: u32,
+  cmpid: u32,
+  context: u32,
 ) -> u32 {
-  0
+  eprintln!("_angora_trace_cmp {} {}", cmpid, context);
+  condition
 }
 
 #[no_mangle]
 pub extern "C" fn __angora_trace_switch(
-) -> u32 {
-  0
+  cmpid: u32,
+  context: u32,
+  condition: u64,
+) -> u64 {
+  eprintln!("_angora_trace_switch {} {}", cmpid, context);
+  condition
 }

@@ -31,6 +31,7 @@
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constant.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -58,6 +59,8 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/SpecialCaseList.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -74,6 +77,7 @@
 #include <utility>
 #include <vector>
 #include <functional>
+#include <fstream>
 
 using namespace llvm;
 
@@ -154,6 +158,26 @@ static StringRef GetGlobalTypeString(const GlobalValue &G) {
       return SGType->getName();
   }
   return "<unknown type>";
+}
+
+u32 hashName(std::string str) {
+  std::ifstream in(str, std::ifstream::ate | std::ifstream::binary);
+  u32 fsize = in.tellg();
+  u32 hash = 5381 + fsize * 223;
+  for (auto c : str)
+    hash = ((hash << 5) + hash) + (unsigned char)c; /* hash * 33 + c */
+  return hash;
+}
+
+u32 hashCallName(std::string str, std::string modname) {
+  std::ifstream in(str, std::ifstream::ate | std::ifstream::binary);
+  u32 fsize = in.tellg();
+  u32 hash = 5381 + fsize * 223;
+  for (auto c : str)
+    hash = ((hash << 5) + hash) + (unsigned char)c; /* hash * 33 + c */
+  for (auto c : modname)
+    hash = ((hash << 5) + hash) + (unsigned char)c; /* hash * 33 + c */
+  return hash;
 }
 
 namespace {
@@ -264,6 +288,8 @@ namespace {
     friend struct TaintFunction;
     friend class TaintVisitor;
 
+    u32 ModId;
+
     enum {
       ShadowWidth = 32
     };
@@ -350,6 +376,7 @@ namespace {
     Constant *TaintDebugFn;
     //Constant *CallStack;
     GlobalVariable *CallStack;
+    GlobalVariable *AngoraContext; //this is align with Angora
     GlobalVariable *AngoraMapPtr;
     GlobalVariable *AngoraPrevLoc;
     MDNode *ColdCallWeights;
@@ -371,7 +398,7 @@ namespace {
         GlobalValue::LinkageTypes NewFLink,
         FunctionType *NewFT);
     Constant *getOrBuildTrampolineFunction(FunctionType *FT, StringRef FName);
-
+    std::string ModName;
     void addContextRecording(Function &F);
 
     public:
@@ -442,7 +469,11 @@ namespace {
     void visitSwitchInst(SwitchInst *I);
     void visitCondition(Value *Cond, Instruction *I);
     void visitGEPInst(GetElementPtrInst *I);
+    DenseSet<u32> UniqCidSet;
+    u32 getInstructionId(Instruction *Inst);
   };
+
+
 
   class TaintVisitor : public InstVisitor<TaintVisitor> {
     public:
@@ -584,6 +615,26 @@ void Taint::addContextRecording(Function &F) {
   StoreInst *SCS = IRB.CreateStore(NCS, CallStack);
   SCS->setMetadata(Mod->getMDKindID("nosanitize"), MDNode::get(*Ctx, None));
 
+  size_t pos = F.getName().find_first_of("$");
+  std::string fnNameStripped = F.getName().substr(pos+1, F.getName().size() - pos - 1);
+  u32 rr = hashCallName(fnNameStripped, ModName) % 1048576;
+  printf("add fn wrap %u for function %s\n", rr, fnNameStripped.c_str());
+  Constant* rrv = ConstantInt::get(Int32Ty, rr); 
+
+
+  Value *OriCtxVal =IRB.CreateLoad(AngoraContext);
+  setValueNonSan(OriCtxVal);
+
+    //support 32
+  OriCtxVal = IRB.CreateLShr(OriCtxVal, 1);
+  setValueNonSan(OriCtxVal);
+
+  Value *UpdatedCtx = IRB.CreateXor(OriCtxVal, rrv);
+  setValueNonSan(UpdatedCtx);
+
+  StoreInst *SaveCtx = IRB.CreateStore(UpdatedCtx, AngoraContext);
+  setInsNonSan(SaveCtx);
+
   // Recover ctx at the end of a function
   for (auto FI = F.begin(), FE = F.end(); FI != FE; FI++) {
     BasicBlock *BB = &*FI;
@@ -592,6 +643,7 @@ void Taint::addContextRecording(Function &F) {
       IRB.SetInsertPoint(Inst);
       SCS = IRB.CreateStore(LCS, CallStack);
       SCS->setMetadata(Mod->getMDKindID("nosanitize"), MDNode::get(*Ctx, None));
+      IRB.CreateStore(OriCtxVal, AngoraContext)->setMetadata(Mod->getMDKindID("nosanitize"), MDNode::get(*Ctx, None));
     }
   }
 }
@@ -650,7 +702,7 @@ bool Taint::doInitialization(Module &M) {
     Int64Ty, Int64Ty };
   TaintTraceCmpFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), TaintTraceCmpArgs, false);
-  Type *TaintTraceCondArgs[2] = { ShadowTy, Int8Ty };
+  Type *TaintTraceCondArgs[3] = { ShadowTy, Int8Ty, Int32Ty};
   TaintTraceCondFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), TaintTraceCondArgs, false);
   TaintTraceIndirectCallFnTy = FunctionType::get(
@@ -681,6 +733,7 @@ bool Taint::doInitialization(Module &M) {
 
   return true;
 }
+
 
 bool Taint::isInstrumented(const Function *F) {
   return !ABIList.isIn(*F, "uninstrumented");
@@ -808,6 +861,8 @@ bool Taint::runOnModule(Module &M) {
   if (ABIList.isIn(M, "skip"))
     return false;
 
+  ModName = M.getModuleIdentifier();
+
   if (!GetArgTLSPtr) {
     Type *ArgTLSTy = ArrayType::get(ShadowTy, 64);
     ArgTLS = Mod->getOrInsertGlobal("__dfsan_arg_tls", ArgTLSTy);
@@ -895,7 +950,18 @@ bool Taint::runOnModule(Module &M) {
           nullptr,
           GlobalValue::GeneralDynamicTLSModel);
   }
-  
+
+  AngoraContext = Mod->getGlobalVariable("__taint_trace_angcallstack");
+  if (!AngoraContext) {
+    AngoraContext =
+      new GlobalVariable(*Mod, PointerType::get(Int32Ty, 0), false,
+          GlobalValue::CommonLinkage,
+          ConstantInt::get(Int32Ty, 0),
+          "__taint_trace_angcallstack",
+          nullptr,
+          GlobalValue::GeneralDynamicTLSModel);
+  }
+
 
   std::vector<Function *> FnsToInstrument;
   SmallPtrSet<Function *, 2> FnsWithNativeABI;
@@ -1114,6 +1180,23 @@ bool Taint::runOnModule(Module &M) {
   }
 
   return false;
+}
+
+u32 TaintFunction::getInstructionId(Instruction *Inst) {
+  u32 h = 0;
+  DILocation *Loc = Inst->getDebugLoc();
+  if (Loc) {
+    u32 Line = Loc->getLine();
+    u32 Col = Loc->getColumn();
+    h = (Col * 33 + Line) * 33 + 100;
+  }
+
+  while (UniqCidSet.count(h) > 0) {
+    h = h * 3 + 1;
+  }
+  UniqCidSet.insert(h);
+
+  return h;
 }
 
 Value *TaintFunction::getArgTLSPtr() {
@@ -1696,7 +1779,6 @@ void TaintVisitor::visitCallSite(CallSite CS) {
     if (Shadow != TF.TT.ZeroShadow)
       IRB.CreateCall(TF.TT.TaintTraceIndirectCallFn, {Shadow});
   }
-
   // reset IRB
   IRB.SetInsertPoint(CS.getInstruction());
 
@@ -1941,7 +2023,8 @@ void TaintFunction::visitCondition(Value *Condition, Instruction *I) {
   Value *Shadow = getShadow(Condition);
   if (Shadow == TT.ZeroShadow)
     return;
-  IRB.CreateCall(TT.TaintTraceCondFn, {Shadow, Condition});
+  ConstantInt *Cid = ConstantInt::get(TT.Int32Ty, getInstructionId(I));
+  IRB.CreateCall(TT.TaintTraceCondFn, {Shadow, Condition, Cid});
 }
 
 void TaintVisitor::visitBranchInst(BranchInst &BR) {

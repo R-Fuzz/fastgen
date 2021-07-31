@@ -95,6 +95,7 @@ static unsigned long long path_prefix_hash;
 static unsigned long long tmp_hash_symb;
 // filter?
 SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL u32 __taint_trace_callstack;
+SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL u32 __taint_trace_angcallstack;
 typedef std::pair<u32, void*> trace_context;
 struct context_hash {
   std::size_t operator()(const trace_context &context) const {
@@ -845,7 +846,7 @@ extern "C" void
 __unfold_branch_fn(u32 r) {}
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
-__taint_trace_cond(dfsan_label label, u8 r) {
+__taint_trace_cond(dfsan_label label, u8 r, u32 cid) {
   static int count = 0;
   int order = 0;
   int skip = 0;
@@ -867,7 +868,7 @@ __taint_trace_cond(dfsan_label label, u8 r) {
     return;
   }
 
-  AOUT("solving cond: %u %u %u %p %u\n", label, r, __taint_trace_callstack, addr, itr->second);
+  AOUT("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, cid, __taint_trace_angcallstack);
 
   __solve_cond(label, addr, __taint_trace_callstack, order, skip, label,0, r,0);
 }

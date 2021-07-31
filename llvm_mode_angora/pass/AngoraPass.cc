@@ -54,6 +54,17 @@ u32 hashName(std::string str) {
   return hash;
 }
 
+u32 hashCallName(std::string str, std::string mod) {
+  std::ifstream in(str, std::ifstream::ate | std::ifstream::binary);
+  u32 fsize = in.tellg();
+  u32 hash = 5381 + fsize * 223;
+  for (auto c : str)
+    hash = ((hash << 5) + hash) + (unsigned char)c; /* hash * 33 + c */
+  for (auto c : mod)
+    hash = ((hash << 5) + hash) + (unsigned char)c; /* hash * 33 + c */
+  return hash;
+}
+
 class AngoraLLVMPass : public ModulePass {
 public:
   static char ID;
@@ -169,35 +180,25 @@ u32 AngoraLLVMPass::getRandomInstructionId() { return getRandomNum(); }
 
 u32 AngoraLLVMPass::getInstructionId(Instruction *Inst) {
   u32 h = 0;
-  if (is_bc) {
-    h = ++CidCounter;
-  } else {
-    if (gen_id_random) {
-      h = getRandomInstructionId();
-    } else {
-      DILocation *Loc = Inst->getDebugLoc();
-      if (Loc) {
-        u32 Line = Loc->getLine();
-        u32 Col = Loc->getColumn();
-        h = (Col * 33 + Line) * 33 + ModId;
-      } else {
-        h = getRandomInstructionId();
-      }
-    }
-
-    while (UniqCidSet.count(h) > 0) {
-      h = h * 3 + 1;
-    }
-    UniqCidSet.insert(h);
+  DILocation *Loc = Inst->getDebugLoc();
+  if (Loc) {
+    u32 Line = Loc->getLine();
+    u32 Col = Loc->getColumn();
+    h = (Col * 33 + Line) * 33 + 100;
   }
+
+  while (UniqCidSet.count(h) > 0) {
+    h = h * 3 + 1;
+  }
+  UniqCidSet.insert(h);
 
   if (output_cond_loc) {
     errs() << "[ID] " << h << "\n";
     errs() << "[INS] " << *Inst << "\n";
     if (DILocation *Loc = Inst->getDebugLoc()) {
       errs() << "[LOC] " << cast<DIScope>(Loc->getScope())->getFilename()
-             << ", Ln " << Loc->getLine() << ", Col " << Loc->getColumn()
-             << "\n";
+        << ", Ln " << Loc->getLine() << ", Col " << Loc->getColumn()
+        << "\n";
     }
   }
 
@@ -219,6 +220,7 @@ void AngoraLLVMPass::initVariables(Module &M) {
   ModName = M.getModuleIdentifier();
   if (ModName.size() == 0)
     FATAL("No ModName!\n");
+  OKF("modname is %s",ModName.c_str());
   ModId = hashName(ModName);
   errs() << "ModName: " << ModName << " -- " << ModId << "\n";
   is_bc = 0 == ModName.compare(ModName.length() - 3, 3, ".bc");
@@ -277,7 +279,7 @@ void AngoraLLVMPass::initVariables(Module &M) {
                            ConstantInt::get(Int32Ty, 0), "__angora_prev_loc", 0,
                            GlobalVariable::GeneralDynamicTLSModel, 0, false);
 
-    Type *TraceCmpArgs[5] = {Int32Ty, Int32Ty, Int32Ty, Int64Ty, Int64Ty};
+    Type *TraceCmpArgs[3] = {Int32Ty, Int32Ty, Int32Ty};
     TraceCmpTy = FunctionType::get(Int32Ty, TraceCmpArgs, false);
     TraceCmp = M.getOrInsertFunction("__angora_trace_cmp", TraceCmpTy);
     if (Function *F = dyn_cast<Function>(TraceCmp)) {
@@ -440,7 +442,7 @@ void AngoraLLVMPass::countEdge(Module &M, BasicBlock &BB) {
     setValueNonSan(CtxValCasted);
     // Udate PrevLoc
     NewPrevLoc =
-        IRB.CreateXor(CtxValCasted, ConstantInt::get(Int32Ty, cur_loc >> 1));
+        IRB.CreateXor(CtxVal, ConstantInt::get(Int32Ty, cur_loc >> 1));
   } else { // disable context
     NewPrevLoc = ConstantInt::get(Int32Ty, cur_loc >> 1);
   }
@@ -460,11 +462,13 @@ void AngoraLLVMPass::addFnWrap(Function &F) {
   Instruction *InsertPoint = &(*(BB->getFirstInsertionPt()));
   IRBuilder<> IRB(InsertPoint);
 
-  Value *CallSite = IRB.CreateLoad(AngoraCallSite);
-  setValueNonSan(CallSite);
+  u32 rr = hashCallName(F.getName(), ModName) % 1048576;
+  OKF("addFnWrap %u and function name is %s",rr,F.getName());
+  Constant* rrv = ConstantInt::get(Int32Ty, rr); 
 
   Value *OriCtxVal =IRB.CreateLoad(AngoraContext);
   setValueNonSan(OriCtxVal);
+
 
   // ***** Add Context *****
   // instrument code before and after each function call to add context
@@ -473,29 +477,33 @@ void AngoraLLVMPass::addFnWrap(Function &F) {
   // by `xor` with the same value
   // Implementation of function context for AFL by heiko eissfeldt:
   // https://github.com/vanhauser-thc/afl-patches/blob/master/afl-fuzz-context_sensitive.diff
-  if (num_fn_ctx > 0) {
-    OriCtxVal = IRB.CreateLShr(OriCtxVal, 32 / num_fn_ctx);
-    setValueNonSan(OriCtxVal);
-  }
 
-  Value *UpdatedCtx = IRB.CreateXor(OriCtxVal, CallSite);
+  OriCtxVal = IRB.CreateLShr(OriCtxVal, 1);
+  setValueNonSan(OriCtxVal);
+
+
+  //Value *UpdatedCtx = IRB.CreateXor(OriCtxVal, CallSite);
+  Value *UpdatedCtx = IRB.CreateXor(OriCtxVal, rrv);
   setValueNonSan(UpdatedCtx);
 
   StoreInst *SaveCtx = IRB.CreateStore(UpdatedCtx, AngoraContext);
   setInsNonSan(SaveCtx);
 
-
   // *** Post Fn ***
+
   for (auto bb = F.begin(); bb != F.end(); bb++) {
     BasicBlock *BB = &(*bb);
     Instruction *Inst = BB->getTerminator();
     if (isa<ReturnInst>(Inst) || isa<ResumeInst>(Inst)) {
       // ***** Reload Context *****
       IRBuilder<> Post_IRB(Inst);
-      Post_IRB.CreateStore(OriCtxVal, AngoraContext)
-           ->setMetadata(NoSanMetaId, NoneMetaNode);
+     Post_IRB.CreateStore(OriCtxVal, AngoraContext)
+          ->setMetadata(NoSanMetaId, NoneMetaNode);
+      //Post_IRB.CreateStore(LCS, AngoraContext)
+       //    ->setMetadata(NoSanMetaId, NoneMetaNode);
     }
   }
+
 }
 
 void AngoraLLVMPass::processCall(Instruction *Inst) {
@@ -507,7 +515,8 @@ void AngoraLLVMPass::processCall(Instruction *Inst) {
   //  return;
   if (num_fn_ctx != 0) {
     IRBuilder<> IRB(Inst);
-    Constant* CallSite = ConstantInt::get(Int32Ty, getRandomContextId());
+    u32 rcid = getRandomContextId();
+    Constant* CallSite = ConstantInt::get(Int32Ty, rcid); 
     IRB.CreateStore(CallSite, AngoraCallSite)->setMetadata(NoSanMetaId, NoneMetaNode);
   }
 }
@@ -721,29 +730,35 @@ void AngoraLLVMPass::processBoolCmp(Value *Cond, Constant *Cid,
 }
 
 void AngoraLLVMPass::visitCmpInst(Instruction *Inst) {
+  return;
+/*
   Instruction *InsertPoint = Inst->getNextNode();
   if (!InsertPoint || isa<ConstantInt>(Inst))
     return;
   Constant *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst));
   processCmp(Inst, Cid, InsertPoint);
+*/
 }
 
 void AngoraLLVMPass::visitBranchInst(Instruction *Inst) {
   BranchInst *Br = dyn_cast<BranchInst>(Inst);
+  if (Br->getMetadata("nosanitize")) return;
   if (Br->isConditional()) {
+    IRBuilder<> IRB(Inst);
     Value *Cond = Br->getCondition();
-    if (Cond && Cond->getType()->isIntegerTy() && !isa<ConstantInt>(Cond)) {
-      if (!isa<CmpInst>(Cond)) {
-        // From  and, or, call, phi ....
-        Constant *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst));
-        processBoolCmp(Cond, Cid, Inst);
-      }
-    }
+    Constant *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst));
+    Value *CondExt = IRB.CreateZExt(Cond, Int32Ty);
+    setValueNonSan(CondExt);
+    LoadInst *CurCtx = IRB.CreateLoad(AngoraContext);
+    setInsNonSan(CurCtx);
+    CallInst *ProxyCall =
+        IRB.CreateCall(TraceCmp, {CondExt, Cid, CurCtx});
+    setInsNonSan(ProxyCall);
   }
 }
 
 void AngoraLLVMPass::visitSwitchInst(Module &M, Instruction *Inst) {
-
+  return;
   SwitchInst *Sw = dyn_cast<SwitchInst>(Inst);
   Value *Cond = Sw->getCondition();
 
@@ -867,7 +882,8 @@ bool AngoraLLVMPass::runOnModule(Module &M) {
     return true;
 
   for (auto &F : M) {
-    if (F.isDeclaration() || F.getName().startswith(StringRef("asan.module")))
+    //if (F.isDeclaration() || F.getName().startswith(StringRef("asan.module")))
+    if (F.isDeclaration() )
       continue;
 
     addFnWrap(F);
