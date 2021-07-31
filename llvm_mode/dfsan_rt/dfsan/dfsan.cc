@@ -761,7 +761,7 @@ static void __solve_cond(dfsan_label label,
           dfsan_label ret_label = 0;
           u64 size = 0;
           u8 data[1024];
-          get_fmemcmp(reason, &ret_label, &size, data);
+          if (!get_fmemcmp(reason, &ret_label, &size, data)) return;
           if (size <=  1024) {
           //printf("get_fmemp index: %lu, size: %lu, data: %lu\n",index,size,data);
             sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, size, ret_label, (uint64_t)addr, ctx, (uint32_t)order);
