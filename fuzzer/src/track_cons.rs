@@ -65,14 +65,14 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     }
     //we have to continue here, the underlying task lookup with check the redudant as well. If it is redudant, the task will be loaded
     //without inserting caching 
-/*
+
     if hitcount > 1 {
       if label.6 == 2 {
         memcmp_data.pop_front().unwrap();
         continue;
       }
     }
-*/
+
 
     let mut node = AstNode::new();
     let mut cons = Constraint::new();

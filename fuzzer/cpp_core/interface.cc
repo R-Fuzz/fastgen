@@ -337,8 +337,8 @@ void* handle_task(void*) {
     for(uint32_t i=0;i<strlen((const char *)data);i++) {
       rgd_solution[(uint32_t)field_index+i] = data[i];
     }
-    printf("index is %u and size is %u, data is %s, len is %d\n", 
-                field_index,field_size,data, strlen((const char *)data));
+    //printf("index is %u and size is %u, data is %s, len is %d\n", 
+     //           field_index,field_size,data, strlen((const char *)data));
     if (SAVING_WHOLE) {
       generate_input(rgd_solution, input_file, "./raw_cases", fid++);
     }
@@ -365,7 +365,7 @@ void* handle_task(void*) {
       //incoming_tasks.enqueue({task, fresh});
       //std::pair<std::shared_ptr<SearchTask>,bool> tt{task,solve};
       //task_queue.push(tt);
-      handle_task_z3_sync(task,solve);
+      handle_task_sync(task,solve);
     }
 
     void init_core(bool saving_whole, bool use_codecache) { 

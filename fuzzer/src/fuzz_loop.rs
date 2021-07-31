@@ -244,8 +244,8 @@ pub fn grading_loop(
         }
         branch_solcount.write().unwrap().insert((addr,ctx,order,direction), solcount);
         if new_path.0 {
-          info!("grading input derived from on input {} by 
-              flipping branch@ {:#01x} ctx {:#01x} order {}, 
+          info!("grading input derived from on input {} by  \
+              flipping branch@ {:#01x} ctx {:#01x} order {}, \
               it is a new input {}, saved as input #{}", 
               fid, addr, ctx, order, new_path.0, new_path.1);
           let mut count = 1;
