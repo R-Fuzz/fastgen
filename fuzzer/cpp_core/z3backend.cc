@@ -56,46 +56,48 @@ struct RGDSolution {
   uint64_t ctx;
   uint32_t order;
   uint64_t direction;
+  uint32_t bid;
+  uint32_t sctx;
 };
 
 
 
 class SolutionQueue 
 {
-    std::deque<RGDSolution> queue_;
-    std::mutex mutex_;
-    std::condition_variable condvar_;
+  std::deque<RGDSolution> queue_;
+  std::mutex mutex_;
+  std::condition_variable condvar_;
 
-    typedef std::lock_guard<std::mutex> lock;
-    typedef std::unique_lock<std::mutex> ulock;
+  typedef std::lock_guard<std::mutex> lock;
+  typedef std::unique_lock<std::mutex> ulock;
 
-public:
-    void push(RGDSolution const &val)
-    {
-        lock l(mutex_); // prevents multiple pushes corrupting queue_
-        bool wake = queue_.empty(); // we may need to wake consumer
-        queue_.push_back(val);
-        if (wake) condvar_.notify_one();
-    }
+  public:
+  void push(RGDSolution const &val)
+  {
+    lock l(mutex_); // prevents multiple pushes corrupting queue_
+    bool wake = queue_.empty(); // we may need to wake consumer
+    queue_.push_back(val);
+    if (wake) condvar_.notify_one();
+  }
 
 
-    RGDSolution pop()
-    {
-	lock l(mutex_);
-        RGDSolution retval = queue_.front();
-        queue_.pop_front();
-        return retval;
-    }
+  RGDSolution pop()
+  {
+    lock l(mutex_);
+    RGDSolution retval = queue_.front();
+    queue_.pop_front();
+    return retval;
+  }
 
-    uint32_t get_top_id()
-    {
-	ulock u(mutex_);
-        while (queue_.empty())
-            condvar_.wait(u);
-        // now queue_ is non-empty and we still have the lock
-        RGDSolution retval = queue_.front();
-        return retval.fid;
-    }
+  uint32_t get_top_id()
+  {
+    ulock u(mutex_);
+    while (queue_.empty())
+      condvar_.wait(u);
+    // now queue_ is non-empty and we still have the lock
+    RGDSolution retval = queue_.front();
+    return retval.fid;
+  }
 };
 
 SolutionQueue solution_queue;
@@ -307,7 +309,7 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
     op2 = __z3_context->bool_val(info->op2 == 1); }
   // update tree_size
   //info->tree_size = get_label_info(info->l1)->tree_size +
-   // get_label_info(info->l2)->tree_size;
+  // get_label_info(info->l2)->tree_size;
 
   switch((info->op & 0xff)) {
     // llvm doesn't distinguish between logical and bitwise and/or/xor
@@ -630,7 +632,7 @@ static void solve_cond(dfsan_label label, uint32_t direction,
         auto &deps = branch_deps[off];
         for (auto i : deps.input_deps) {
           if (inputs.insert(i).second)
-              worklist.push_back(i);
+            worklist.push_back(i);
         }
       }
 
@@ -642,35 +644,35 @@ static void solve_cond(dfsan_label label, uint32_t direction,
       //  z3::model m_opt = __z3_solver->get_model();
       //  __z3_solver->push();
 
-        // 2. add constraints
-        expr_set_t added;
-        for (auto off : inputs) {
-          //AOUT("adding offset %d\n", off);
-          auto &deps = branch_deps[off];
-          for (auto &expr : deps.expr_deps) {
-            if (added.insert(expr).second) {
-              //AOUT("adding expr: %s\n", expr.to_string().c_str());
-              __z3_solver->add(expr);
-            }
+      // 2. add constraints
+      expr_set_t added;
+      for (auto off : inputs) {
+        //AOUT("adding offset %d\n", off);
+        auto &deps = branch_deps[off];
+        for (auto &expr : deps.expr_deps) {
+          if (added.insert(expr).second) {
+            //AOUT("adding expr: %s\n", expr.to_string().c_str());
+            __z3_solver->add(expr);
           }
-        } 
-        z3::check_result res = __z3_solver->check();
-        //printf("\n%s\n", __z3_solver->to_smt2().c_str()); 
-        if (res == z3::sat) {
-          z3::model m = __z3_solver->get_model();
-          generate_solution(m, sol);
-        } else {
-          __z3_solver->reset();
-          //AOUT("%s\n", cond.to_string().c_str());
-          __z3_solver->add(cond != result);
-          res = __z3_solver->check();
+        }
+      } 
+      z3::check_result res = __z3_solver->check();
+      //printf("\n%s\n", __z3_solver->to_smt2().c_str()); 
+      if (res == z3::sat) {
+        z3::model m = __z3_solver->get_model();
+        generate_solution(m, sol);
+      } else {
+        __z3_solver->reset();
+        //AOUT("%s\n", cond.to_string().c_str());
+        __z3_solver->add(cond != result);
+        res = __z3_solver->check();
 
-          if (res == z3::sat) {
+        if (res == z3::sat) {
           z3::model m_opt = __z3_solver->get_model();
           generate_solution(m_opt, opt_sol);
-          }
-
         }
+
+      }
       //}
     } //end of try_solve
     //nested branches
@@ -966,7 +968,7 @@ void solve(int shmid, int pipefd) {
       acc_time += getTimeStamp() - tstart;
       if (acc_time > 90000000 || count > 5000 ) //90s
         //skip_rest = true;
-	break;
+        break;
       //if (try_solve)
       // solve_divisor();
     }
@@ -985,17 +987,17 @@ void solve(int shmid, int pipefd) {
     } else if (msg.type == 1) { //gep constraint
       //bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
       //if (try_solve)
-        //solve_gep(msg.label, msg.result, try_solve, msg.tid); 
+      //solve_gep(msg.label, msg.result, try_solve, msg.tid); 
     }
 
 
     if (sol.size()) {
-      RGDSolution rsol = {sol, msg.tid, 0, 0, 0, 0};
+      RGDSolution rsol = {sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx};
       solution_queue.push(rsol);
       count++;
     }
     if (opt_sol.size()) {
-      RGDSolution rsol = {opt_sol, msg.tid, 0, 0, 0, 0};
+      RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx};
       solution_queue.push(rsol);
       count++;
     }
@@ -1047,20 +1049,23 @@ extern "C" {
   }
 
   void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
-      uint32_t *order, uint32_t *fid, uint64_t *direction, size_t size) {
+      uint32_t *order, uint32_t *fid, uint64_t *direction, 
+      uint32_t* bid, uint32_t* sctx, size_t size) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
     // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
     //asert(!solutio_queue.empty());
-      RGDSolution item = solution_queue.pop(); 
-      for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
-        if (it->first < size)
-          input[it->first] = it->second;
-      }
-      *addr = item.addr;
-      *ctx = item.ctx;
-      *order = item.order;
-      *fid = item.fid;
-      *direction = item.direction;
+    RGDSolution item = solution_queue.pop(); 
+    for(auto it = item.sol.begin(); it != item.sol.end(); ++it) {
+      if (it->first < size)
+        input[it->first] = it->second;
+    }
+    *addr = item.addr;
+    *ctx = item.ctx;
+    *order = item.order;
+    *fid = item.fid;
+    *direction = item.direction;
+    *bid = item.bid;
+    *sctx = item.sctx;
   }
 
   uint32_t get_next_input_id() {

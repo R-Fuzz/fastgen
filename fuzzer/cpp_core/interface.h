@@ -9,6 +9,8 @@ struct pipe_msg {
   uint64_t addr;
   uint64_t ctx; 
   uint32_t localcnt; 
+  uint32_t bid;
+  uint32_t sctx;
 } __attribute__((packed));
 
 void init(bool saving_whole, bool use_codecache);

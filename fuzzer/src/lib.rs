@@ -18,6 +18,7 @@ pub mod limit;
 pub mod pipe_fd;
 pub mod status_type;
 pub mod branches;
+pub mod shm_conds;
 pub mod command;
 pub mod check_dep;
 pub mod tmpfs;
