@@ -173,13 +173,17 @@ impl Executor {
     ret
   }
 
-  pub fn run_sync_with_cond(&mut self, buf: &Vec<u8>, cmpid: u32, ctx: u32) -> (bool,usize)  {
+  pub fn run_sync_with_cond(&mut self, buf: &Vec<u8>, cmpid: u32, ctx: u32, order: u32) -> (bool,usize)  {
     self.run_init();
-    self.t_conds.set(cmpid,ctx);
+    self.t_conds.set(cmpid,ctx,order);
     let status = self.run_inner(buf);
     let ret = self.do_if_has_new(buf, status);
     self.check_timeout(status);
     ret
+  }
+
+  pub fn get_cond(&mut self) -> u32 {
+    return self.t_conds.cond.condition;
   }
 
   pub fn run_norun(&mut self, buf: &Vec<u8>)  {

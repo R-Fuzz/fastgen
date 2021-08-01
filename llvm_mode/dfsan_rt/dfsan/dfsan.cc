@@ -843,7 +843,7 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
 
   dfsan_label temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
 
-  __solve_cond(temp, addr, __taint_trace_callstack,order,skip,op1,op2,r,predicate, 0,0);
+ // __solve_cond(temp, addr, __taint_trace_callstack,order,skip,op1,op2,r,predicate, 0,0);
 }
 
 extern "C" void

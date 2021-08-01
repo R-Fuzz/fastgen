@@ -618,7 +618,7 @@ void Taint::addContextRecording(Function &F) {
   size_t pos = F.getName().find_first_of("$");
   std::string fnNameStripped = F.getName().substr(pos+1, F.getName().size() - pos - 1);
   u32 rr = hashCallName(fnNameStripped, ModName) % 1048576;
-  printf("add fn wrap %u for function %s\n", rr, fnNameStripped.c_str());
+  //printf("add fn wrap %u for function %s\n", rr, fnNameStripped.c_str());
   Constant* rrv = ConstantInt::get(Int32Ty, rr); 
 
 

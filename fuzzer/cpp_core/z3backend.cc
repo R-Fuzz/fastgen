@@ -901,8 +901,8 @@ void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, 
     rgd_solution[(uint32_t)index+i] = data[i];
     //data = data >> 8 ;
   }
-  RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0};
-  solution_queue.push(sol);
+  //RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0};
+  //solution_queue.push(sol);
 }
 
 
@@ -997,9 +997,9 @@ void solve(int shmid, int pipefd) {
       count++;
     }
     if (opt_sol.size()) {
-      RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx};
-      solution_queue.push(rsol);
-      count++;
+     // RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx};
+     // solution_queue.push(rsol);
+     // count++;
     }
 
     /* 

@@ -463,7 +463,7 @@ void AngoraLLVMPass::addFnWrap(Function &F) {
   IRBuilder<> IRB(InsertPoint);
 
   u32 rr = hashCallName(F.getName(), ModName) % 1048576;
-  OKF("addFnWrap %u and function name is %s",rr,F.getName());
+  //OKF("addFnWrap %u and function name is %s",rr,F.getName());
   Constant* rrv = ConstantInt::get(Int32Ty, rr); 
 
   Value *OriCtxVal =IRB.CreateLoad(AngoraContext);

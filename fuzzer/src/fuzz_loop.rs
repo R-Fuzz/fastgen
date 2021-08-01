@@ -89,12 +89,37 @@ pub fn grading_loop(
     let mut direction: u64 = 0;
     let mut bid: u32 = 0;
     let mut sctx: u32 = 0;
+    let mut blacklist = HashSet::new();
+    blacklist.insert(123145304594434u64);
+    blacklist.insert(123145304595428u64);
+    blacklist.insert(123145304637859u64);
+    blacklist.insert(123145304594406u64);
+    blacklist.insert(123145304595879u64);
+    blacklist.insert(123145304594378u64);
+    blacklist.insert(123145304594183u64);
+    blacklist.insert(123145304630498u64);
+    blacklist.insert(123145304594350u64);
+    blacklist.insert(123145304637166u64);
+    blacklist.insert(123145304637884u64);
+    blacklist.insert(123145304594718u64);
     while running.load(Ordering::Relaxed) {
       let id = unsafe { get_next_input_id() };
       if id != std::u32::MAX {
         let mut buf: Vec<u8> = depot.get_input_buf(id as usize);
         unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, buf.len()) };
-        let new_path = executor.run_sync_with_cond(&buf, bid, sctx);
+        let new_path = executor.run_sync_with_cond(&buf, bid, sctx, order);
+        let direction_out = executor.get_cond();
+        if (direction_out == 0 && direction == 1) || (direction_out == 1 && direction == 0) {
+          info!("Flipped!!!!!!");
+        } else if (direction_out == std::u32::MAX) {
+          //if !blacklist.contains(&addr) {
+          info!("Not reached!!!! {}", addr);
+          //}
+        } else if (direction_out  > 1) {
+          info!("Abnormal Direction!!!!!");
+        } else {
+          info!("Not Flippped!!!!!");
+        }
         let mut solcount = 1;
         if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
           solcount = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
