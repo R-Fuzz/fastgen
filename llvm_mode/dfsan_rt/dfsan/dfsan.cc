@@ -780,7 +780,6 @@ static void __solve_cond(dfsan_label label,
             struct pipe_msg msg = {.type = 2, .tid = __tid, .label = index, .result = size, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx };
             //write(mypipe,content,strlen(content));
             write(mypipe, &msg,sizeof(msg));
-            printf("strcmp write %d bytes\n", sizeof(msg));
             write(mypipe,data,size);
             fsync(mypipe);
             get_label_info(label)->flags |= B_FLIPPED;
@@ -889,7 +888,6 @@ extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
 add_constraints(dfsan_label label) {
   void *addr = __builtin_return_address(0);
   uint64_t callstack = __taint_trace_callstack;
-  printf("__add_constraint %d and solver_select is %d\n", __solver_select);
   if (__solver_select != 1) {
     if (rejectBranch(label)) {  return; }
     serialize(label);
@@ -924,7 +922,6 @@ __taint_trace_gep(dfsan_label label, u64 r) {
 
   uint64_t callstack = __taint_trace_callstack;
   static int count = 0;
-  printf("__trace_gep %d and solver_select is %d\n",++count, __solver_select);
   if (__solver_select != 1) {
     if (rejectBranch(label)) { 
         //printLabel(label); 
@@ -1157,8 +1154,6 @@ static void dfsan_init(int argc, char **argv, char **envp) {
 
   InitializePlatformEarly();
   MmapFixedNoReserve(ShadowAddr(), UnionTableAddr() - ShadowAddr());
-  //printf("unsued addr %p and shadow addr %p and uniton addr %p\n", UnusedAddr(),ShadowAddr(),UnionTableAddr());
-  //printf("mapping %lx bytes\n",UnusedAddr() - ShadowAddr());
   __dfsan_label_info = (dfsan_label_info *)UnionTableAddr();
   if (__shmid == 0)
     __shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);

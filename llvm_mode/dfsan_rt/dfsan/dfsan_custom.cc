@@ -56,12 +56,19 @@ using namespace __dfsan;
 #define DECLARE_WEAK_INTERCEPTOR_HOOK(f, ...) \
 SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE void f(__VA_ARGS__);
 
+static inline dfsan_label get_label_for(int fd, off_t offset) {
+  // check if fd is stdin, if so, the label hasn't been pre-allocated
+  if (is_stdin_taint()) return dfsan_create_label(offset);
+  // if fd is a tainted file, the label should have been pre-allocated
+  else return (offset + CONST_OFFSET);
+}
+
 extern "C" {
 SANITIZER_INTERFACE_ATTRIBUTE int
 __dfsw_stat(const char *path, struct stat *buf, dfsan_label path_label,
             dfsan_label buf_label, dfsan_label *ret_label) {
   int ret = stat(path, buf);
-  if (ret == 0) {
+  if (ret == 0 && is_taint_file(path)) {
     dfsan_set_label(0, buf, sizeof(struct stat));
     dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
     dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
@@ -75,7 +82,7 @@ __dfsw___xstat(int vers, const char *path, struct stat *buf,
                dfsan_label vers_label, dfsan_label path_label,
                dfsan_label buf_label, dfsan_label *ret_label) {
   int ret = __xstat(vers, path, buf);
-  if (ret == 0) {
+  if (ret == 0 && is_taint_file(path)) {
     dfsan_set_label(0, buf, sizeof(struct stat));
     dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
     dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
@@ -89,7 +96,7 @@ SANITIZER_INTERFACE_ATTRIBUTE int __dfsw_fstat(int fd, struct stat *buf,
                                                dfsan_label buf_label,
                                                dfsan_label *ret_label) {
   int ret = fstat(fd, buf);
-  if (ret == 0) {
+  if (ret == 0 && taint_get_file(fd)) {
     dfsan_set_label(0, buf, sizeof(struct stat));
     dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
     dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
@@ -103,7 +110,7 @@ __dfsw___fxstat(int vers, const int fd, struct stat *buf,
                 dfsan_label vers_label, dfsan_label fd_label,
                 dfsan_label buf_label, dfsan_label *ret_label) {
   int ret = __fxstat(vers, fd, buf);
-  if (ret == 0) {
+  if (ret == 0 && taint_get_file(fd)) {
     dfsan_set_label(0, buf, sizeof(struct stat));
     dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
     dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
@@ -116,7 +123,7 @@ SANITIZER_INTERFACE_ATTRIBUTE int
 __dfsw_lstat(const char *path, struct stat *buf, dfsan_label path_label,
              dfsan_label buf_label, dfsan_label *ret_label) {
   int ret = lstat(path, buf);
-  if (ret == 0) {
+  if (ret == 0 && is_taint_file(path)) {
     dfsan_set_label(0, buf, sizeof(struct stat));
     dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
     dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
@@ -130,7 +137,7 @@ __dfsw___lxstat(int vers, const char *path, struct stat *buf,
                 dfsan_label vers_label, dfsan_label path_label,
                 dfsan_label buf_label, dfsan_label *ret_label) {
   int ret = __lxstat(vers, path, buf);
-  if (ret == 0) {
+  if (ret == 0 && is_taint_file(path)) {
     dfsan_set_label(0, buf, sizeof(struct stat));
     dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
     dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
@@ -288,7 +295,7 @@ SANITIZER_INTERFACE_ATTRIBUTE void *__dfsw_calloc(size_t nmemb, size_t size,
                                                   dfsan_label size_label,
                                                   dfsan_label *ret_label) {
   void *p = calloc(nmemb, size);
-  dfsan_set_label(0, p, nmemb * size);
+  // dfsan_set_label(0, p, nmemb * size);
   *ret_label = 0;
   return p;
 }
@@ -299,7 +306,7 @@ void *__dfsw___libc_calloc(size_t nmemb, size_t size,
                            dfsan_label size_label,
                            dfsan_label *ret_label) {
   void *p = calloc(nmemb, size);
-  dfsan_set_label(0, p, nmemb * size);
+  // dfsan_set_label(0, p, nmemb * size);
   *ret_label = 0;
   return p;
 }
@@ -324,6 +331,18 @@ static void *dfsan_memcpy(void *dest, const void *src, size_t n) {
   return internal_memcpy(dest, src, n);
 }
 
+static void dfsan_memset(void *s, int c, dfsan_label c_label, size_t n) {
+  internal_memset(s, c, n);
+  dfsan_set_label(c_label, s, n);
+}
+
+SANITIZER_INTERFACE_ATTRIBUTE
+void *__dfsw_memcpy(void *dest, const void *src, size_t n,
+                    dfsan_label dest_label, dfsan_label src_label,
+                    dfsan_label n_label, dfsan_label *ret_label) {
+  *ret_label = dest_label;
+  return dfsan_memcpy(dest, src, n);
+}
 
 SANITIZER_INTERFACE_ATTRIBUTE
 void *__dfsw_memmove(void *dest, const void *src, size_t n,
@@ -337,19 +356,6 @@ void *__dfsw_memmove(void *dest, const void *src, size_t n,
   internal_memcpy((void *)sdest, (const void *)tmp, n * sizeof(dfsan_label));
   *ret_label = dest_label;
   return ret;
-}
-
-static void dfsan_memset(void *s, int c, dfsan_label c_label, size_t n) {
-  internal_memset(s, c, n);
-  dfsan_set_label(c_label, s, n);
-}
-
-SANITIZER_INTERFACE_ATTRIBUTE
-void *__dfsw_memcpy(void *dest, const void *src, size_t n,
-                    dfsan_label dest_label, dfsan_label src_label,
-                    dfsan_label n_label, dfsan_label *ret_label) {
-  *ret_label = dest_label;
-  return dfsan_memcpy(dest, src, n);
 }
 
 SANITIZER_INTERFACE_ATTRIBUTE
@@ -389,6 +395,17 @@ __dfsw___strdup(const char *s, dfsan_label s_label, dfsan_label *ret_label) {
 }
 
 SANITIZER_INTERFACE_ATTRIBUTE char *
+__dfsw___strndup(const char *s, size_t n, dfsan_label s_label,
+                 dfsan_label n_label, dfsan_label *ret_label) {
+  size_t len = strlen(s);
+  len = len > n ? n : len;
+  void *p = malloc(len+1);
+  dfsan_memcpy(p, s, len+1);
+  *ret_label = 0;
+  return static_cast<char *>(p);
+}
+
+SANITIZER_INTERFACE_ATTRIBUTE char *
 __dfsw_strncpy(char *s1, const char *s2, size_t n, dfsan_label s1_label,
                dfsan_label s2_label, dfsan_label n_label,
                dfsan_label *ret_label) {
@@ -413,9 +430,8 @@ __dfsw_pread(int fd, void *buf, size_t count, off_t offset,
   *ret_label = 0;
   if (ret >= 0) {
     if (taint_get_file(fd)) {
-      dfsan_label label = offset + CONST_OFFSET;
       for (ssize_t i = 0; i < ret; i++) {
-        dfsan_set_label(label + i, (char *)buf + i, 1);
+        dfsan_set_label(get_label_for(fd, offset + i), (char *)buf + i, 1);
       }
       // *ret_label = dfsan_union(0, 0, fsize, sizeof(ret) * 8, offset, 0);
     } else {
@@ -436,9 +452,8 @@ __dfsw_read(int fd, void *buf, size_t count,
   if (ret >= 0) {
     if (taint_get_file(fd)) {
       AOUT("offset = %d, ret = %d\n", offset, ret);
-      dfsan_label label = offset + CONST_OFFSET;
       for(ssize_t i = 0; i < ret; i++) {
-        dfsan_set_label(label + i, (char *)buf + i, 1);
+        dfsan_set_label(get_label_for(fd, offset + i), (char *)buf + i, 1);
       }
       // for (size_t i = ret; i < count; i++)
       //   dfsan_set_label(-1, (char *)buf + i, 1);
@@ -1259,13 +1274,6 @@ SANITIZER_INTERFACE_WEAK_DEF(void, __dfsw___sanitizer_cov_trace_const_cmp8,
                              void) {}
 SANITIZER_INTERFACE_WEAK_DEF(void, __dfsw___sanitizer_cov_trace_switch, void) {}
 
-static inline dfsan_label get_label_for(int fd, off_t offset) {
-  // check if fd is stdin, if so, the label hasn't been pre-allocated
-  if (is_stdin_taint()) return dfsan_create_label(offset);
-  // if fd is a tainted file, the label should have been pre-allocated
-  else return (offset + CONST_OFFSET);
-}
-
 SANITIZER_INTERFACE_ATTRIBUTE int
 __dfsw_open(const char *path, int oflags, dfsan_label path_label,
             dfsan_label flag_label, dfsan_label *va_labels,
@@ -1418,7 +1426,7 @@ __dfsw_fread_unlocked(
       // for (size_t i = ret * size; i < nmemb * size; i++) {
       //   dfsan_set_label(-1, (char *)ptr + i, 1);
       // }
-      // *ret_label = dfsan_union(0, 0, fsize, sizeof(ret), offset, 0);
+      // *ret_label = dfsan_union(0, 0, fsize, sizeof(ret) * 8, offset, 0);
     } else {
       dfsan_set_label(0, ptr, ret * size);
     }
@@ -1468,7 +1476,7 @@ __dfsw_getdelim(char **lineptr, size_t *n, int delim, FILE *stream,
         dfsan_set_label(get_label_for(fd, offset + i), addr, 1);
       }
       dfsan_set_label(0, (*lineptr) + ret, 1);
-      //*ret_label = dfsan_union(0, 0, fsize, sizeof(ret) * 8, offset, 0);
+      // *ret_label = dfsan_union(0, 0, fsize, sizeof(ret) * 8, offset, 0);
     } else {
       dfsan_set_label(0, *lineptr, ret + 1);
     }
@@ -1538,9 +1546,8 @@ __dfsw_getutxent(dfsan_label *ret_label) {
   *ret_label = 0;
   if (ret && is_utmp_taint()) {
     off_t offset = get_utmp_offset();
-    dfsan_label label = offset + CONST_OFFSET;
     for (size_t i = 0; i < sizeof(struct utmpx); i++) {
-      dfsan_set_label(label + i, (char *)ret + i, 1);
+      dfsan_set_label(get_label_for(-1, offset + i), (char *)ret + i, 1);
     }
     set_utmp_offset(offset + sizeof(struct utmpx));
   }
@@ -1556,11 +1563,10 @@ char *__dfsw_fgets(char *s, int size, FILE *stream, dfsan_label s_label,
   char *ret = fgets(s, size, stream);
   if (ret) {
     if (taint_get_file(fd)) {
-      dfsan_label label = offset + CONST_OFFSET;
       // including terminating \0
       for (size_t i = 0; i < strlen(ret); i++) {
         char *buf = s + i;
-        dfsan_set_label(label + i, buf, 1);
+        dfsan_set_label(get_label_for(fd, offset + i), buf, 1);
       }
       dfsan_set_label(0, s + strlen(ret), 1);
       // for(int i = strlen(ret) + 1; i < size; i++) {
@@ -1611,10 +1617,10 @@ __dfsw_realloc(void *ptr, size_t new_size,
   size_t size = malloc_usable_size(ptr);
   if (size > new_size) size = new_size;
   void *ret = realloc(ptr, new_size);
-  internal_memset(shadow_for(ret), 0, sizeof(dfsan_label) * new_size);
-  internal_memcpy(shadow_for(ret), shadow_for(ptr), sizeof(dfsan_label) * size);
+  // internal_memset(shadow_for(ret), 0, sizeof(dfsan_label) * new_size);
   if (ret != ptr) {
-    internal_memset(shadow_for(ptr), 0, sizeof(dfsan_label) * size);
+    internal_memcpy(shadow_for(ret), shadow_for(ptr), sizeof(dfsan_label) * size);
+    // internal_memset(shadow_for(ptr), 0, sizeof(dfsan_label) * size);
     *ret_label = 0;
   } else *ret_label = ptr_label;
   return ret;
@@ -1627,10 +1633,10 @@ __dfsw___libc_realloc(void *ptr, size_t new_size,
   size_t size = malloc_usable_size(ptr);
   if (size > new_size) size = new_size;
   void *ret = realloc(ptr, new_size);
-  internal_memset(shadow_for(ret), 0, sizeof(dfsan_label) * new_size);
-  internal_memcpy(shadow_for(ret), shadow_for(ptr), sizeof(dfsan_label) * size);
+  // internal_memset(shadow_for(ret), 0, sizeof(dfsan_label) * new_size);
   if (ret != ptr) {
-    internal_memset(shadow_for(ptr), 0, sizeof(dfsan_label) * size);
+    internal_memcpy(shadow_for(ret), shadow_for(ptr), sizeof(dfsan_label) * size);
+    // internal_memset(shadow_for(ptr), 0, sizeof(dfsan_label) * size);
     *ret_label = 0;
   } else *ret_label = ptr_label;
   return ret;
@@ -1642,7 +1648,7 @@ void *__dfsw_malloc(size_t size, dfsan_label size_label,
   if (size_label)
     AOUT("malloc with tainted length: %d = %lld\n", size_label, size);
   void *ret = malloc(size);
-  internal_memset(shadow_for(ret), 0, sizeof(dfsan_label) * size);
+  // internal_memset(shadow_for(ret), 0, sizeof(dfsan_label) * size);
   *ret_label = 0;
   return ret;
 }
@@ -1651,22 +1657,22 @@ SANITIZER_INTERFACE_ATTRIBUTE
 void *__dfsw___libc_malloc(size_t size, dfsan_label size_label,
                            dfsan_label *ret_label) {
   void *ret = malloc(size);
-  internal_memset(shadow_for(ret), 0, sizeof(dfsan_label) * size);
+  // internal_memset(shadow_for(ret), 0, sizeof(dfsan_label) * size);
   *ret_label = 0;
   return ret;
 }
 
 SANITIZER_INTERFACE_ATTRIBUTE void __dfsw_free(void *ptr, dfsan_label ptr_label) {
-  size_t size = malloc_usable_size(ptr);
+  // size_t size = malloc_usable_size(ptr);
   free(ptr);
-  internal_memset(shadow_for(ptr), 0, sizeof(dfsan_label) * size);
+  // internal_memset(shadow_for(ptr), 0, sizeof(dfsan_label) * size);
 }
 
 SANITIZER_INTERFACE_ATTRIBUTE
 void __dfsw___libc_free(void *ptr, dfsan_label ptr_label) {
-  size_t size = malloc_usable_size(ptr);
+  // size_t size = malloc_usable_size(ptr);
   free(ptr);
-  internal_memset(shadow_for(ptr), 0, sizeof(dfsan_label) * size);
+  // internal_memset(shadow_for(ptr), 0, sizeof(dfsan_label) * size);
 }
 
 SANITIZER_INTERFACE_ATTRIBUTE int
@@ -1758,9 +1764,8 @@ __dfsw_mmap(void *start, size_t length, int prot, int flags, int fd,
            ret, offset, length);
       size_t tainted_length = (offset + length) > fsize ? (fsize - offset)
                                                         : length;
-      dfsan_label label = offset + CONST_OFFSET;
       for (size_t i = 0; i < tainted_length; i++)
-        dfsan_set_label(label + i, (char *)ret + i, 1);
+        dfsan_set_label(get_label_for(fd, offset + i), (char *)ret + i, 1);
       for (size_t i = tainted_length; i < length; i++)
         dfsan_set_label(-1, (char *)ret + i, 1);
     } else {
@@ -1791,7 +1796,7 @@ __dfsw_lseek(int fd, off_t offset, int whence, dfsan_label fd_label,
     if (taint_get_file(fd)) {
       taint_set_offset_label(offset_label);
       if (offset_label) {
-        dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset)*8,
+        dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset) * 8,
             0, offset);
         add_constraints(sc);
       }
@@ -1811,7 +1816,7 @@ __dfsw_fseek(FILE *stream, long offset, int whence, dfsan_label stream_label,
   if (ret == 0 && taint_get_file(fd)) {
     taint_set_offset_label(offset_label);
     if (offset_label) {
-      dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset)*8 ,
+      dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset) * 8,
           0, offset);
       add_constraints(sc);
     }
@@ -1829,7 +1834,7 @@ __dfsw_fseeko(FILE *stream, off_t offset, int whence, dfsan_label stream_label,
   if (ret == 0 && taint_get_file(fd)) {
     taint_set_offset_label(offset_label);
     if (offset_label) {
-      dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset)*8,
+      dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset) * 8,
           0, offset);
       add_constraints(sc);
     }
@@ -1847,7 +1852,7 @@ __dfsw_fseeko64(FILE *stream, off64_t offset, int whence, dfsan_label stream_lab
   if (ret == 0 && taint_get_file(fd)) {
     taint_set_offset_label(offset_label);
     if (offset_label) {
-      dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset)*8,
+      dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset) * 8,
           0, offset);
       add_constraints(sc);
     }
