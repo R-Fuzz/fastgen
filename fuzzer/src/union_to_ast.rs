@@ -527,6 +527,8 @@ pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table:
       }
       simplify(&mut src, dst);
     }
+  } else {
+    info!("operator not relational!, op is {}, direction {}", info.op, direction);
   }
 }
 
