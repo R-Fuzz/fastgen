@@ -11,6 +11,7 @@ use crate::cpp_interface::*;
 use protobuf::Message;
 use crate::union_find::*;
 use std::time;
+use crate::interface::*;
 
 //each input offset has a coresspdoing slot
 pub struct BranchDep {
@@ -86,7 +87,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       let data = memcmp_data.pop_front().unwrap();
       let (index, size) = get_fmemcmp_constraint(label.2 as u32, table, &mut inputs);
       if data.len() >= size {
-        unsafe { submit_fmemcmp(data.as_ptr(), index, size as u32, label.0, label.3); }
+        //unsafe { submit_fmemcmp(data.as_ptr(), index, size as u32, label.0, label.3); }
       }
       continue;
     } else if label.6 == 3 {
@@ -149,6 +150,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       task.set_direction(label.2);
 
       let task_ser = task.write_to_bytes().unwrap();
+
+      let mut tb = SearchTaskBuilder::new();
+      tb.submit_task_rust(&task);
 /*
         count = count + 1;
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
@@ -156,9 +160,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
 
       if hitcount <= 5 && gencount == 0 && label.6 !=3 {
-      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
+      //	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
       } else {
-      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
+     // 	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
       }
 
 
@@ -250,6 +254,7 @@ mod tests {
   use std::path::Path;
 #[test]
   fn test_scan() {
+/*
     let id = unsafe {
       libc::shmget(
           0x1234,
@@ -284,5 +289,6 @@ mod tests {
 */
     unsafe { aggregate_results(); }
     unsafe { fini_core(); }
+*/
   }
 }

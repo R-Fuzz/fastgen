@@ -29,3 +29,6 @@ pub mod sync;
 pub mod fuzz_loop;
 pub mod afl;
 pub mod interesting_val;
+pub mod jit;
+pub mod interface;
+pub mod task;
