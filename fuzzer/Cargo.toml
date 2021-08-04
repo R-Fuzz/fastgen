@@ -23,6 +23,7 @@ wait-timeout = "0.2"
 twoway = "0.2.0"
 memmap = "0.7.0"
 rand = "0.7"
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "llvm10-0" }
 
 [build-dependencies]
 protoc-rust = "2.0"
