@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
-use crate::rgd::*; use num_traits::FromPrimitive;
+use crate::rgd::*; 
+use num_traits::FromPrimitive;
 use crate::op_def::*;
 use crate::util::*;
 //Take a AST node as input, traverse the subtree using post-order and
