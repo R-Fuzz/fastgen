@@ -14,7 +14,7 @@ use num_traits::FromPrimitive;
 
 pub const RET_OFFSET: u64 = 2;
 
-type JigsawFnType = unsafe extern "C" fn(*mut u64) -> u64;
+pub type JigsawFnType = unsafe extern "C" fn(*mut u64) -> u64;
 type Addition = unsafe extern "C" fn(i32, i32) -> i32;
 
 pub struct JITEngine {
@@ -265,14 +265,14 @@ impl JITEngine {
 
   pub fn add_function(&self, request: &AstNode, local_map: &HashMap<u32,u32>) -> JitFunction<JigsawFnType> {
     let id = self.uuid.fetch_add(1, Ordering::Relaxed);
-    let moduleId = format!("rgdjit_m{}", id);
-    let module = self.context.create_module(&moduleId);
-    let fun = self.context.create_module(&moduleId);
+    let module_id = format!("rgdjit_m{}", id);
+    let module = self.context.create_module(&module_id);
+    let fun = self.context.create_module(&module_id);
     let i64_type = self.context.i64_type();
     let i64_pointer_type = i64_type.ptr_type(AddressSpace::Generic);
     let fn_type = i64_type.fn_type(&[i64_pointer_type.into()], false);
-    let funcId = format!("rgdjit{}", id);
-    let fn_val = module.add_function(&funcId, fn_type, None);
+    let func_id = format!("rgdjit{}", id);
+    let fn_val = module.add_function(&func_id, fn_type, None);
     let entry_basic_block = self.context.append_basic_block(fn_val, "entry");
 
     let builder = self.context.create_builder();
@@ -288,7 +288,7 @@ impl JITEngine {
     let execution_engine = module
       .create_jit_execution_engine(OptimizationLevel::None)
       .unwrap();
-    unsafe { execution_engine.get_function(&funcId).unwrap() }
+    unsafe { execution_engine.get_function(&func_id).unwrap() }
   }
 
   pub fn add_function_add(&self) -> JitFunction<Addition> {
@@ -321,16 +321,16 @@ impl JITEngine {
 
   pub fn add_function_test(&self) -> JitFunction<JigsawFnType> {
     let id = self.uuid.fetch_add(1, Ordering::Relaxed);
-    let moduleId = format!("rgdjit_m{}", id);
-    let funcId = format!("rgdjit{}", id);
-    let module = self.context.create_module(&moduleId);
-    let fun = self.context.create_module(&moduleId);
+    let module_id = format!("rgdjit_m{}", id);
+    let func_id = format!("rgdjit{}", id);
+    let module = self.context.create_module(&module_id);
+    let fun = self.context.create_module(&module_id);
     let i64_type = self.context.i64_type();
     let i32_type = self.context.i32_type();
     let i64_pointer_type = i64_type.ptr_type(AddressSpace::Generic);
     let fn_type = i64_type.fn_type(&[i64_pointer_type.into()], false);
 
-    let fn_val = module.add_function(&funcId, fn_type, None);
+    let fn_val = module.add_function(&func_id, fn_type, None);
     let entry_basic_block = self.context.append_basic_block(fn_val, "entry");
 
     let builder = self.context.create_builder();
@@ -352,7 +352,7 @@ impl JITEngine {
     let execution_engine = module
       .create_jit_execution_engine(OptimizationLevel::None)
       .unwrap();
-    unsafe { execution_engine.get_function(&funcId).unwrap() }
+    unsafe { execution_engine.get_function(&func_id).unwrap() }
   }
 }
 
@@ -431,17 +431,17 @@ mod tests {
 #[test]
   fn test_pointer_load() {
     let context = Context::create();
-    let moduleId = format!("rgdjit");
-    let funcId = format!("rgdjitm");
+    let module_id = format!("rgdjit");
+    let func_id = format!("rgdjitm");
     println!("test pointer load");
-    let module = context.create_module(&moduleId);
-    let fun = context.create_module(&moduleId);
+    let module = context.create_module(&module_id);
+    let fun = context.create_module(&module_id);
     let i64_type = context.i64_type();
     let i32_type = context.i32_type();
     let i64_pointer_type = i64_type.ptr_type(AddressSpace::Generic);
     let fn_type = i64_type.fn_type(&[i64_pointer_type.into()], false);
 
-    let fn_val = module.add_function(&funcId, fn_type, None);
+    let fn_val = module.add_function(&func_id, fn_type, None);
     let entry_basic_block = context.append_basic_block(fn_val, "entry");
 
     let builder = context.create_builder();
@@ -464,7 +464,7 @@ mod tests {
       .create_jit_execution_engine(OptimizationLevel::None)
       .unwrap();
     unsafe {
-      let add: JitFunction<JigsawFnType> =  execution_engine.get_function(&funcId).unwrap();
+      let add: JitFunction<JigsawFnType> =  execution_engine.get_function(&func_id).unwrap();
       let mut x: [u64; 2] = [10, 12];
       println!("result is {}", add.call(x.as_mut_ptr()));
     }

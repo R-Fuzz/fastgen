@@ -32,3 +32,6 @@ pub mod interesting_val;
 pub mod jit;
 pub mod interface;
 pub mod task;
+pub mod grad;
+pub mod mut_input;
+pub mod gd;
