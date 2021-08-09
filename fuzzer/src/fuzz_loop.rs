@@ -25,6 +25,7 @@ use std::collections::HashMap;
 use std::os::unix::io::{RawFd};
 use nix::unistd::pipe;
 use nix::unistd::close;
+use crate::interface::*;
 
 
 pub fn dispatcher(table: &UnionTable,
@@ -33,7 +34,10 @@ pub fn dispatcher(table: &UnionTable,
     buf: &Vec<u8>, id: RawFd) {
 
   let (labels,mut memcmp_data) = read_pipe(id);
-  scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &branch_gencount, &branch_hitcount, buf);
+  let mut tb = SearchTaskBuilder::new();
+  scan_nested_tasks(&labels, &mut memcmp_data, table, 
+                  config::MAX_INPUT_LEN, &branch_gencount, 
+                  &branch_hitcount, buf, &mut tb);
 }
 /*
 //check the status
@@ -228,8 +232,8 @@ pub fn grading_loop(
           let old_size = buf.len();
           buf.resize(old_size + new_field_size - field_size, 0);
         }
-        unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, 
-                        &mut order, &mut fid, &mut direction, buf.len()) };
+        //unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, 
+         //               &mut order, &mut fid, &mut direction, buf.len()) };
         //truncate the buffer if new field is smaller
         if new_field_size < field_size {
           let old_size = buf.len();

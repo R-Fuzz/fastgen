@@ -1,7 +1,7 @@
 use crate::rgd::*;
 use crate::union_table::*;
 use crate::union_to_ast::*;
-//use crate::util::*;
+use crate::util::*;
 use crate::analyzer::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -44,7 +44,8 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
 
 pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_data: &mut VecDeque<Vec<u8>>,
           table: &UnionTable, tainted_size: usize, branch_gencount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>
-          , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, buf: &Vec<u8>) {
+          , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, buf: &Vec<u8>,
+            tb: &mut SearchTaskBuilder) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
   let mut uf = UnionFind::new(tainted_size);
   branch_deps.resize_with(tainted_size, || None);
@@ -151,7 +152,6 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
       let task_ser = task.write_to_bytes().unwrap();
 
-      let mut tb = SearchTaskBuilder::new();
       tb.submit_task_rust(&task);
 /*
         count = count + 1;
