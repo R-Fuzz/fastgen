@@ -92,6 +92,7 @@ pub fn print_task(task: &SearchTask) {
   for cons in task.get_constraints() {
     println!("constraint label is {}", cons.get_label());
     print_node(cons.get_node());
+/*
     for ainput in cons.get_meta().get_inputs() {
       println!("offset {} iv {}", ainput.get_offset(), ainput.get_iv());
     }
@@ -101,6 +102,7 @@ pub fn print_task(task: &SearchTask) {
     for amap in cons.get_meta().get_map() {
       println!("offset {} iv {}", amap.get_k(), amap.get_v());
     }
+*/
   }
 }
 

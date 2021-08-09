@@ -10,22 +10,26 @@ use std::collections::HashMap;
 
 pub fn add_results(input: &MutInput, rgd_solutions: &mut Vec<HashMap<u32,u8>>,
     inputs: &Vec<(u32,u8)>, shape: &HashMap<u32,u32>) {
+  println!("add results");
   let mut sol = HashMap::<u32,u8>::new();
   let mut ordered = Vec::<(u32,u64)>::new();
   let mut i = 0;
   for kv in inputs {
     ordered.push((kv.0, input.get(i)));
+    println!("kv 0 is {} input i is {}", kv.0, input.get(i));
     i += 1;
   }
   ordered.sort_by_key(|k| k.0);
   i = 0;
-  while i > ordered.len() {
+  while i < ordered.len() {
     if shape[&ordered[i].0] != 0 {
       let start = ordered[i].0; 
       let mut res = ordered[i].1;
       let length = shape[&ordered[i].0];
       for k in 1..length {
-        res += (ordered[i + k as usize].1) << (8*k);
+        //we use overflowing add here because JIT code does so
+        let result = res.overflowing_add( (ordered[i + k as usize].1) << (8*k) );
+        res = result.0;
       }
       for j in 0..length {
         sol.insert(start+j as u32, (res & 0xFF) as u8);
@@ -36,6 +40,9 @@ pub fn add_results(input: &MutInput, rgd_solutions: &mut Vec<HashMap<u32,u8>>,
       i = i + 1;
     }
   }
+  //for (k,v) in sol.iter() {
+   // println!("k {} v {}", k, v);
+ // }
   rgd_solutions.push(sol); 
 }
 

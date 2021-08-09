@@ -282,8 +282,8 @@ impl JITEngine {
     let body = self.codegen(&builder, request, local_map, fn_val, &value_cache);
 
     let return_instruction = builder.build_return(Some(&body));
-    dbg!("module: {:?}", module.clone());
-    dbg!("builder: {:?}", &builder);
+    //dbg!("module: {:?}", module.clone());
+    //dbg!("builder: {:?}", &builder);
     assert_eq!(return_instruction.get_num_operands(), 1);
     let execution_engine = module
       .create_jit_execution_engine(OptimizationLevel::None)

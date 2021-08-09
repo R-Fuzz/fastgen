@@ -2,6 +2,7 @@ use crate::rgd::*;
 use crate::util::*;
 use std::collections::HashMap;
 use std::path::Path;
+use crate::gd::*;
 use crate::task::Cons;
 use crate::task::Fut;
 use crate::jit::JITEngine;
@@ -43,8 +44,8 @@ impl SearchTaskBuilder {
       let mut x = vec![1, 1, 1, 1, 12350, 15, 16, 17, 18, 19];
       unsafe { println!("result is {}, left {} right {}", cons.call_func(&mut x), x[0], x[1]); }
       fut.constraints.push(cons);
-      fut.finalize();
     }
+    fut.finalize();
     fut
   }
 
@@ -68,11 +69,20 @@ impl SearchTaskBuilder {
   pub fn submit_task_rust(&mut self, task: &SearchTask) {
     println!("print task number of children is {}",task.get_constraints().len());
     print_task(task);
+/*
     let r = save_request(task, &Path::new("saved_test"));
     if r.is_err() {
       println!("save error");
     }
-    //self.construct_task(task);
+    let engine = JITEngine::new();
+    let mut fut = self.construct_task(task, &engine);
+    gd_search(&mut fut);
+    for sol in fut.rgd_solutions {
+        for (k,v) in sol.iter() {
+          println!("k {} v {}", k, v);
+        }
+    }
+*/
   }
 }
 
@@ -93,7 +103,13 @@ use crate::task::SContext;
       let task_copy = task.clone();
       print_task(&task_copy);
       let mut fut = tb.construct_task(&task_copy, &engine);
+      println!("search!");
       gd_search(&mut fut);
+      for sol in fut.rgd_solutions {
+        for (k,v) in sol.iter() {
+          println!("k {} v {}", k, v);
+        }
+      }
     }
   }
 #[test]  
