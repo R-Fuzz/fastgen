@@ -30,15 +30,16 @@ impl MutInput {
     pub fn assign(&mut self, input: &Vec<(u32,u8)>) {
         for v in input {
           self.value.push(v.1 as u64);
+          self.disables.push(false);
         }
     }
 
     pub fn update(&mut self, index: usize, direction: bool, delta: u64) {
         if !self.disables[index] {  
           if direction {
-            self.value[index] += delta;
+            self.value[index] = self.value[index].saturating_add(delta);
           } else {
-            self.value[index] -= delta;
+            self.value[index] = self.value[index].saturating_sub(delta);
           }
         }
     }

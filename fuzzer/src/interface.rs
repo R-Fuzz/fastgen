@@ -93,7 +93,7 @@ use crate::task::SContext;
       let task_copy = task.clone();
       print_task(&task_copy);
       let mut fut = tb.construct_task(&task_copy, &engine);
- //     gd_search(&mut fut);
+      gd_search(&mut fut);
     }
   }
 #[test]  
