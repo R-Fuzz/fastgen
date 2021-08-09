@@ -11,7 +11,7 @@ static mut gengine: Option<JITEngine> = None;
 
 pub struct SearchTaskBuilder {
   pub per_session_cache: HashMap<u32, Constraint>,  
-  pub last_fid: u32,
+      pub last_fid: u32,
 }
 
 impl SearchTaskBuilder {
@@ -19,7 +19,7 @@ impl SearchTaskBuilder {
     let cache = HashMap::new();   
     Self {per_session_cache: cache, last_fid: std::u32::MAX}
   }
-  
+
   pub fn construct_task<'a>(&mut self, task: &SearchTask, engine: &'a JITEngine) -> Fut<'a> {
     let mut fut = Fut::new();
     info!("current fid is {} last fid is {}", task.get_fid(), self.last_fid);
@@ -72,36 +72,36 @@ impl SearchTaskBuilder {
   pub fn submit_task_rust(&mut self, task: &SearchTask) {
     println!("print task number of children is {} fid {}",task.get_constraints().len(), task.get_fid());
     print_task(task);
-/*
-    let r = save_request(task, &Path::new("saved_test"));
-    if r.is_err() {
-      println!("save error");
-    }
-*/
+    /*
+       let r = save_request(task, &Path::new("saved_test"));
+       if r.is_err() {
+       println!("save error");
+       }
+     */
     unsafe {
-    if gengine.is_none() {
-      gengine = Some(JITEngine::new());
-    }
-    let sengine = gengine.as_ref().unwrap();
-    let mut fut = self.construct_task(task, sengine);
-    gd_search(&mut fut);
-    for sol in fut.rgd_solutions {
+      if gengine.is_none() {
+        gengine = Some(JITEngine::new());
+      }
+      let sengine = gengine.as_ref().unwrap();
+      let mut fut = self.construct_task(task, sengine);
+      gd_search(&mut fut);
+      for sol in fut.rgd_solutions {
         for (k,v) in sol.iter() {
           println!("k {} v {}", k, v);
         }
-    }
+      }
     }
   }
 }
 
 #[cfg(test)]
 mod tests {
-use crate::rgd::*;
-use crate::util::*;
-use crate::interface::*;
-use std::path::Path;
-use crate::gd::*;
-use crate::task::SContext;
+  use crate::rgd::*;
+  use crate::util::*;
+  use crate::interface::*;
+  use std::path::Path;
+  use crate::gd::*;
+  use crate::task::SContext;
 #[test]
   fn test_load() {
     let tasks: Vec<SearchTask> = load_request(Path::new("saved_test")).expect("ok");
