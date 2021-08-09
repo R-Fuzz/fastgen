@@ -1,8 +1,9 @@
-#[link(name = "gd")]
-#[link(name = "protobuf")]
-#[link(name = "LLVM")]
-#[link(name = "stdc++")]
-#[link(name = "z3")]
+//#[link(name = "gd")]
+//#[link(name = "protobuf")]
+//#[link(name = "LLVM")]
+//#[link(name = "stdc++")]
+//#[link(name = "z3")]
+/*
 extern {
   pub fn submit_task(input: *const u8, input_length: u32, fresh: bool);
   pub fn submit_fmemcmp(data: *const u8, index: u32, size: u32, tid: u32, addr: u64);
@@ -14,3 +15,4 @@ extern {
   pub fn get_next_input_info(id: *mut u32, field_size: *mut usize, 
                           new_field_size: *mut usize);
 }
+*/

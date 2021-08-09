@@ -7,6 +7,8 @@ use crate::task::Cons;
 use crate::task::Fut;
 use crate::jit::JITEngine;
 
+static mut gengine: Option<JITEngine> = None;
+
 pub struct SearchTaskBuilder {
   pub per_session_cache: HashMap<u32, Constraint>,  
   pub last_fid: u32,
@@ -20,6 +22,7 @@ impl SearchTaskBuilder {
   
   pub fn construct_task<'a>(&mut self, task: &SearchTask, engine: &'a JITEngine) -> Fut<'a> {
     let mut fut = Fut::new();
+    info!("current fid is {} last fid is {}", task.get_fid(), self.last_fid);
     if task.get_fid() != self.last_fid {
       //a new seed
       info!("a new seed");
@@ -67,22 +70,27 @@ impl SearchTaskBuilder {
   }
 
   pub fn submit_task_rust(&mut self, task: &SearchTask) {
-    println!("print task number of children is {}",task.get_constraints().len());
+    println!("print task number of children is {} fid {}",task.get_constraints().len(), task.get_fid());
     print_task(task);
 /*
     let r = save_request(task, &Path::new("saved_test"));
     if r.is_err() {
       println!("save error");
     }
-    let engine = JITEngine::new();
-    let mut fut = self.construct_task(task, &engine);
+*/
+    unsafe {
+    if gengine.is_none() {
+      gengine = Some(JITEngine::new());
+    }
+    let sengine = gengine.as_ref().unwrap();
+    let mut fut = self.construct_task(task, sengine);
     gd_search(&mut fut);
     for sol in fut.rgd_solutions {
         for (k,v) in sol.iter() {
           println!("k {} v {}", k, v);
         }
     }
-*/
+    }
   }
 }
 
