@@ -32,7 +32,7 @@ impl JITEngine {
 impl JITEngine {
   fn codegen<'a>(&'a self, builder: &'a Builder, request: &AstNode, 
               local_map: &HashMap<u32,u32>, fn_val: FunctionValue<'a>,
-              value_cache: &'a HashMap<u32, IntValue>) -> IntValue<'a> {
+              value_cache: &mut HashMap<u32, IntValue<'a>>) -> IntValue<'a> {
 
     if request.get_label() != 0 && value_cache.contains_key(&request.get_label()) {
       return value_cache[&request.get_label()];
@@ -40,13 +40,13 @@ impl JITEngine {
 
     let i32_type = self.context.i32_type();
     let i64_type = self.context.i64_type();
-    match FromPrimitive::from_u32(request.get_kind()) {
+    let result = match FromPrimitive::from_u32(request.get_kind()) {
       Some(RGD::Bool) => {
         let bool_type = self.context.bool_type();
         if request.get_boolvalue() == 1 {
-          return bool_type.const_int(1, false);
+          bool_type.const_int(1, false)
         } else {
-          return bool_type.const_int(0, false);
+          bool_type.const_int(0, false)
         }
       },
       Some(RGD::Constant) => {
@@ -56,7 +56,7 @@ impl JITEngine {
         let idx = unsafe { builder.build_gep(input_args, &[i32_type.const_int(start as u64 + RET_OFFSET, false)], "argidx") };
         let mut ret = builder.build_load(idx, "argidx").into_int_value();
         ret = builder.build_int_truncate(ret, self.context.custom_width_int_type(request.get_bits()), "truncate");
-        return ret;
+        ret
       },
       Some(RGD::Read) => {
         let start = local_map[&request.get_index()];
@@ -73,7 +73,7 @@ impl JITEngine {
           ret = builder.build_int_add(ret, tmp, "add");
         }
         ret = builder.build_int_truncate(ret, self.context.custom_width_int_type(request.get_bits()), "truncate");
-        return ret;
+        ret
       },
       Some(RGD::Concat) => {
         let left = &request.get_children()[0]; 
@@ -83,51 +83,51 @@ impl JITEngine {
         let shift_idx = type_after.const_int(left.get_bits() as u64, false);
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
-        return builder.build_or(builder.build_left_shift(
+        builder.build_or(builder.build_left_shift(
                                       builder.build_int_z_extend(c2, type_after, "zext"), 
                                       shift_idx, "shl"),
-                            builder.build_int_z_extend(c1, type_after, "zext"), "or");
+                            builder.build_int_z_extend(c1, type_after, "zext"), "or")
       },          
       Some(RGD::Extract) => {
         let left = &request.get_children()[0]; 
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         // shift idx must be i64 to align with arugments
         let shift_idx = i64_type.const_int(left.get_index() as u64, false);
-        return builder.build_int_truncate(builder.build_right_shift(c1, shift_idx, false, "lshr"),
-                            self.context.custom_width_int_type(request.get_bits()), "truncate");
+        builder.build_int_truncate(builder.build_right_shift(c1, shift_idx, false, "lshr"),
+                            self.context.custom_width_int_type(request.get_bits()), "truncate")
       },
       Some(RGD::ZExt) => {
         let left = &request.get_children()[0]; 
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let type_after = self.context.custom_width_int_type(request.get_bits());
-        return builder.build_int_z_extend(c1, type_after, "zext");
+        builder.build_int_z_extend(c1, type_after, "zext")
       },
       Some(RGD::SExt) => {
         let left = &request.get_children()[0]; 
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let type_after = self.context.custom_width_int_type(request.get_bits());
-        return builder.build_int_s_extend(c1, type_after, "sext");
+        builder.build_int_s_extend(c1, type_after, "sext")
       },
       Some(RGD::Add) => {
         let left = &request.get_children()[0]; 
         let right = &request.get_children()[1]; 
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
-        return builder.build_int_add(c1,c2,"add");
+        builder.build_int_add(c1,c2,"add")
       },
       Some(RGD::Sub) => {
         let left = &request.get_children()[0]; 
         let right = &request.get_children()[1]; 
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
-        return builder.build_int_sub(c1,c2,"sub");
+        builder.build_int_sub(c1,c2,"sub")
       },
       Some(RGD::Mul) => {
         let left = &request.get_children()[0]; 
         let right = &request.get_children()[1]; 
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
-        return builder.build_int_mul(c1,c2,"mul");
+        builder.build_int_mul(c1,c2,"mul")
       },
       Some(RGD::UDiv) => {
         let left = &request.get_children()[0]; 
@@ -139,7 +139,7 @@ impl JITEngine {
         let va0 = type_after.const_int(0, false);
         let cond = builder.build_int_compare(IntPredicate::EQ, c2, va0, "icmpeq");
         let divisor = builder.build_select(cond, va1, c2, "select").into_int_value();
-        return builder.build_int_unsigned_div(c1,divisor,"udiv");
+        builder.build_int_unsigned_div(c1,divisor,"udiv")
       },
       Some(RGD::SDiv) => {
         let left = &request.get_children()[0]; 
@@ -151,7 +151,7 @@ impl JITEngine {
         let va0 = type_after.const_int(0, false);
         let cond = builder.build_int_compare(IntPredicate::EQ, c2, va0, "icmpeq");
         let divisor = builder.build_select(cond, va1, c2, "select").into_int_value();
-        return builder.build_int_signed_div(c1,divisor,"sdiv");
+        builder.build_int_signed_div(c1,divisor,"sdiv")
       },
       Some(RGD::URem) => {
         let left = &request.get_children()[0]; 
@@ -163,7 +163,7 @@ impl JITEngine {
         let va0 = type_after.const_int(0, false);
         let cond = builder.build_int_compare(IntPredicate::EQ, c2, va0, "icmpeq");
         let divisor = builder.build_select(cond, va1, c2, "select").into_int_value();
-        return builder.build_int_unsigned_rem(c1,divisor,"urem");
+        builder.build_int_unsigned_rem(c1,divisor,"urem")
       },
       Some(RGD::SRem) => {
         let left = &request.get_children()[0]; 
@@ -175,17 +175,17 @@ impl JITEngine {
         let va0 = type_after.const_int(0, false);
         let cond = builder.build_int_compare(IntPredicate::EQ, c2, va0, "icmpeq");
         let divisor = builder.build_select(cond, va1, c2, "select").into_int_value();
-        return builder.build_int_signed_rem(c1,divisor,"srem");
+        builder.build_int_signed_rem(c1,divisor,"srem")
       },
       Some(RGD::Neg) => {
         let left = &request.get_children()[0]; 
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
-        return builder.build_int_neg(c1,"neg");
+        builder.build_int_neg(c1,"neg")
       },
       Some(RGD::Not) => {
         let left = &request.get_children()[0]; 
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
-        return builder.build_not(c1,"neg");
+        builder.build_not(c1,"neg")
       },
       Some(RGD::And) => {
         let left = &request.get_children()[0]; 
@@ -193,7 +193,7 @@ impl JITEngine {
         let type_after = self.context.custom_width_int_type(request.get_bits());
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
-        return builder.build_and(c1,c2,"and");
+        builder.build_and(c1,c2,"and")
       },
       Some(RGD::Or) => {
         let left = &request.get_children()[0]; 
@@ -201,7 +201,7 @@ impl JITEngine {
         let type_after = self.context.custom_width_int_type(request.get_bits());
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
-        return builder.build_or(c1,c2,"or");
+        builder.build_or(c1,c2,"or")
       },
       Some(RGD::Xor) => {
         let left = &request.get_children()[0]; 
@@ -209,14 +209,14 @@ impl JITEngine {
         let type_after = self.context.custom_width_int_type(request.get_bits());
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
-        return builder.build_xor(c1,c2,"xor");
+        builder.build_xor(c1,c2,"xor")
       },
       Some(RGD::Shl) => {
         let left = &request.get_children()[0]; 
         let right = &request.get_children()[1]; 
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
-        return builder.build_left_shift(c1,c2,"shl");
+        builder.build_left_shift(c1,c2,"shl")
       },
       Some(RGD::LShr) => {
         let left = &request.get_children()[0]; 
@@ -224,7 +224,7 @@ impl JITEngine {
         let type_after = self.context.custom_width_int_type(request.get_bits());
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
-        return builder.build_right_shift(c1,c2, false, "lshr");
+        builder.build_right_shift(c1,c2, false, "lshr")
       },
       Some(RGD::AShr) => {
         let left = &request.get_children()[0]; 
@@ -232,7 +232,7 @@ impl JITEngine {
         let type_after = self.context.custom_width_int_type(request.get_bits());
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
-        return builder.build_right_shift(c1,c2, true, "ashr");
+        builder.build_right_shift(c1,c2, true, "ashr")
       },
       //all the ICmp should be top level
       Some(RGD::Equal) | Some(RGD::Distinct) |
@@ -251,7 +251,7 @@ impl JITEngine {
         builder.build_store(idx0, c1e);
         builder.build_store(idx1, c2e);
         //we just return 0, and rely on the caller to calculate the distance
-        return type_after.const_int(555, false);
+        type_after.const_int(555, false)
       },
       Some(RGD::Slt) | Some(RGD::Sle) |
       Some(RGD::Sgt) | Some(RGD::Sge)  => {
@@ -268,21 +268,25 @@ impl JITEngine {
         builder.build_store(idx0, c1e);
         builder.build_store(idx1, c2e);
         //we just return 0, and rely on the caller to calculate the distance
-        return type_after.const_int(555, false);
+        type_after.const_int(555, false)
       },
       _ => {
-        return value_cache[&request.get_label()];
+        panic!("Non-relational op!")
+        //return value_cache[&request.get_label()];
       }
+    };
+    
+    if request.get_label() != 0 {
+      value_cache.insert(request.get_label(), result);
     }
-
-    return value_cache[&request.get_label()];
+    result
+    //return value_cache[&request.get_label()];
   } 
 
   pub fn add_function(&self, request: &AstNode, local_map: &HashMap<u32,u32>) -> JitFunction<JigsawFnType> {
     let id = self.uuid.fetch_add(1, Ordering::Relaxed);
     let module_id = format!("rgdjit_m{}", id);
     let module = self.context.create_module(&module_id);
-    let fun = self.context.create_module(&module_id);
     let i64_type = self.context.i64_type();
     let i64_pointer_type = i64_type.ptr_type(AddressSpace::Generic);
     let fn_type = i64_type.fn_type(&[i64_pointer_type.into()], false);
@@ -293,8 +297,8 @@ impl JITEngine {
     let builder = self.context.create_builder();
     builder.position_at_end(entry_basic_block);
 
-    let value_cache = HashMap::new();
-    let body = self.codegen(&builder, request, local_map, fn_val, &value_cache);
+    let mut value_cache = HashMap::new();
+    let body = self.codegen(&builder, request, local_map, fn_val, &mut value_cache);
 
     let return_instruction = builder.build_return(Some(&body));
     //dbg!("module: {:?}", module.clone());

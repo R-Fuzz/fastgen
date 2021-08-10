@@ -43,9 +43,9 @@ impl SearchTaskBuilder {
       let mut cons = Cons::new();
       //TODO we do not transfer information using protobuf anymore
       self.append_meta(&mut cons, &constraint); 
-      let t_start = time::Instant::now();
+      //let t_start = time::Instant::now();
       let fun = engine.add_function(&constraint.get_node(), &cons.local_map);
-      info!("jit time is {}", t_start.elapsed().as_micros() as u32);
+      //info!("jit time is {}", t_start.elapsed().as_micros() as u32);
       cons.set_func(fun);
       //let mut x = vec![1, 1, 1, 1, 12350, 15, 16, 17, 18, 19];
       //unsafe { println!("result is {}, left {} right {}", cons.call_func(&mut x), x[0], x[1]); }
@@ -75,8 +75,9 @@ impl SearchTaskBuilder {
   pub fn submit_task_rust(&mut self, task: &SearchTask, 
       solution_queue: BlockingQueue<Solution>,
       solve: bool) {
-    /*
-       debug!("print task number of children is {} fid {}",task.get_constraints().len(), task.get_fid());
+    
+/*
+       info!("print task number of children is {} fid {}",task.get_constraints().len(), task.get_fid());
        print_task(task);
        let r = save_request(task, &Path::new("saved_test"));
        if r.is_err() {
