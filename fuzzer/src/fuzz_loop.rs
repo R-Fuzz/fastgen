@@ -220,11 +220,6 @@ pub fn grading_loop(
     //let mut buf: Vec<u8> = Vec::with_capacity(config::MAX_INPUT_LEN);
     while running.load(Ordering::Relaxed) {
       let sol = bq.pop();
-      info!("grading solution with base id {}", sol.fid);
-      for (k,v) in sol.sol.iter() {
-          info!("k {} v {}", k, v);
-      }
-      info!("grading solution with base id end {}", sol.fid);
       if let Some(mut buf) = depot.get_input_buf(sol.fid as usize) {
         let mut_buf = mutate(buf, &sol.sol, sol.field_index, sol.field_size); 
         let new_path = executor.run_sync(&mut_buf);

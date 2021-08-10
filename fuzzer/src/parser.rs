@@ -8,6 +8,7 @@ use crate::task::Fut;
 use crate::jit::JITEngine;
 use crate::solution::Solution;
 use blockingqueue::BlockingQueue;
+use std::time;
 
 static mut gengine: Option<JITEngine> = None;
 
@@ -24,10 +25,8 @@ impl SearchTaskBuilder {
 
   pub fn construct_task<'a>(&mut self, task: &SearchTask, engine: &'a JITEngine) -> Fut<'a> {
     let mut fut = Fut::new();
-    info!("current fid is {} last fid is {}", task.get_fid(), self.last_fid);
     if task.get_fid() != self.last_fid {
       //a new seed
-      info!("a new seed");
       self.per_session_cache.clear();
       self.last_fid = task.get_fid(); 
     }
@@ -44,10 +43,12 @@ impl SearchTaskBuilder {
       let mut cons = Cons::new();
       //TODO we do not transfer information using protobuf anymore
       self.append_meta(&mut cons, &constraint); 
+      let t_start = time::Instant::now();
       let fun = engine.add_function(&constraint.get_node(), &cons.local_map);
+      info!("jit time is {}", t_start.elapsed().as_micros() as u32);
       cons.set_func(fun);
-      let mut x = vec![1, 1, 1, 1, 12350, 15, 16, 17, 18, 19];
-      unsafe { println!("result is {}, left {} right {}", cons.call_func(&mut x), x[0], x[1]); }
+      //let mut x = vec![1, 1, 1, 1, 12350, 15, 16, 17, 18, 19];
+      //unsafe { println!("result is {}, left {} right {}", cons.call_func(&mut x), x[0], x[1]); }
       fut.constraints.push(cons);
     }
     fut.finalize();
@@ -71,15 +72,28 @@ impl SearchTaskBuilder {
     cons.const_num = constraint.get_meta().get_const_num();
   }
 
-  pub fn submit_task_rust(&mut self, task: &SearchTask, solution_queue: BlockingQueue<Solution>) {
-    println!("print task number of children is {} fid {}",task.get_constraints().len(), task.get_fid());
-    print_task(task);
-    
+  pub fn submit_task_rust(&mut self, task: &SearchTask, 
+      solution_queue: BlockingQueue<Solution>,
+      solve: bool) {
+    /*
+       debug!("print task number of children is {} fid {}",task.get_constraints().len(), task.get_fid());
+       print_task(task);
        let r = save_request(task, &Path::new("saved_test"));
        if r.is_err() {
-       println!("save error");
+       debug!("save error");
        }
-     
+     */    
+    if !solve {
+      if task.get_fid() != self.last_fid {
+        //a new seed
+        self.per_session_cache.clear();
+        self.last_fid = task.get_fid(); 
+      }
+      self.per_session_cache.insert(task.get_constraints()[0].get_label(), 
+          task.get_constraints()[0].clone());
+
+      return;
+    }
     unsafe {
       if gengine.is_none() {
         gengine = Some(JITEngine::new());
@@ -88,12 +102,9 @@ impl SearchTaskBuilder {
       let mut fut = self.construct_task(task, sengine);
       gd_search(&mut fut);
       for sol in fut.rgd_solutions {
-        for (k,v) in sol.iter() {
-          println!("k {} v {}", k, v);
-        }
         let sol_size = sol.len();
         let rgd_sol = Solution::new(sol, task.get_fid(), task.get_addr(), task.get_ctx(), 
-                            task.get_order(), task.get_direction(), 0, sol_size);
+            task.get_order(), task.get_direction(), 0, sol_size);
         solution_queue.push(rgd_sol);
       }
     }

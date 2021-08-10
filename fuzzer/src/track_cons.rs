@@ -91,6 +91,12 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       let (index, size) = get_fmemcmp_constraint(label.2 as u32, table, &mut inputs);
       if data.len() >= size {
         //unsafe { submit_fmemcmp(data.as_ptr(), index, size as u32, label.0, label.3); }
+        let mut sol = HashMap::new();
+        for i in 0..size {
+          sol.insert(index + i as u32, data[i]);
+        }
+        let rsol = Solution::new(sol, label.0, label.3, 0, 0, 0, index as usize, size);
+        solution_queue.push(rsol);
       }
       continue;
     } else if label.6 == 3 {
@@ -99,8 +105,9 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
 
     if inputs.is_empty() { 
-	//warn!("Skip constraint!"); 
-     continue; }
+	  //warn!("Skip constraint!"); 
+     continue; 
+    }
 
     let mut init = false;
     //build union table
@@ -152,18 +159,20 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       task.set_order(label.5);
       task.set_direction(label.2);
 
-      let task_ser = task.write_to_bytes().unwrap();
 
-      tb.submit_task_rust(&task, solution_queue.clone());
+ //     tb.submit_task_rust(&task, solution_queue.clone());
 /*
+        let task_ser = task.write_to_bytes().unwrap();
         count = count + 1;
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
 */
 
 
       if hitcount <= 5 && gencount == 0 && label.6 !=3 {
+          tb.submit_task_rust(&task, solution_queue.clone(), true);
       //	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
       } else {
+          tb.submit_task_rust(&task, solution_queue.clone(), false);
      // 	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
       }
 

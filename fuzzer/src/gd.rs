@@ -10,13 +10,11 @@ use std::collections::HashMap;
 
 pub fn add_results(input: &MutInput, rgd_solutions: &mut Vec<HashMap<u32,u8>>,
     inputs: &Vec<(u32,u8)>, shape: &HashMap<u32,u32>) {
-  println!("add results");
   let mut sol = HashMap::<u32,u8>::new();
   let mut ordered = Vec::<(u32,u64)>::new();
   let mut i = 0;
   for kv in inputs {
     ordered.push((kv.0, input.get(i)));
-    println!("kv 0 is {} input i is {}", kv.0, input.get(i));
     i += 1;
   }
   ordered.sort_by_key(|k| k.0);
