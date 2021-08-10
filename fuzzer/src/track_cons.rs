@@ -11,7 +11,9 @@ use crate::cpp_interface::*;
 use protobuf::Message;
 use crate::union_find::*;
 use std::time;
-use crate::interface::*;
+use crate::parser::*;
+use blockingqueue::BlockingQueue;
+use crate::solution::Solution;
 
 //each input offset has a coresspdoing slot
 pub struct BranchDep {
@@ -45,7 +47,7 @@ pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
 pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_data: &mut VecDeque<Vec<u8>>,
           table: &UnionTable, tainted_size: usize, branch_gencount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>
           , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, buf: &Vec<u8>,
-            tb: &mut SearchTaskBuilder) {
+            tb: &mut SearchTaskBuilder, solution_queue: BlockingQueue<Solution>) {
   let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
   let mut uf = UnionFind::new(tainted_size);
   branch_deps.resize_with(tainted_size, || None);
@@ -152,7 +154,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
       let task_ser = task.write_to_bytes().unwrap();
 
-      tb.submit_task_rust(&task);
+      tb.submit_task_rust(&task, solution_queue.clone());
 /*
         count = count + 1;
       	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }

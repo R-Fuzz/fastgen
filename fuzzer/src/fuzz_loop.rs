@@ -25,19 +25,21 @@ use std::collections::HashMap;
 use std::os::unix::io::{RawFd};
 use nix::unistd::pipe;
 use nix::unistd::close;
-use crate::interface::*;
+use crate::parser::*;
+use crate::solution::Solution;
+use blockingqueue::BlockingQueue;
 
 
 pub fn dispatcher(table: &UnionTable,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
     branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
-    buf: &Vec<u8>, id: RawFd) {
+    buf: &Vec<u8>, id: RawFd, bq: BlockingQueue<Solution>) {
 
   let (labels,mut memcmp_data) = read_pipe(id);
   let mut tb = SearchTaskBuilder::new();
   scan_nested_tasks(&labels, &mut memcmp_data, table, 
-                  config::MAX_INPUT_LEN, &branch_gencount, 
-                  &branch_hitcount, buf, &mut tb);
+      config::MAX_INPUT_LEN, &branch_gencount, 
+      &branch_hitcount, buf, &mut tb, bq);
 }
 /*
 //check the status
@@ -177,6 +179,7 @@ pub fn grading_loop(
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     forklock: Arc<Mutex<u32>>,
+    bq: BlockingQueue<Solution>,
     ) {
 
 
@@ -224,8 +227,14 @@ pub fn grading_loop(
       let mut id = 0;
       let mut field_size = 0;
       let mut new_field_size = 0;
+      println!("try pop!!!!");
+      let sol = bq.pop();
+      for (k,v) in sol.sol.iter() {
+          println!("k {} v {}", k, v);
+      }
       //unsafe { get_next_input_info(&mut id, &mut field_size, 
-       //                           &mut new_field_size) };
+      //                           &mut new_field_size) };
+      continue;
       if let Some(mut buf) = depot.get_input_buf(id as usize) {
         //zero-extended the buffer if new field is larger
         if new_field_size > field_size {
@@ -233,7 +242,7 @@ pub fn grading_loop(
           buf.resize(old_size + new_field_size - field_size, 0);
         }
         //unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, 
-         //               &mut order, &mut fid, &mut direction, buf.len()) };
+        //               &mut order, &mut fid, &mut direction, buf.len()) };
         //truncate the buffer if new field is smaller
         if new_field_size < field_size {
           let old_size = buf.len();
@@ -266,7 +275,7 @@ pub fn grading_loop(
       if grade_count % 1000 == 0 {
         let used_t1 = t_start.elapsed().as_secs() as u32;
         if used_t1 != 0 {
-             warn!("Grading throughput is {}", grade_count / used_t1);
+          warn!("Grading throughput is {}", grade_count / used_t1);
         }
       }
     }
@@ -284,6 +293,7 @@ pub fn fuzz_loop(
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     restart: bool,
     forklock: Arc<Mutex<u32>>,
+    bq: BlockingQueue<Solution>,
     ) {
 
   let mut id: u32 = 0;
@@ -326,20 +336,21 @@ pub fn fuzz_loop(
         //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
         let gbranch_hitcount = branch_hitcount.clone();
         let gbranch_gencount = branch_gencount.clone();
+        let solution_queue = bq.clone();
 
 
         let t_start = time::Instant::now();
 
         let (mut child, read_end) = executor.track(id as usize, &buf);
-        
-           let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
-           dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
-           }).unwrap();
 
-           if handle.join().is_err() {
-           error!("Error happened in listening thread!");
-           }
-         
+        let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
+            dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end, solution_queue);
+            }).unwrap();
+
+        if handle.join().is_err() {
+          error!("Error happened in listening thread!");
+        }
+
         //dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
         close(read_end).map_err(|err| warn!("close read end {:?}", err)).ok();
 
@@ -390,56 +401,56 @@ mod tests {
 
 #[test]
   fn test_pointer() {
-/*
-    let mut buf: Vec<u8> = Vec::with_capacity(10);
-    buf.resize(10, 0);
-    unsafe { get_input_buf(buf.as_mut_ptr()); }
-    println!("{}",buf[0])
-*/
+    /*
+       let mut buf: Vec<u8> = Vec::with_capacity(10);
+       buf.resize(10, 0);
+       unsafe { get_input_buf(buf.as_mut_ptr()); }
+       println!("{}",buf[0])
+     */
   }
 
 #[test]
   fn test_grading() {
-/*
-    let angora_out_dir = PathBuf::from("output");
-    let seeds_dir = PathBuf::from("input");
-    let args = vec!["./size.fast".to_string(), "@@".to_string()];
-    fs::create_dir(&angora_out_dir).expect("Output directory has existed!");
+    /*
+       let angora_out_dir = PathBuf::from("output");
+       let seeds_dir = PathBuf::from("input");
+       let args = vec!["./size.fast".to_string(), "@@".to_string()];
+       fs::create_dir(&angora_out_dir).expect("Output directory has existed!");
 
-    let cmd_opt = command::CommandOpt::new("./size.track", args, &angora_out_dir, 200, 1);
+       let cmd_opt = command::CommandOpt::new("./size.track", args, &angora_out_dir, 200, 1);
 
-    let depot = Arc::new(depot::Depot::new(seeds_dir, &angora_out_dir));
+       let depot = Arc::new(depot::Depot::new(seeds_dir, &angora_out_dir));
 
-    let global_branches = Arc::new(branches::GlobalBranches::new());
+       let global_branches = Arc::new(branches::GlobalBranches::new());
 
-    let mut executor = Executor::new(
-        cmd_opt.specify(1),
-        global_branches.clone(),
-        depot.clone(),
-        0);
+       let mut executor = Executor::new(
+       cmd_opt.specify(1),
+       global_branches.clone(),
+       depot.clone(),
+       0);
 
-    let t_start = time::Instant::now();
-    let mut fid = 0;
-    let dirpath = Path::new("/home/cju/test");
-    let mut count = 0;
-    loop {
-      let file_name = format!("id-{:08}", fid);
-      println!("file name is {:?}",file_name);
-      let fpath = dirpath.join(file_name);
-      if !fpath.exists() {
-        break;
-      }
-      let buf = read_from_file(&fpath);
-      println!("grading {:?}, len {}", &fpath,buf.len() );
-      let newpath = executor.run_sync(&buf);
-      println!("grading {}",newpath.0);
-      fid = fid + 1;
-      count = count + 1;
-    }
-    let used_t1 = t_start.elapsed();
-    if used_t1.as_secs() as u32 !=0  {
-      println!("throught put is {}", count / used_t1.as_secs() as u32);
-    }
-*/
+       let t_start = time::Instant::now();
+       let mut fid = 0;
+       let dirpath = Path::new("/home/cju/test");
+       let mut count = 0;
+       loop {
+       let file_name = format!("id-{:08}", fid);
+       println!("file name is {:?}",file_name);
+       let fpath = dirpath.join(file_name);
+       if !fpath.exists() {
+       break;
+       }
+       let buf = read_from_file(&fpath);
+       println!("grading {:?}, len {}", &fpath,buf.len() );
+       let newpath = executor.run_sync(&buf);
+       println!("grading {}",newpath.0);
+       fid = fid + 1;
+       count = count + 1;
+       }
+       let used_t1 = t_start.elapsed();
+       if used_t1.as_secs() as u32 !=0  {
+       println!("throught put is {}", count / used_t1.as_secs() as u32);
+       }
+     */
   }
 }

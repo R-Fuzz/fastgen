@@ -6,6 +6,8 @@ use crate::gd::*;
 use crate::task::Cons;
 use crate::task::Fut;
 use crate::jit::JITEngine;
+use crate::solution::Solution;
+use blockingqueue::BlockingQueue;
 
 static mut gengine: Option<JITEngine> = None;
 
@@ -69,7 +71,7 @@ impl SearchTaskBuilder {
     cons.const_num = constraint.get_meta().get_const_num();
   }
 
-  pub fn submit_task_rust(&mut self, task: &SearchTask) {
+  pub fn submit_task_rust(&mut self, task: &SearchTask, solution_queue: BlockingQueue<Solution>) {
     println!("print task number of children is {} fid {}",task.get_constraints().len(), task.get_fid());
     print_task(task);
     /*
@@ -89,6 +91,10 @@ impl SearchTaskBuilder {
         for (k,v) in sol.iter() {
           println!("k {} v {}", k, v);
         }
+        let sol_size = sol.len();
+        let rgd_sol = Solution::new(sol, task.get_fid(), task.get_addr(), task.get_ctx(), 
+                            task.get_order(), task.get_direction(), 0, sol_size);
+        solution_queue.push(rgd_sol);
       }
     }
   }
