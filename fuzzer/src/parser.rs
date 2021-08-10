@@ -9,21 +9,43 @@ use crate::jit::JITEngine;
 use crate::solution::Solution;
 use blockingqueue::BlockingQueue;
 use std::time;
+use inkwell::execution_engine::JitFunction;
+use crate::jit::JigsawFnType;
+use std::hash::{Hash, Hasher};
 
 static mut gengine: Option<JITEngine> = None;
+static mut gfuncache: Option<HashMap<AstNode, JitFunction<JigsawFnType>>> = None;
+
+impl Eq for AstNode {
+}
+
+impl Hash for AstNode {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.get_hash().hash(state);
+    }
+}
+
 
 pub struct SearchTaskBuilder {
   pub per_session_cache: HashMap<u32, Constraint>,  
-      pub last_fid: u32,
+  pub last_fid: u32,
+  pub func_cache: HashMap<AstNode, u64>, 
 }
 
 impl SearchTaskBuilder {
   pub fn new() -> Self {
     let cache = HashMap::new();   
-    Self {per_session_cache: cache, last_fid: std::u32::MAX}
+    let fcache = HashMap::new();   
+    Self {
+          per_session_cache: cache, 
+          last_fid: std::u32::MAX,
+          func_cache: fcache,
+        }
   }
 
-  pub fn construct_task<'a>(&mut self, task: &SearchTask, engine: &'a JITEngine) -> Fut<'a> {
+  pub fn construct_task<'a>(&mut self, task: &SearchTask, engine: &'a JITEngine, 
+                        fun_cache: &'a mut HashMap<AstNode, JitFunction<'a, JigsawFnType>>) -> Fut<'a> {
+  //pub fn construct_task(&mut self, task: &SearchTask, engine: &JITEngine) -> Fut {
     let mut fut = Fut::new();
     if task.get_fid() != self.last_fid {
       //a new seed
@@ -43,12 +65,19 @@ impl SearchTaskBuilder {
       let mut cons = Cons::new();
       //TODO we do not transfer information using protobuf anymore
       self.append_meta(&mut cons, &constraint); 
-      //let t_start = time::Instant::now();
-      let fun = engine.add_function(&constraint.get_node(), &cons.local_map);
-      //info!("jit time is {}", t_start.elapsed().as_micros() as u32);
-      cons.set_func(fun);
+      let t_start = time::Instant::now();
       //let mut x = vec![1, 1, 1, 1, 12350, 15, 16, 17, 18, 19];
       //unsafe { println!("result is {}, left {} right {}", cons.call_func(&mut x), x[0], x[1]); }
+      if !fun_cache.contains_key(&constraint.get_node()) {
+        let fun = engine.add_function(&constraint.get_node(), &cons.local_map);
+        println!("miss and jitime is {}", t_start.elapsed().as_micros());
+        fun_cache.insert(constraint.get_node().clone(), fun.clone());
+        cons.set_func(fun);
+      } else {
+        let fun = fun_cache[&constraint.get_node()].clone();
+        cons.set_func(fun);
+        println!("hit and jitime is {}", t_start.elapsed().as_micros());
+      }
       fut.constraints.push(cons);
     }
     fut.finalize();
@@ -99,8 +128,12 @@ impl SearchTaskBuilder {
       if gengine.is_none() {
         gengine = Some(JITEngine::new());
       }
+      if gfuncache.is_none() {
+        gfuncache = Some(HashMap::new());
+      }
       let sengine = gengine.as_ref().unwrap();
-      let mut fut = self.construct_task(task, sengine);
+      let sfuncache = gfuncache.as_mut().unwrap();
+      let mut fut = self.construct_task(task, sengine, sfuncache);
       gd_search(&mut fut);
       for sol in fut.rgd_solutions {
         let sol_size = sol.len();
@@ -120,14 +153,16 @@ mod tests {
   use std::path::Path;
   use crate::gd::*;
   use crate::task::SContext;
+  use std::collections::HashMap;
 #[test]
   fn test_load() {
     let tasks: Vec<SearchTask> = load_request(Path::new("saved_test")).expect("ok");
     let mut tb = SearchTaskBuilder::new();
     let engine = JITEngine::new();
+    let mut funcache = HashMap::new();
     for task in tasks { let task_copy = task.clone();
       print_task(&task_copy);
-      let mut fut = tb.construct_task(&task_copy, &engine);
+      let mut fut = tb.construct_task(&task_copy, &engine, &mut funcache);
       println!("search!");
       gd_search(&mut fut);
       for sol in fut.rgd_solutions {

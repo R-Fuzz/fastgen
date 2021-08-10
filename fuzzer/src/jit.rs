@@ -17,6 +17,8 @@ pub const RET_OFFSET: u64 = 2;
 pub type JigsawFnType = unsafe extern "C" fn(*mut u64) -> u64;
 type Addition = unsafe extern "C" fn(i32, i32) -> i32;
 
+
+
 pub struct JITEngine {
   uuid: AtomicU64,
   context: Context,
@@ -27,12 +29,10 @@ impl JITEngine {
   pub fn new() -> Self {
     Self {uuid: AtomicU64::new(0),  context:Context::create()}
   }
-}
 
-impl JITEngine {
-  fn codegen<'a>(&'a self, builder: &'a Builder, request: &AstNode, 
-              local_map: &HashMap<u32,u32>, fn_val: FunctionValue<'a>,
-              value_cache: &mut HashMap<u32, IntValue<'a>>) -> IntValue<'a> {
+  fn codegen<'b>(&'b self, builder: &'b Builder, request: &AstNode, 
+              local_map: &HashMap<u32,u32>, fn_val: FunctionValue<'b>,
+              value_cache: &mut HashMap<u32, IntValue<'b>>) -> IntValue<'b> {
 
     if request.get_label() != 0 && value_cache.contains_key(&request.get_label()) {
       return value_cache[&request.get_label()];
@@ -281,7 +281,7 @@ impl JITEngine {
     }
     result
     //return value_cache[&request.get_label()];
-  } 
+  }
 
   pub fn add_function(&self, request: &AstNode, local_map: &HashMap<u32,u32>) -> JitFunction<JigsawFnType> {
     let id = self.uuid.fetch_add(1, Ordering::Relaxed);
@@ -307,7 +307,8 @@ impl JITEngine {
     let execution_engine = module
       .create_jit_execution_engine(OptimizationLevel::None)
       .unwrap();
-    unsafe { execution_engine.get_function(&func_id).unwrap() }
+    let fun = unsafe { execution_engine.get_function(&func_id).unwrap() };
+    fun
   }
 
   pub fn add_function_add(&self) -> JitFunction<Addition> {
