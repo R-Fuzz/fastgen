@@ -7,31 +7,61 @@ use rand::{self, distributions::Uniform, Rng, RngCore};
 use fastgen_common::{config};
 use crate::executor::Executor;
 use crate::interesting_val::*;
+use std::collections::HashMap;
 
 static IDX_TO_SIZE: [usize; 4] = [1, 2, 4, 8];
 
+
+pub fn mutate(buf: Vec<u8>, sol: &HashMap<u32,u8>, field_index: usize, field_size: usize) -> Vec<u8> {
+  let new_size = buf.len() + sol.len() - field_size;
+  let mut ret;
+  if buf.len() == new_size {
+    ret = buf.clone();
+  } else {
+    ret = vec![0; new_size];
+
+    //copy bytes before field
+    for i in 0..field_index {
+      ret[i] = buf[i];
+    }
+    //copy bytes after field
+    let mut i = 0;
+    while i < new_size - sol.len() - field_index && 
+      i < buf.len() - field_size - field_index {
+        ret[i + field_index + sol.len()] = buf[i + field_index + field_size];
+        i += 1;
+      }
+  }
+  //mutation
+  for (&k,&v) in sol {
+    ret[k as usize] = v;
+  }
+  ret
+}
+
+
 pub fn set_val_in_buf(buf: &mut Vec<u8>, off: usize, size: usize, val: u64) {
-    match size {
-        1 => {
-            let v = &mut buf[off];
-            *v = val as u8;
-        },
-        2 => {
-            let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u16) };
-            *v = val as u16;
-        },
-        4 => {
-            let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u32) };
-            *v = val as u32;
-        },
-        8 => {
-            let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u64) };
-            *v = val as u64;
-        },
-        _ => {
-            panic!("strange arg off and size: {}, {}", off, size);
-        },
-    };
+  match size {
+    1 => {
+      let v = &mut buf[off];
+      *v = val as u8;
+    },
+      2 => {
+        let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u16) };
+        *v = val as u16;
+      },
+      4 => {
+        let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u32) };
+        *v = val as u32;
+      },
+      8 => {
+        let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u64) };
+        *v = val as u64;
+      },
+      _ => {
+        panic!("strange arg off and size: {}, {}", off, size);
+      },
+  };
 }
 
 pub fn update_val_in_buf(
@@ -41,80 +71,80 @@ pub fn update_val_in_buf(
     size: usize,
     direction: bool,
     delta: u64,
-) {
-    match size {
-        1 => {
-            if sign {
-                let v = buf[off] as i8;
-                buf[off] = if direction {
-                    v.wrapping_add(delta as i8) as u8
-                } else {
-                    v.wrapping_sub(delta as i8) as u8
-                };
-            } else {
-                let v = &mut buf[off];
-                if direction {
-                    *v = v.wrapping_add(delta as u8);
-                } else {
-                    *v = v.wrapping_sub(delta as u8);
-                }
-            }
-        },
-        2 => {
-            if sign {
-                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut i16) };
-                if direction {
-                    *v = v.wrapping_add(delta as i16);
-                } else {
-                    *v = v.wrapping_sub(delta as i16);
-                }
-            } else {
-                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u16) };
-                if direction {
-                    *v = v.wrapping_add(delta as u16);
-                } else {
-                    *v = v.wrapping_sub(delta as u16);
-                }
-            }
-        },
-      4 => {
-            if sign {
-                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut i32) };
-                if direction {
-                    *v = v.wrapping_add(delta as i32);
-                } else {
-                    *v = v.wrapping_sub(delta as i32);
-                }
-            } else {
-                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u32) };
-                if direction {
-                    *v = v.wrapping_add(delta as u32);
-                } else {
-                    *v = v.wrapping_sub(delta as u32);
-                }
-            }
-        },
-        8 => {
-            if sign {
-                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut i64) };
-                if direction {
-                    *v = v.wrapping_add(delta as i64);
-                } else {
-                    *v = v.wrapping_sub(delta as i64);
-                }
-            } else {
-                let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u64) };
-                if direction {
-                    *v = v.wrapping_add(delta as u64);
-                } else {
-                    *v = v.wrapping_sub(delta as u64);
-                }
-            }
-        },
-        _ => {
-            panic!("strange arg off and size: {}, {}", off, size);
-        },
-    };
+    ) {
+  match size {
+    1 => {
+      if sign {
+        let v = buf[off] as i8;
+        buf[off] = if direction {
+          v.wrapping_add(delta as i8) as u8
+        } else {
+          v.wrapping_sub(delta as i8) as u8
+        };
+      } else {
+        let v = &mut buf[off];
+        if direction {
+          *v = v.wrapping_add(delta as u8);
+        } else {
+          *v = v.wrapping_sub(delta as u8);
+        }
+      }
+    },
+    2 => {
+      if sign {
+        let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut i16) };
+        if direction {
+          *v = v.wrapping_add(delta as i16);
+        } else {
+          *v = v.wrapping_sub(delta as i16);
+        }
+      } else {
+        let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u16) };
+        if direction {
+          *v = v.wrapping_add(delta as u16);
+        } else {
+          *v = v.wrapping_sub(delta as u16);
+        }
+      }
+    },
+    4 => {
+      if sign {
+        let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut i32) };
+        if direction {
+          *v = v.wrapping_add(delta as i32);
+        } else {
+          *v = v.wrapping_sub(delta as i32);
+        }
+      } else {
+        let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u32) };
+        if direction {
+          *v = v.wrapping_add(delta as u32);
+        } else {
+          *v = v.wrapping_sub(delta as u32);
+        }
+      }
+    },
+    8 => {
+      if sign {
+        let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut i64) };
+        if direction {
+          *v = v.wrapping_add(delta as i64);
+        } else {
+          *v = v.wrapping_sub(delta as i64);
+        }
+      } else {
+        let v = unsafe { &mut *(&mut buf[off] as *mut u8 as *mut u64) };
+        if direction {
+          *v = v.wrapping_add(delta as u64);
+        } else {
+          *v = v.wrapping_sub(delta as u64);
+        }
+      }
+    },
+    _ => {
+      panic!("strange arg off and size: {}, {}", off, size);
+    },
+  };
 }
 
 
@@ -135,13 +165,13 @@ pub fn run_afl_mutator(executor: &mut Executor, buf: &mut Vec<u8>) {
   } else {
     256
   };
-/*
-  let max_choice = if config::ENABLE_MICRO_RANDOM_LEN {
-    8
-  } else {
-    6
-  };
-*/
+  /*
+     let max_choice = if config::ENABLE_MICRO_RANDOM_LEN {
+     8
+     } else {
+     6
+     };
+   */
   let max_choice = 8;
 
   let choice_range = Uniform::new(0, max_choice);

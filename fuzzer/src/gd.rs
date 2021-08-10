@@ -66,13 +66,14 @@ pub fn flip_op(comp: u32) -> u32 {
 
 
 pub fn get_distance(comp: u32, a: u64, b: u64) -> u64 {
+  //println!("a is {}, b is {}, a i32 is {}, b i32 is {}", a,b, a as i64, b as i64);
   let res = match FromPrimitive::from_u32(comp) {
     Some(RGD::Equal) => if a >= b { a - b } else { b - a },
       Some(RGD::Distinct) => if a == b { 1 } else { 0 },
       Some(RGD::Sge) => if (a as i64) >= (b as i64) { 0 } else { b - a },
-      Some(RGD::Sgt) => if (a as i64) > (b as i64) { 0 } else { (b - a).saturating_add(1) },
+      Some(RGD::Sgt) => if (a as i64) > (b as i64) { 0 } else { b.overflowing_sub(a).0.saturating_add(1) },
       Some(RGD::Sle) => if (a as i64) <= (b as i64) { 0 } else { a - b },
-      Some(RGD::Slt) => if (a as i64) < (b as i64) { 0 } else { (a-b).saturating_add(1) },
+      Some(RGD::Slt) => if (a as i64) < (b as i64) { 0 } else { a.overflowing_sub(b).0.saturating_add(1) },
       Some(RGD::Uge) => if a >= b { 0 } else { b - a },
       Some(RGD::Ugt) => if a > b { 0 } else { (b - a).saturating_add(1) },
       Some(RGD::Ule) => if a <= b { 0 } else { a - b },
@@ -142,6 +143,7 @@ pub fn partial_derivative(orig_input: &mut MutInput,
     found = true;
   }
 
+  orig_input.set(index, orig_val);
   let mut res = match (f_minus < f0, f_plus < f0) {
     (false, false) => (true, false, 0, found),
       (false, true) => (

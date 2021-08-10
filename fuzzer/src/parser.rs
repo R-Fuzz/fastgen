@@ -74,12 +74,12 @@ impl SearchTaskBuilder {
   pub fn submit_task_rust(&mut self, task: &SearchTask, solution_queue: BlockingQueue<Solution>) {
     println!("print task number of children is {} fid {}",task.get_constraints().len(), task.get_fid());
     print_task(task);
-    /*
+    
        let r = save_request(task, &Path::new("saved_test"));
        if r.is_err() {
        println!("save error");
        }
-     */
+     
     unsafe {
       if gengine.is_none() {
         gengine = Some(JITEngine::new());
@@ -104,7 +104,7 @@ impl SearchTaskBuilder {
 mod tests {
   use crate::rgd::*;
   use crate::util::*;
-  use crate::interface::*;
+  use crate::parser::*;
   use std::path::Path;
   use crate::gd::*;
   use crate::task::SContext;
@@ -113,8 +113,7 @@ mod tests {
     let tasks: Vec<SearchTask> = load_request(Path::new("saved_test")).expect("ok");
     let mut tb = SearchTaskBuilder::new();
     let engine = JITEngine::new();
-    for task in tasks {
-      let task_copy = task.clone();
+    for task in tasks { let task_copy = task.clone();
       print_task(&task_copy);
       let mut fut = tb.construct_task(&task_copy, &engine);
       println!("search!");

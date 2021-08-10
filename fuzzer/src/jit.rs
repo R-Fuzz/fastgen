@@ -237,9 +237,7 @@ impl JITEngine {
       //all the ICmp should be top level
       Some(RGD::Equal) | Some(RGD::Distinct) |
       Some(RGD::Ult) | Some(RGD::Ule) |
-      Some(RGD::Ugt) | Some(RGD::Uge) |
-      Some(RGD::Slt) | Some(RGD::Sle) |
-      Some(RGD::Sgt) | Some(RGD::Sge)  => {
+      Some(RGD::Ugt) | Some(RGD::Uge)  => {
         let left = &request.get_children()[0]; 
         let right = &request.get_children()[1]; 
         let type_after = self.context.custom_width_int_type(64);
@@ -247,6 +245,23 @@ impl JITEngine {
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
         let c1e = builder.build_int_z_extend(c1, type_after, "zext");
         let c2e = builder.build_int_z_extend(c2, type_after, "zext");
+        let input_args  = fn_val.get_nth_param(0).unwrap().into_pointer_value();
+        let idx0 = unsafe { builder.build_gep(input_args, &[i32_type.const_int(0, false)], "argidx") };
+        let idx1 = unsafe { builder.build_gep(input_args, &[i32_type.const_int(1, false)], "argidx") };
+        builder.build_store(idx0, c1e);
+        builder.build_store(idx1, c2e);
+        //we just return 0, and rely on the caller to calculate the distance
+        return type_after.const_int(555, false);
+      },
+      Some(RGD::Slt) | Some(RGD::Sle) |
+      Some(RGD::Sgt) | Some(RGD::Sge)  => {
+        let left = &request.get_children()[0]; 
+        let right = &request.get_children()[1]; 
+        let type_after = self.context.custom_width_int_type(64);
+        let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
+        let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
+        let c1e = builder.build_int_s_extend(c1, type_after, "zext");
+        let c2e = builder.build_int_s_extend(c2, type_after, "zext");
         let input_args  = fn_val.get_nth_param(0).unwrap().into_pointer_value();
         let idx0 = unsafe { builder.build_gep(input_args, &[i32_type.const_int(0, false)], "argidx") };
         let idx1 = unsafe { builder.build_gep(input_args, &[i32_type.const_int(1, false)], "argidx") };

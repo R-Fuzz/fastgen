@@ -6,13 +6,13 @@ pub struct Solution {
   pub ctx: u64,
   pub order: u32,
   pub direction: u64,
-  pub field_index: u32,
+  pub field_index: usize,
   pub field_size: usize,
 }
 
 impl Solution {
   pub fn new(sol: HashMap<u32,u8>, fid: u32, addr: u64, 
-            ctx: u64, order: u32, direction: u64, field_index: u32, field_size: usize) -> Self {
+            ctx: u64, order: u32, direction: u64, field_index: usize, field_size: usize) -> Self {
     Self {
       sol: sol,
       fid: fid,

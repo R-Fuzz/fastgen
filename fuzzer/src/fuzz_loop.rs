@@ -218,56 +218,35 @@ pub fn grading_loop(
   } else {
     let mut grade_count = 0;
     //let mut buf: Vec<u8> = Vec::with_capacity(config::MAX_INPUT_LEN);
-    let mut addr: u64 = 0;
-    let mut ctx: u64 = 0;
-    let mut order: u32 = 0;
-    let mut fid: u32 = 0;
-    let mut direction: u64 = 0;
     while running.load(Ordering::Relaxed) {
-      let mut id = 0;
-      let mut field_size = 0;
-      let mut new_field_size = 0;
-      println!("try pop!!!!");
       let sol = bq.pop();
+      info!("grading solution with base id {}", sol.fid);
       for (k,v) in sol.sol.iter() {
-          println!("k {} v {}", k, v);
+          info!("k {} v {}", k, v);
       }
-      //unsafe { get_next_input_info(&mut id, &mut field_size, 
-      //                           &mut new_field_size) };
-      continue;
-      if let Some(mut buf) = depot.get_input_buf(id as usize) {
-        //zero-extended the buffer if new field is larger
-        if new_field_size > field_size {
-          let old_size = buf.len();
-          buf.resize(old_size + new_field_size - field_size, 0);
-        }
-        //unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, 
-        //               &mut order, &mut fid, &mut direction, buf.len()) };
-        //truncate the buffer if new field is smaller
-        if new_field_size < field_size {
-          let old_size = buf.len();
-          buf.resize(old_size + new_field_size - field_size, 0);
-        }
-        let new_path = executor.run_sync(&buf);
+      info!("grading solution with base id end {}", sol.fid);
+      if let Some(mut buf) = depot.get_input_buf(sol.fid as usize) {
+        let mut_buf = mutate(buf, &sol.sol, sol.field_index, sol.field_size); 
+        let new_path = executor.run_sync(&mut_buf);
         let mut solcount = 1;
-        if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
-          solcount = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
+        if sol.addr != 0 && branch_solcount.read().unwrap().contains_key(&(sol.addr,sol.ctx,sol.order,sol.direction)) {
+          solcount = *branch_solcount.read().unwrap().get(&(sol.addr,sol.ctx,sol.order,sol.direction)).unwrap();
           solcount += 1;
           //info!("gencount is {}",count);
         }
-        branch_solcount.write().unwrap().insert((addr,ctx,order,direction), solcount);
+        branch_solcount.write().unwrap().insert((sol.addr,sol.ctx,sol.order,sol.direction), solcount);
         if new_path.0 {
           info!("grading input derived from on input {} by  \
               flipping branch@ {:#01x} ctx {:#01x} order {}, \
               it is a new input {}, saved as input #{}", 
-              fid, addr, ctx, order, new_path.0, new_path.1);
+              sol.fid, sol.addr, sol.ctx, sol.order, new_path.0, new_path.1);
           let mut count = 1;
-          if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
-            count = *branch_gencount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
+          if sol.addr != 0 && branch_gencount.read().unwrap().contains_key(&(sol.addr,sol.ctx,sol.order,sol.direction)) {
+            count = *branch_gencount.read().unwrap().get(&(sol.addr,sol.ctx,sol.order,sol.direction)).unwrap();
             count += 1;
             //info!("gencount is {}",count);
           }
-          branch_gencount.write().unwrap().insert((addr,ctx,order,direction), count);
+          branch_gencount.write().unwrap().insert((sol.addr,sol.ctx,sol.order,sol.direction), count);
           //info!("next input addr is {:} ctx is {}",addr,ctx);
         }
         grade_count = grade_count + 1;
@@ -375,7 +354,6 @@ pub fn fuzz_loop(
         std::fs::write("ce_progress", &progress).map_err(|err| println!("{:?}", err)).ok();
       }
     } else {
-      break;
       if config::RUNAFL {
         info!("run afl mutator");
         if let Some(mut buf) = depot.get_input_buf(depot.next_random()) {

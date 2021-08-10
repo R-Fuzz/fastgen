@@ -37,9 +37,9 @@ impl MutInput {
     pub fn update(&mut self, index: usize, direction: bool, delta: u64) {
         if !self.disables[index] {  
           if direction {
-            self.value[index] = self.value[index].saturating_add(delta);
+            self.value[index] = self.value[index].overflowing_add(delta).0;
           } else {
-            self.value[index] = self.value[index].saturating_sub(delta);
+            self.value[index] = self.value[index].overflowing_sub(delta).0;
           }
         }
     }
