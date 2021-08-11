@@ -57,8 +57,8 @@ fn eq_cur(current: &AstNode, other: &AstNode) -> bool {
 
   if current.get_kind() >= RGD::Equal as u32 && 
     current.get_kind() <= RGD::Distinct as u32 &&
-      other.get_kind() <= RGD::Equal as u32 &&
-      other.get_kind() >= RGD::Distinct as u32  {
+      other.get_kind() >= RGD::Equal as u32 &&
+      other.get_kind() <= RGD::Distinct as u32  {
         let children_size = current.get_children().len();
         if current.get_children().len() != other.get_children().len() {
           return false;
@@ -109,17 +109,14 @@ impl Hash for AstNode {
 pub struct SearchTaskBuilder {
   pub per_session_cache: HashMap<u32, Constraint>,  
       pub last_fid: u32,
-      pub func_cache: HashMap<AstNode, u64>, 
 }
 
 impl SearchTaskBuilder {
   pub fn new() -> Self {
     let cache = HashMap::new();   
-    let fcache = HashMap::new();   
     Self {
 per_session_cache: cache, 
                      last_fid: std::u32::MAX,
-                     func_cache: fcache,
     }
   }
 
