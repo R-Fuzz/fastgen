@@ -7,14 +7,15 @@ set -euxo pipefail
 PREFIX1=${PREFIX:-${ROOT_DIR}/bin/}
 PREFIX2=${PREFIX:-${ROOT_DIR}/bin_ang/}
 
-unset CXXFLAGS
-unset CFLAGS
-cd fuzzer/cpp_core
-rm -rf build
-mkdir -p build
-cd build
-cmake .. && make -j
-cd ../../..
+
+#unset CXXFLAGS
+#unset CFLAGS
+#cd fuzzer/cpp_core
+#rm -rf build
+#mkdir -p build
+#cd build
+#cmake .. && make -j
+#cd ../../..
 
 cargo build
 cargo build --release

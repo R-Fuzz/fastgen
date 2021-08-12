@@ -221,8 +221,9 @@ impl<'a> SearchTaskBuilder<'a> {
       break;
     }
 
-
-    fut.finalize();
+    if solve {
+      fut.finalize();
+    }
     fut
     }
   }
@@ -258,12 +259,14 @@ impl<'a> SearchTaskBuilder<'a> {
        }
      */    
       let mut fut = self.construct_task(task, solve, inputs);
+      if solve {
       gd_search(&mut fut);
       for sol in fut.rgd_solutions {
         let sol_size = sol.len();
         let rgd_sol = Solution::new(sol, task.get_fid(), task.get_addr(), task.get_ctx(), 
             task.get_order(), task.get_direction(), 0, sol_size);
         solution_queue.push(rgd_sol);
+      }
       }
   }
   }
