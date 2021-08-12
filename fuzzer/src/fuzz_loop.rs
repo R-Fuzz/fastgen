@@ -36,7 +36,7 @@ pub fn dispatcher(table: &UnionTable,
     buf: &Vec<u8>, id: RawFd, bq: BlockingQueue<Solution>) {
 
   let (labels,mut memcmp_data) = read_pipe(id);
-  let mut tb = SearchTaskBuilder::new();
+  let mut tb = SearchTaskBuilder::new(buf.len());
   scan_nested_tasks(&labels, &mut memcmp_data, table, 
       config::MAX_INPUT_LEN, &branch_gencount, 
       &branch_hitcount, buf, &mut tb, bq);

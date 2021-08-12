@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use crate::jit::JigsawFnType;
 use crate::mut_input::MutInput;
 use crate::grad::Grad;
+use std::rc::Rc;
+use std::cell::RefCell;
 pub struct Cons<'a> {
   pub func: Option<JitFunction<'a, JigsawFnType>>,
   pub comparison: u32,
@@ -80,7 +82,7 @@ impl SContext {
 
 pub struct Fut<'a> {
   pub num_exprs: u32,
-  pub constraints: Vec<Cons<'a>>,
+  pub constraints: Vec<Rc<RefCell<Cons<'a>>>>,
   pub inputs: Vec<(u32, u8)>,
   pub shape: HashMap<u32,u32>,
   pub ctx: Option<SContext>, 
@@ -108,25 +110,28 @@ impl<'a> Fut<'a> {
   pub fn finalize(&mut self) {
     let mut sym_map = HashMap::new();
     let mut gidx = 0;
-    for cons in &mut self.constraints {
-      for (k, v) in &cons.local_map {
-        if !sym_map.contains_key(k) {
-          gidx = self.inputs.len();
-          sym_map.insert(*k, gidx);
-          self.shape.insert(*k, cons.shape[k]);
-          self.inputs.push((*k, cons.inputs[k]));
-        } else {
-          gidx = sym_map[k];
-        }
-        cons.input_args[*v as usize].1 = gidx as u64;
+    for cons in &self.constraints {
+      let mut pairs = Vec::new();
+      for (k, v) in &cons.borrow().local_map {
+        pairs.push((*k,*v));
       }
-      if self.max_const_num < cons.const_num {
-        self.max_const_num = cons.const_num;
+      for (k, v) in pairs {
+        if !sym_map.contains_key(&k) {
+          gidx = self.inputs.len();
+          sym_map.insert(k, gidx);
+          self.shape.insert(k, cons.borrow().shape[&k]);
+          self.inputs.push((k, cons.borrow().inputs[&k]));
+        } else {
+          gidx = sym_map[&k];
+        }
+        cons.borrow_mut().input_args[v as usize].1 = gidx as u64;
+      }
+      if self.max_const_num < cons.borrow().const_num {
+        self.max_const_num = cons.borrow().const_num;
       }
     } 
     self.ctx = Some(SContext::new(self.inputs.len(), 
                         self.constraints.len(), 
                         self.inputs.len() + self.max_const_num as usize + 100));
   }
-
 }

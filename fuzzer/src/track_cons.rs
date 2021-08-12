@@ -15,44 +15,19 @@ use crate::parser::*;
 use blockingqueue::BlockingQueue;
 use crate::solution::Solution;
 
-//each input offset has a coresspdoing slot
-pub struct BranchDep {
-  //the dependent expr labels associated with this input
-  pub expr_labels: HashSet<u32>,
-  // the dependent input offsets associated with this input offset
-}
-
-//label 0: fid  label 1: label  label 2: direction/result label 3: addr, label4: ctx, label5, order label6: is gep
-pub fn scan_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>,
-                  tasks: &mut Vec<SearchTask>,
-                  table: &UnionTable,
-                  buf: &Vec<u8>) {
-  for &label in labels {
-    let mut node = AstNode::new();
-    let mut cons = Constraint::new();
-    let mut deps = HashSet::new();
-    get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut deps);
-    cons.set_node(node);
-    analyze_meta(&mut cons, buf);
-    let mut task = SearchTask::new();
-    task.mut_constraints().push(cons);
-    task.set_fid(label.0);
-    task.set_addr(label.3);
-    task.set_ctx(label.4);
-    task.set_order(label.5);
-    tasks.push(task);
-  }
-}
+//each input offset has a corresponding slot
+//pub struct BranchDep {
+ // pub expr_labels: HashSet<u32>,
+//}
 
 pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_data: &mut VecDeque<Vec<u8>>,
-          table: &UnionTable, tainted_size: usize, branch_gencount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>
-          , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, buf: &Vec<u8>,
-            tb: &mut SearchTaskBuilder, solution_queue: BlockingQueue<Solution>) {
-  let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
-  let mut uf = UnionFind::new(tainted_size);
-  branch_deps.resize_with(tainted_size, || None);
-  //let mut cons_table = HashMap::new();
-  //branch_deps.push(Some(BranchDep {expr_labels: HashSet::new(), input_deps: HashSet::new()}));
+    table: &UnionTable, tainted_size: usize, branch_gencount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>
+    , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, buf: &Vec<u8>,
+    tb: &mut SearchTaskBuilder, solution_queue: BlockingQueue<Solution>) {
+//  let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
+//  let mut uf = UnionFind::new(tainted_size);
+//  branch_deps.resize_with(tainted_size, || None);
+
   let t_start = time::Instant::now();
   let mut count = 0;
   for &label in labels {
@@ -105,10 +80,10 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
 
     if inputs.is_empty() { 
-	  //warn!("Skip constraint!"); 
-     continue; 
+      //warn!("Skip constraint!"); 
+      continue; 
     }
-
+/*
     let mut init = false;
     //build union table
     let mut v0 = 0;
@@ -119,69 +94,49 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       }
       uf.union(v as usize, v0 as usize);
     }
-      //step 2: add constraints
-      let mut added = HashSet::new();
-      for off in uf.get_set(v0 as usize) {
-        let deps_opt = &branch_deps[off as usize];
-        if let Some(deps) = deps_opt {
-          for &l in deps.expr_labels.iter() {
-            added.insert(l);
-          }
-        }
+    //step 2: add constraints
+    let mut added = HashSet::new();
+    for off in uf.get_set(v0 as usize) {
+      let deps_opt = &branch_deps[off as usize];
+      if let Some(deps) = deps_opt {
+        //for &l in deps.expr_labels.iter() {
+         // added.insert(l);
+        //}
       }
-
-      //we dont solve add_cons
-      // add constraints
-      cons.set_node(node);
-
-
-      analyze_meta(&mut cons, buf);
-      cons.set_label(label.1);
-/*
-      let bytes = cons.write_to_bytes().unwrap();
-      let mut stream = CodedInputStream::from_bytes(&bytes);
-      stream.set_recursion_limit(1000);
-      cons_reverse.merge_from(&mut stream).expect("merge failed");
-*/
-      let mut task = SearchTask::new();
-      //cons_table.insert(label.1, cons.clone());
-      task.mut_constraints().push(cons);
-      for &l in added.iter() {
-        //let mut c = cons_table[l].clone();
-        //flip_op(c.mut_node());
-        let mut c = Constraint::new();
-        c.set_label(l);
-        task.mut_constraints().push(c);
-      }
-      task.set_fid(label.0);
-      task.set_addr(label.3);
-      task.set_ctx(label.4);
-      task.set_order(label.5);
-      task.set_direction(label.2);
-
-
- //     tb.submit_task_rust(&task, solution_queue.clone());
-/*
-        let task_ser = task.write_to_bytes().unwrap();
-        count = count + 1;
-      	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
+    }
 */
 
-
-      if hitcount <= 5 && gencount == 0 && label.6 !=3 {
-          tb.submit_task_rust(&task, solution_queue.clone(), true);
-      //	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
-      } else {
-          tb.submit_task_rust(&task, solution_queue.clone(), false);
-     // 	unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, false); }
-      }
+    //we dont solve add_cons
+    // add constraints
+    cons.set_node(node);
 
 
+    analyze_meta(&mut cons, buf);
+    cons.set_label(label.1);
 
+    let mut task = SearchTask::new();
+    task.mut_constraints().push(cons);
+/*
+    for &l in added.iter() {
+      let mut c = Constraint::new();
+      c.set_label(l);
+      task.mut_constraints().push(c);
+    }
+*/
+    task.set_fid(label.0);
+    task.set_addr(label.3);
+    task.set_ctx(label.4);
+    task.set_order(label.5);
+    task.set_direction(label.2);
 
-      
+    if hitcount <= 5 && gencount == 0 && label.6 !=3 {
+      tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
+    } else {
+      tb.submit_task_rust(&task, solution_queue.clone(), false, &inputs);
+    }
 
     //step 3: nested branch
+/*
     for &off in inputs.iter() {
       let mut is_empty = false;
       {
@@ -192,26 +147,29 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       }
       if is_empty {
         branch_deps[off as usize] =
-            Some(BranchDep {expr_labels: HashSet::new()});
+          Some(BranchDep {expr_labels: HashSet::new()});
       }
       let deps_opt = &mut branch_deps[off as usize];
       let deps = deps_opt.as_mut().unwrap(); 
       deps.expr_labels.insert(label.1);
+      //we just need to add the constraint to one byte
+      break;
     }
-  let used_t1 = t_start.elapsed().as_secs() as u32;
-        if (used_t1 > 90)  {//1s
-          break;
-        }
+*/
+    let used_t1 = t_start.elapsed().as_secs() as u32;
+    if (used_t1 > 90)  {//1s
+      break;
+    }
   }
   info!("submitted {} tasks", count);
 }
 
 fn append_meta(cons: &mut Constraint, 
-              local_map: &HashMap<u32,u32>, 
-              shape: &HashMap<u32,u32>, 
-              input_args: &Vec<(bool,u64)>,
-              inputs: &Vec<(u32,u8)>,
-              const_num: u32) {
+    local_map: &HashMap<u32,u32>, 
+    shape: &HashMap<u32,u32>, 
+    input_args: &Vec<(bool,u64)>,
+    inputs: &Vec<(u32,u8)>,
+    const_num: u32) {
   let mut meta = NodeMeta::new();
   for (&k,&v) in local_map.iter() {
     let mut amap = Mapping::new();
@@ -265,22 +223,22 @@ mod tests {
   use std::path::Path;
 #[test]
   fn test_scan() {
-/*
-    let id = unsafe {
-      libc::shmget(
-          0x1234,
-          0xc00000000, 
-          0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
-          )
-    };
-    let ptr = unsafe { libc::shmat(id, std::ptr::null(), 0) as *mut UnionTable};
-    let table = unsafe { & *ptr };
+    /*
+       let id = unsafe {
+       libc::shmget(
+       0x1234,
+       0xc00000000, 
+       0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+       )
+       };
+       let ptr = unsafe { libc::shmat(id, std::ptr::null(), 0) as *mut UnionTable};
+       let table = unsafe { & *ptr };
 
-    unsafe { init_core(true,true); }
-    let (labels,mut fmemcmpdata) = read_pipe(2);
-    println!("labels len is {}", labels.len());
-    let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32,u64)>::new()));
-    let branch_hit = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
+       unsafe { init_core(true,true); }
+       let (labels,mut fmemcmpdata) = read_pipe(2);
+       println!("labels len is {}", labels.len());
+       let dedup = Arc::new(RwLock::new(HashSet::<(u64,u64,u32,u64)>::new()));
+       let branch_hit = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
     //let mut buf: Vec<u8> = Vec::with_capacity(15000);
     //buf.resize(15000, 0);
     let file_name = Path::new("/home/cju/fastgen/test/seed");
@@ -289,17 +247,17 @@ mod tests {
     scan_nested_tasks(&labels, &mut fmemcmpdata, table, 15000, &dedup, &branch_hit, &buf);
     println!("after scanning\n");
 
-//    scan_tasks(&labels, &mut tasks, table);
-/*
+    //    scan_tasks(&labels, &mut tasks, table);
+    /*
     for task in tasks {
-      println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
-      print_task(&task);
-      let task_ser = task.write_to_bytes().unwrap();
-      unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
+    println!("print task addr {} order {} ctx {}", task.get_addr(), task.get_order(), task.get_ctx());
+    print_task(&task);
+    let task_ser = task.write_to_bytes().unwrap();
+    unsafe { submit_task(task_ser.as_ptr(), task_ser.len() as u32, true); }
     }
-*/
+     */
     unsafe { aggregate_results(); }
     unsafe { fini_core(); }
-*/
+    */
   }
 }

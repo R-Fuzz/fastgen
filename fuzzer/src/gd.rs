@@ -6,6 +6,8 @@ use fastgen_common::config;
 use crate::op_def::*;
 use num_traits::FromPrimitive;
 use std::collections::HashMap;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 
 pub fn add_results(input: &MutInput, rgd_solutions: &mut Vec<HashMap<u32,u8>>,
@@ -38,9 +40,6 @@ pub fn add_results(input: &MutInput, rgd_solutions: &mut Vec<HashMap<u32,u8>>,
       i = i + 1;
     }
   }
-  //for (k,v) in sol.iter() {
-   // println!("k {} v {}", k, v);
- // }
   rgd_solutions.push(sol); 
 }
 
@@ -82,13 +81,13 @@ pub fn get_distance(comp: u32, a: u64, b: u64) -> u64 {
 }
 
 
-pub fn distance(min_input: &MutInput, constraints: &Vec<Cons>, 
+pub fn distance(min_input: &MutInput, constraints: &Vec<Rc<RefCell<Cons>>>, 
     scratch_args: &mut Vec<u64>, distances: &mut Vec<u64>) -> u64 {
   let mut res: u64 = 0;
   let mut loop_count = 0;
   for cons in constraints {
     let mut arg_idx = 0;
-    for arg in &cons.input_args {
+    for arg in &cons.borrow().input_args {
       if arg.0 {
         scratch_args[2+arg_idx] = min_input.get(arg.1 as usize);
       } else {
@@ -96,9 +95,9 @@ pub fn distance(min_input: &MutInput, constraints: &Vec<Cons>,
       }
       arg_idx += 1;
     }    
-    cons.call_func(scratch_args);
-    let mut comp = cons.comparison;
-    if loop_count !=0  {
+    cons.borrow().call_func(scratch_args);
+    let mut comp = cons.borrow().comparison;
+    if loop_count == 0  {
       comp = flip_op(comp);
     } 
     let dis = get_distance(comp, scratch_args[0], scratch_args[1]);
@@ -117,7 +116,7 @@ pub fn partial_derivative(orig_input: &mut MutInput,
     orig_distances: &Vec<u64>,
     f0: u64,
     index: usize,
-    constraints: &Vec<Cons>,
+    constraints: &Vec<Rc<RefCell<Cons>>>,
     rgd_solutions: &mut Vec<HashMap<u32,u8>>,
     inputs: &Vec<(u32,u8)>, 
     shape: &HashMap<u32,u32>) -> (bool, bool, u64, bool) {

@@ -878,6 +878,10 @@ __taint_trace_indcall(dfsan_label label) {
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
 add_constraints(dfsan_label label) {
+
+  if ((get_label_info(label)->flags & B_FLIPPED)) {
+      return;
+  }
   void *addr = __builtin_return_address(0);
   uint64_t callstack = __taint_trace_callstack;
   char content[100];

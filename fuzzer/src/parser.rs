@@ -1,6 +1,7 @@
 use crate::rgd::*;
 use crate::util::*;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use crate::gd::*;
 use crate::task::Cons;
@@ -13,11 +14,27 @@ use inkwell::execution_engine::JitFunction;
 use crate::jit::JigsawFnType;
 use std::hash::{Hash, Hasher};
 use crate::op_def::*;
+use std::rc::Rc;
+use std::cell::RefCell;
+use crate::union_find::*;
+
+#[derive(Clone)]
+pub struct OneLabelCons<'a> {
+  pub land_lor: bool, //true for land, false for lor
+  pub members: Vec<Rc<RefCell<Cons<'a>>>>,
+}
+
+#[derive(Clone)]
+pub struct BranchDep<'a> {
+  pub cons_set: Vec<OneLabelCons<'a>>,
+}
+
 
 pub struct AstNodeWrapper(AstNode);
 
 static mut gengine: Option<JITEngine> = None;
 static mut gfuncache: Option<HashMap<AstNodeWrapper, JitFunction<JigsawFnType>>> = None;
+//static mut branch_deps: Option<Vec<Option<BranchDep>>> = None;
 static mut miss: u32 = 0;
 static mut hit : u32 = 0;
 
@@ -106,90 +123,131 @@ impl Hash for AstNode {
 */
 
 
-pub struct SearchTaskBuilder {
+pub struct SearchTaskBuilder<'a> {
   pub per_session_cache: HashMap<u32, Constraint>,  
-      pub last_fid: u32,
+  pub last_fid: u32,
+  pub branch_deps: Vec<Option<BranchDep<'a>>>,
+  pub uf:UnionFind,
 }
 
-impl SearchTaskBuilder {
-  pub fn new() -> Self {
-    let cache = HashMap::new();   
+impl<'a> SearchTaskBuilder<'a> {
+  pub fn new(tainted_size: usize) -> Self {
+    unsafe {
     Self {
-per_session_cache: cache, 
-                     last_fid: std::u32::MAX,
+      per_session_cache: HashMap::new(),
+      last_fid: std::u32::MAX,
+      uf: UnionFind::new(tainted_size),
+      branch_deps: vec![None;tainted_size],
+    }
     }
   }
 
-  pub fn construct_task<'a>(&mut self, task: &SearchTask, engine: &'a JITEngine, 
-      fun_cache: &'a mut HashMap<AstNodeWrapper, JitFunction<'a, JigsawFnType>>) -> Fut<'a> {
+  pub fn construct_task(&mut self, task: &SearchTask, solve: bool, inputs: &HashSet<u32>) -> Fut<'a> {
+ // pub fn construct_task(& mut self, task: &SearchTask, engine: &JITEngine, 
+  //    fun_cache: & mut HashMap<AstNodeWrapper, JitFunction<JigsawFnType>>,
+   //   solve: bool, inputs: &HashSet<u32>) -> Fut {
     //pub fn construct_task(&mut self, task: &SearchTask, engine: &JITEngine) -> Fut {
-    let mut fut = Fut::new();
-    if task.get_fid() != self.last_fid {
-      //a new seed
-      self.per_session_cache.clear();
-      self.last_fid = task.get_fid(); 
+    unsafe {
+    if gengine.is_none() {
+        gengine = Some(JITEngine::new());
     }
-    let mut con_index = 0;
-    for cons in task.get_constraints() {
-      let mut constraint;
-      if con_index == 0 {
-        constraint = cons.clone();
-        self.per_session_cache.insert(cons.get_label(), constraint.clone());
-      } else {
-        constraint = self.per_session_cache[&cons.get_label()].clone();
-      }
-      con_index += 1;
-      let mut cons = Cons::new();
-      //TODO we do not transfer information using protobuf anymore
-      self.append_meta(&mut cons, &constraint); 
-      let t_start = time::Instant::now();
-      //let mut x = vec![1, 1, 1, 1, 12350, 15, 16, 17, 18, 19];
-      //unsafe { println!("result is {}, left {} right {}", cons.call_func(&mut x), x[0], x[1]); }
-      /*
-         let fun = engine.add_function(&constraint.get_node(), &cons.local_map);
-         cons.set_func(fun);
-       */
+    if gfuncache.is_none() {
+        gfuncache = Some(HashMap::new());
+    }
+    let engine = gengine.as_ref().unwrap();
+    let func_cache = gfuncache.as_mut().unwrap();
 
-      if !fun_cache.contains_key(&AstNodeWrapper(constraint.get_node().clone())) {
-        let fun = engine.add_function(&constraint.get_node(), &cons.local_map);
+    //Union 
+    let mut init = false;
+    let mut v0 = 0;
+    for &v in inputs.iter() {
+      if !init {
+        v0 = v;
+        init = true;
+      }
+      self.uf.union(v as usize, v0 as usize);
+    }
+
+    let mut fut = Fut::new();
+    let mut onecons = OneLabelCons{land_lor:false, members:Vec::new()};
+    for constraint in task.get_constraints() {
+      let mut cons = Rc::new(RefCell::new(Cons::new()));
+      self.append_meta(&cons, &constraint);
+      if !func_cache.contains_key(&AstNodeWrapper(constraint.get_node().clone())) {
+        let fun = engine.add_function(&constraint.get_node(), &cons.borrow().local_map);
         //println!("miss and jitime is {}", t_start.elapsed().as_micros());
         unsafe { println!("miss/hit {}/{}", miss,hit); }
         unsafe { miss += 1; }
-        fun_cache.insert(AstNodeWrapper(constraint.get_node().clone()), fun.clone());
-        cons.set_func(fun);
+        func_cache.insert(AstNodeWrapper(constraint.get_node().clone()), fun.clone());
+        cons.borrow_mut().set_func(fun);
       } else {
-        let fun = fun_cache[&AstNodeWrapper(constraint.get_node().clone())].clone();
-        cons.set_func(fun);
+        let fun = func_cache[&AstNodeWrapper(constraint.get_node().clone())].clone();
+        cons.borrow_mut().set_func(fun);
         unsafe { hit += 1; }
         //println!("hit and jitime is {}", t_start.elapsed().as_micros());
       }
 
-      fut.constraints.push(cons);
+      fut.constraints.push(cons.clone());
+      onecons.members.push(cons.clone());
     }
+
+    //add nested constraint  
+    for off in self.uf.get_set(v0 as usize) {
+      let deps_opt = &self.branch_deps[off as usize];
+      if let Some(deps) = deps_opt {
+        for onelabel in &deps.cons_set {
+            for onecons in &onelabel.members {
+              fut.constraints.push(onecons.clone());
+            }
+        }
+      }
+    }
+
+    //add to nested dependency tree
+    for &off in inputs.iter() {
+      let mut is_empty = false;
+      {
+        let deps_opt = &self.branch_deps[off as usize];
+        if deps_opt.is_none() {
+          is_empty = true;
+        }
+      }
+      if is_empty {
+        self.branch_deps[off as usize] = Some(BranchDep {cons_set: Vec::new()});
+      }
+      let deps_opt = &mut self.branch_deps[off as usize];
+      let deps = deps_opt.as_mut().unwrap();
+      deps.cons_set.push(onecons);
+      break;
+    }
+
+
     fut.finalize();
     fut
+    }
   }
 
-  pub fn append_meta(&self, cons: &mut Cons, constraint: &Constraint) {
+  pub fn append_meta(&self, cons: &Rc<RefCell<Cons>>, constraint: &Constraint) {
     for amap in constraint.get_meta().get_map() {
-      cons.local_map.insert(amap.get_k(), amap.get_v());
+      cons.borrow_mut().local_map.insert(amap.get_k(), amap.get_v());
     }
     for aarg in constraint.get_meta().get_args() {
-      cons.input_args.push((aarg.get_isinput(), aarg.get_v()));
+      cons.borrow_mut().input_args.push((aarg.get_isinput(), aarg.get_v()));
     }
     for ainput in constraint.get_meta().get_inputs() {
-      cons.inputs.insert(ainput.get_offset(), ainput.get_iv() as u8);
+      cons.borrow_mut().inputs.insert(ainput.get_offset(), ainput.get_iv() as u8);
     }
     for ashape in constraint.get_meta().get_shape() {
-      cons.shape.insert(ashape.get_offset(), ashape.get_start());
+      cons.borrow_mut().shape.insert(ashape.get_offset(), ashape.get_start());
     }
-    cons.comparison = constraint.get_node().get_kind();
-    cons.const_num = constraint.get_meta().get_const_num();
+    cons.borrow_mut().comparison = constraint.get_node().get_kind();
+    cons.borrow_mut().const_num = constraint.get_meta().get_const_num();
   }
 
+  //submit a sinlge branch
   pub fn submit_task_rust(&mut self, task: &SearchTask, 
       solution_queue: BlockingQueue<Solution>,
-      solve: bool) {
+      solve: bool, inputs: &HashSet<u32>) {
 
     /*
        info!("print task number of children is {} fid {}",task.get_constraints().len(), task.get_fid());
@@ -199,27 +257,7 @@ per_session_cache: cache,
        debug!("save error");
        }
      */    
-    if !solve {
-      if task.get_fid() != self.last_fid {
-        //a new seed
-        self.per_session_cache.clear();
-        self.last_fid = task.get_fid(); 
-      }
-      self.per_session_cache.insert(task.get_constraints()[0].get_label(), 
-          task.get_constraints()[0].clone());
-
-      return;
-    }
-    unsafe {
-      if gengine.is_none() {
-        gengine = Some(JITEngine::new());
-      }
-      if gfuncache.is_none() {
-        gfuncache = Some(HashMap::new());
-      }
-      let sengine = gengine.as_ref().unwrap();
-      let sfuncache = gfuncache.as_mut().unwrap();
-      let mut fut = self.construct_task(task, sengine, sfuncache);
+      let mut fut = self.construct_task(task, solve, inputs);
       gd_search(&mut fut);
       for sol in fut.rgd_solutions {
         let sol_size = sol.len();
@@ -227,7 +265,6 @@ per_session_cache: cache,
             task.get_order(), task.get_direction(), 0, sol_size);
         solution_queue.push(rgd_sol);
       }
-    }
   }
   }
 
