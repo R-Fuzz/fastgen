@@ -7,6 +7,7 @@ package rgd;
 //-----------------------------------------------
 
 //search task
+/*
 message SearchTask {
   repeated Constraint constraints = 1;
   uint32 fid = 2;
@@ -15,6 +16,7 @@ message SearchTask {
   uint32 order = 5;
   uint64 direction = 6;
 }
+*/
 
 //the constraint will be sent to c++ JIT/search engine
 //INVARIANT: (JIT engine can't handle logical and, logical or and logical not, so we handle the complexity before sending)

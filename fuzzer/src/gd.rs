@@ -12,6 +12,7 @@ use std::cell::RefCell;
 
 pub fn add_results(input: &MutInput, rgd_solutions: &mut Vec<HashMap<u32,u8>>,
     inputs: &Vec<(u32,u8)>, shape: &HashMap<u32,u32>) {
+  if rgd_solutions.len() > 0 { return; }
   let mut sol = HashMap::<u32,u8>::new();
   let mut ordered = Vec::<(u32,u64)>::new();
   let mut i = 0;
@@ -41,24 +42,6 @@ pub fn add_results(input: &MutInput, rgd_solutions: &mut Vec<HashMap<u32,u8>>,
     }
   }
   rgd_solutions.push(sol); 
-}
-
-
-pub fn flip_op(comp: u32) -> u32 {
-  let op = match FromPrimitive::from_u32(comp) {
-    Some(RGD::Equal) => RGD::Distinct as u32,
-      Some(RGD::Distinct) => RGD::Equal as u32,
-      Some(RGD::Sge) => RGD::Slt as u32,
-      Some(RGD::Sgt) => RGD::Sle as u32,
-      Some(RGD::Sle) => RGD::Sgt as u32,
-      Some(RGD::Slt) => RGD::Sge as u32,
-      Some(RGD::Uge) => RGD::Ult as u32,
-      Some(RGD::Ugt) => RGD::Ule as u32,
-      Some(RGD::Ule) => RGD::Ugt as u32,
-      Some(RGD::Ult) => RGD::Uge as u32,
-      _ => panic!("Non-relational op!")
-  };
-  op
 }
 
 
@@ -96,10 +79,7 @@ pub fn distance(min_input: &MutInput, constraints: &Vec<Rc<RefCell<Cons>>>,
       arg_idx += 1;
     }    
     cons.borrow().call_func(scratch_args);
-    let mut comp = cons.borrow().comparison;
-    if loop_count == 0  {
-      comp = flip_op(comp);
-    } 
+    let comp = cons.borrow().comparison;
     let dis = get_distance(comp, scratch_args[0], scratch_args[1]);
     distances[loop_count] = dis;
     if dis > 0 {

@@ -3,28 +3,33 @@ use crate::op_def::*;
 use crate::union_table::*;
 use std::collections::HashSet;
 use std::collections::HashMap;
+use crate::util::*;
+use crate::analyzer::*;
 use num_traits::FromPrimitive;
 use protobuf::Message;
 use protobuf::CodedInputStream;
 use fastgen_common::config;
 
-fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap<u32, HashSet<u32>>) {
-  if label==0 {
-    return;
-  }
+fn do_uta(label: u32, table: &UnionTable, 
+          cache: &mut HashMap<u32, HashSet<u32>>,
+          node_cache: &mut HashMap<u32, AstNode>) -> AstNode {
+
   let info = &table[label as usize];
   let mut size = info.size;
-  if size==0 { 
+  if size == 0 { 
     size = 1;
   }
+
   if cache.contains_key(&label) {
-    ret.set_label(label);
-    ret.set_bits(size as u32);
-    return;
+    let mut node = AstNode::new();
+    node.set_label(label);
+    node.set_bits(size as u32);
+    return node;
   }
 
 
   match info.op as u32 { DFSAN_READ => {
+                    let mut ret = AstNode::new();
                     ret.set_kind(RGD::Read as u32);
                     ret.set_bits(8 as u32);
                     ret.set_index(info.op1 as u32);
@@ -34,9 +39,11 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     deps.insert(info.op1 as u32);
                     ret.set_label(label);
                     cache.insert(label, deps);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_LOAD => {
+                    let mut ret = AstNode::new();
                     ret.set_kind(RGD::Read as u32);
                     ret.set_bits(info.l2 * 8);
                     ret.set_index(table[info.l1 as usize].op1 as u32);
@@ -47,86 +54,94 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     }
                     ret.set_label(label);
                     cache.insert(label, deps);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_ZEXT => {
+                    let mut ret = AstNode::new();
                     ret.set_kind(RGD::ZExt as u32);
                     ret.set_bits(size as u32);
                     ret.set_name("zext".to_string());
-                    let mut c = AstNode::new();
-                    do_uta(info.l1, &mut c, table, cache); 
+                    let c = do_uta(info.l1, table, cache, node_cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_SEXT => {
+                    let mut ret = AstNode::new();
                     ret.set_kind(RGD::SExt as u32);
                     ret.set_bits(size as u32);
                     ret.set_name("sext".to_string());
-                    let mut c = AstNode::new();
-                    do_uta(info.l1, &mut c, table, cache); 
+                    let c = do_uta(info.l1, table, cache, node_cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_TRUNC => {
+                    let mut ret = AstNode::new();
                     ret.set_kind(RGD::Extract as u32);
                     ret.set_bits(size as u32);
                     ret.set_name("extract".to_string());
                     ret.set_index(0 as u32);
-                    let mut c = AstNode::new();
-                    do_uta(info.l1, &mut c, table, cache); 
+                    let c = do_uta(info.l1, table, cache, node_cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_EXTRACT => {
+                    let mut ret = AstNode::new();
                     ret.set_kind(RGD::Extract as u32);
                     ret.set_bits(size as u32);
                     ret.set_name("extract".to_string());
                     ret.set_index(info.op2 as u32);
-                    let mut c = AstNode::new();
-                    do_uta(info.l1, &mut c, table, cache); 
+                    let c = do_uta(info.l1, table, cache, node_cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l1].clone());
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_NOT => {
+                    let mut ret = AstNode::new();
                     ret.set_kind(RGD::Not as u32);
                     ret.set_bits(size as u32);
                     ret.set_name("not".to_string());
                     ret.set_index(info.op2 as u32);
-                    let mut c = AstNode::new();
-                    do_uta(info.l2, &mut c, table, cache); 
+                    let c = do_uta(info.l2, table, cache, node_cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l2].clone());
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_NEG => {
+                    let mut ret = AstNode::new();
                     ret.set_kind(RGD::Neg as u32);
                     ret.set_bits(size as u32);
                     ret.set_name("neg".to_string());
                     ret.set_index(info.op2 as u32);
-                    let mut c = AstNode::new();
-                    do_uta(info.l2, &mut c, table, cache); 
+                    let c = do_uta(info.l2, table, cache, node_cache); 
                     ret.mut_children().push(c);
                     ret.set_label(label);
                     cache.insert(label, cache[&info.l2].clone());
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     _ => (),
   }
-  let mut left = AstNode::new();
-  let mut right = AstNode::new();
+  let mut left;
+  let mut right;
   let mut size1: u32 = info.size as u32;
   if info.l1 >= CONST_OFFSET {
-    do_uta(info.l1, &mut left, table, cache);
+    left = do_uta(info.l1, table, cache, node_cache);
   } else {
+    left = AstNode::new();
     if info.op as u32 == DFSAN_CONCAT {
       size1 = info.size as u32 - table[info.l2 as usize].size as u32;
     }
@@ -137,8 +152,9 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
     left.set_label(0);
   }
   if info.l2 >= CONST_OFFSET {
-    do_uta(info.l2, &mut right, table, cache);
+    right = do_uta(info.l2, table, cache, node_cache);
   } else {
+    right = AstNode::new();
     if info.op as u32 == DFSAN_CONCAT {
       size1 = info.size as u32 - table[info.l1 as usize].size as u32;
     }
@@ -148,6 +164,7 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
     right.set_value(info.op2.to_string());
     right.set_label(0);
   }
+  let mut ret = AstNode::new();
   ret.mut_children().push(left);
   ret.mut_children().push(right);
 
@@ -176,7 +193,8 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     } 
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_OR => {
                     if size != 1 {
@@ -188,91 +206,104 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     } 
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_XOR => {
                     ret.set_kind(RGD::Xor as u32);
                     ret.set_name("xor".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_SHL => {
                     ret.set_kind(RGD::Shl as u32);
                     ret.set_name("shl".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_LSHR => {
                     ret.set_kind(RGD::LShr as u32);
                     ret.set_name("lshr".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_ASHR => {
                     ret.set_kind(RGD::AShr as u32);
                     ret.set_name("ashr".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_ADD => {
                     ret.set_kind(RGD::Add as u32);
                     ret.set_name("add".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_SUB => {
                     ret.set_kind(RGD::Sub as u32);
                     ret.set_name("sub".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_MUL => {
                     ret.set_kind(RGD::Mul as u32);
                     ret.set_name("mul".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_UDIV => {
                     ret.set_kind(RGD::UDiv as u32);
                     ret.set_name("udiv".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_SDIV => {
                     ret.set_kind(RGD::SDiv as u32);
                     ret.set_name("sdiv".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_UREM => {
                     ret.set_kind(RGD::URem as u32);
                     ret.set_name("urem".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_SREM => {
                     ret.set_kind(RGD::SRem as u32);
                     ret.set_name("srem".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_CONCAT => {
                     ret.set_kind(RGD::Concat as u32);
                     ret.set_name("concat".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     _ => (),
   }
@@ -283,21 +314,24 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.set_name("equal".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_BVNEQ => {
                     ret.set_kind(RGD::Distinct as u32);
                     ret.set_name("distinct".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_BVULT => {
                     ret.set_kind(RGD::Ult as u32);
                     ret.set_name("ult".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
 
     DFSAN_BVULE => {
@@ -305,279 +339,130 @@ fn do_uta(label: u32, ret: &mut AstNode, table: &UnionTable, cache: &mut HashMap
                     ret.set_name("ule".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_BVUGT => {
                     ret.set_kind(RGD::Ugt as u32);
                     ret.set_name("ugt".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_BVUGE => {
                     ret.set_kind(RGD::Uge as u32);
                     ret.set_name("uge".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_BVSLT => {
                     ret.set_kind(RGD::Slt as u32);
                     ret.set_name("slt".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_BVSLE => {
                     ret.set_kind(RGD::Sle as u32);
                     ret.set_name("sle".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_BVSGT => {
                     ret.set_kind(RGD::Sgt as u32);
                     ret.set_name("sgt".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
     DFSAN_BVSGE => {
                     ret.set_kind(RGD::Sge as u32);
                     ret.set_name("sge".to_string());
                     ret.set_bits(size as u32);
                     ret.set_label(label);
-                    return;
+                    node_cache.insert(label, ret.clone());
+                    return ret;
                   },
-    _ => (),
+    _ => panic!(),
 
   }
 
 }
 
-pub fn flip_op(node: &mut AstNode) {
-  let op = match FromPrimitive::from_u32(node.get_kind()) {
-    Some(RGD::Equal) => RGD::Distinct as u32,
-    Some(RGD::Distinct) => RGD::Equal as u32,
-    Some(RGD::Sge) => RGD::Slt as u32,
-    Some(RGD::Sgt) => RGD::Sle as u32,
-    Some(RGD::Sle) => RGD::Sgt as u32,
-    Some(RGD::Slt) => RGD::Sge as u32,
-    Some(RGD::Uge) => RGD::Ult as u32,
-    Some(RGD::Ugt) => RGD::Ule as u32,
-    Some(RGD::Ule) => RGD::Ugt as u32,
-    Some(RGD::Ult) => RGD::Uge as u32,
-    _ => panic!("Non-relational op!")
-  };
-  node.set_kind(op);
-}
 
-
-fn is_relational(op: Option<RGD>) -> bool {
-  match op {
-    Some(RGD::Equal) => true,
-    Some(RGD::Distinct) => true,
-    Some(RGD::Sgt) => true,
-    Some(RGD::Sge) => true,
-    Some(RGD::Sle) => true,
-    Some(RGD::Slt) => true,
-    Some(RGD::Uge) => true,
-    Some(RGD::Ugt) => true,
-    Some(RGD::Ule) => true,
-    Some(RGD::Ult) => true,
-    _ => false,
-  }
-}
-
-
-//e.g. equal(zext(equal(X, Y), 0))  => distinct(x,y)
-fn simplify(src: &mut AstNode, dst: &mut AstNode) {
-
-  if src.get_kind() == RGD::Distinct as u32 || src.get_kind() == RGD::Equal as u32 {
-    let c0 = &src.get_children()[0];
-    let c1 = &src.get_children()[1];
-
-    let left;
-    let right;
-    if c1.get_kind() == RGD::ZExt as u32 && c0.get_kind() == RGD::Constant as u32 {
-      left = c1;
-      right = c0;
-    } else if c0.get_kind() == RGD::ZExt as u32 && c1.get_kind() == RGD::Constant as u32 {
-      left = c0;
-      right = c1;
-    } else {
-      let bytes = src.write_to_bytes().unwrap();
-      let mut stream = CodedInputStream::from_bytes(&bytes);
-      stream.set_recursion_limit(1000);
-      dst.merge_from(&mut stream).expect("merge failed");
-      return;
-    }
-
-    if left.get_kind() == RGD::ZExt as u32 && right.get_kind() == RGD::Constant as u32 {
-      let c00 = &left.get_children()[0];
-      if is_relational(FromPrimitive::from_u32(c00.get_kind())) {
-        let cv = right.get_value().parse::<u64>().expect("expect u64 number in value field");
-        if src.get_kind() == RGD::Distinct as u32 {
-          if cv == 0 {
-            // != 0 => true => keep the same
-
-      let bytes = c00.write_to_bytes().unwrap();
-      let mut stream = CodedInputStream::from_bytes(&bytes);
-      stream.set_recursion_limit(1000);
-      dst.merge_from(&mut stream).expect("merge failed");
-            //dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
-          } else {
-            // != 1 => false => negate
-      let bytes = c00.write_to_bytes().unwrap();
-      let mut stream = CodedInputStream::from_bytes(&bytes);
-      stream.set_recursion_limit(1000);
-      dst.merge_from(&mut stream).expect("merge failed");
-      //      dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
-            flip_op(dst);
-          }
-        } else { // RGD::Equal
-          if cv == 0 {
-            // == 0 => false => negate
-      let bytes = c00.write_to_bytes().unwrap();
-      let mut stream = CodedInputStream::from_bytes(&bytes);
-      stream.set_recursion_limit(1000);
-      dst.merge_from(&mut stream).expect("merge failed");
-       //     dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
-            flip_op(dst);
-          } else {
-            // == 1 => true => keep the same
-      let bytes = c00.write_to_bytes().unwrap();
-      let mut stream = CodedInputStream::from_bytes(&bytes);
-      stream.set_recursion_limit(1000);
-      dst.merge_from(&mut stream).expect("merge failed");
-      //      dst.merge_from_bytes(&c00.write_to_bytes().unwrap()).expect("merge failed");
-          }
-        }
-      } else {
-
-      let bytes = src.write_to_bytes().unwrap();
-      let mut stream = CodedInputStream::from_bytes(&bytes);
-      stream.set_recursion_limit(1000);
-      dst.merge_from(&mut stream).expect("merge failed");
-      //  dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
-      }
-  } else {
-      let bytes = src.write_to_bytes().unwrap();
-      let mut stream = CodedInputStream::from_bytes(&bytes);
-      stream.set_recursion_limit(1000);
-      dst.merge_from(&mut stream).expect("merge failed");
-      //dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
-    } 
-  } else {
-
-      let bytes = src.write_to_bytes().unwrap();
-      let mut stream = CodedInputStream::from_bytes(&bytes);
-      stream.set_recursion_limit(1000);
-      dst.merge_from(&mut stream).expect("merge failed");
-      //dst.merge_from_bytes(&src.write_to_bytes().unwrap()).expect("merge failed");
-  }
-}
-
-fn is_relational_by_dfsan(op: u32) -> bool {
-  if op == DFSAN_BVEQ || op == DFSAN_BVNEQ ||
-    op == DFSAN_BVULT || op == DFSAN_BVULE ||
-      op == DFSAN_BVUGT || op == DFSAN_BVUGE ||
-      op == DFSAN_BVSLT || op == DFSAN_BVSLE ||
-      op == DFSAN_BVSGT || op == DFSAN_BVSGE
-  {
-    true
-  } else {
-    false
-  }
-}
-
-pub fn get_one_constraint(label: u32, direction: u32, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
+pub fn get_one_constraint(label: u32, direction: u32, 
+                    table: &UnionTable, deps: &mut HashSet<u32>, 
+                    node_cache: &mut HashMap<u32, AstNode>) -> Option<AstNode> {
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
   let mut cache = HashMap::new();
-  if is_relational_by_dfsan(op) {
-    let mut src = AstNode::new();
-    if info.depth > config::AST_DEPTH  {
-      //warn!("large tree skipped depth is {}", info.depth);
-      return;
-    }
-    do_uta(label, &mut src, table, &mut cache);
-    if direction == 0 {
-      flip_op(&mut src);
-    }
-    for &v in &cache[&label] {
-      deps.insert(v);
-    }
-    simplify(&mut src, dst);
-  } else if info.op as u32 == DFSAN_NOT {
-    let info1 = &table[info.l2 as usize];
-    let op1 = (info1.op >> 8) as u32;
-    if is_relational_by_dfsan(op1) {
-      let mut src = AstNode::new();
-      if info.depth > config::AST_DEPTH  {
-        warn!("large tree skipped depth is {}", info.depth);
-        return;
-      }
-      do_uta(info.l2, &mut src, table, &mut cache);
-      if direction != 0 {
-        flip_op(&mut src);
-      }
-      for &v in &cache[&info.l2] {
-        deps.insert(v);
-      }
-      simplify(&mut src, dst);
-    }
-  } else {
-    info!("operator not relational!, op is {}, direction {}", info.op, direction);
+  if info.depth > config::AST_DEPTH  {
+    //warn!("large tree skipped depth is {}", info.depth);
+    return None;
   }
+  let src = do_uta(label, table, &mut cache, node_cache);
+
+  for &v in &cache[&label] {
+    deps.insert(v);
+  }
+  
+  Some(src)
+  
 }
 
 //we do not have direction
-pub fn get_addcons_constraint(label: u32, _direction: u32, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
+pub fn get_addcons_constraint(label: u32, _direction: u32, table: &UnionTable, deps: &mut HashSet<u32>) -> Option<AstNode> {
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
   let mut cache = HashMap::new();
+  let mut node_cache = HashMap::new();
   if is_relational_by_dfsan(op) {
-    let mut src = AstNode::new();
     if info.depth > config::AST_DEPTH  {
       warn!("large tree skipped depth is {}", info.depth);
-      return;
+      return None;
     }
-    do_uta(label, &mut src, table, &mut cache);
+    let mut src = do_uta(label, table, &mut cache, &mut node_cache);
     
     for &v in &cache[&label] {
       deps.insert(v);
     }
-    simplify(&mut src, dst);
+    return Some(src);
   } else if info.op as u32 == DFSAN_NOT {
     let info1 = &table[info.l2 as usize];
     let op1 = (info1.op >> 8) as u32;
     if is_relational_by_dfsan(op1) {
-      let mut src = AstNode::new();
       if info.depth > config::AST_DEPTH  {
         warn!("large tree skipped depth is {}", info.depth);
-        return;
+        return None;
       }
-      do_uta(info.l2, &mut src, table, &mut cache);
+      let src = do_uta(info.l2, table, &mut cache, &mut node_cache);
       for &v in &cache[&info.l2] {
         deps.insert(v);
       }
-      simplify(&mut src, dst);
+      return Some(src);
     }
   }
+  None
 }
 
 pub fn get_fmemcmp_constraint(label: u32, table: &UnionTable, deps: &mut HashSet<u32>) -> (u32,usize) {
   let mut cache = HashMap::new();
+  let mut node_cache = HashMap::new();
 
   let info = &table[label as usize];
-  let mut left = AstNode::new();
 
   if info.depth > config::AST_DEPTH  {
     warn!("large tree skipped  depth is {}", info.depth);
     return (0,0);
   }
-  do_uta(label, &mut left, table, &mut cache);
+  let left = do_uta(label, table, &mut cache, &mut node_cache);
   
   for &v in &cache[&label] {
     deps.insert(v);
@@ -594,19 +479,18 @@ pub fn get_fmemcmp_constraint(label: u32, table: &UnionTable, deps: &mut HashSet
   (min_v, len)
 }
 
-pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &UnionTable, deps: &mut HashSet<u32>) {
+pub fn get_gep_constraint(label: u32, result: u64, table: &UnionTable, deps: &mut HashSet<u32>) -> Option<AstNode> {
   let mut cache = HashMap::new();
-
+  let mut node_cache = HashMap::new();
   let info = &table[label as usize];
-  let mut left = AstNode::new();
   let mut right = AstNode::new();
   let mut src = AstNode::new();
 
   if info.depth > config::AST_DEPTH  {
     warn!("large tree skipped  depth is {}", info.depth);
-    return;
+    return None;
   }
-  do_uta(label, &mut left, table, &mut cache);
+  let left = do_uta(label, table, &mut cache, &mut node_cache);
 
   //build left != result
   src.set_bits(left.get_bits() as u32);
@@ -624,6 +508,6 @@ pub fn get_gep_constraint(label: u32, result: u64, dst: &mut AstNode,  table: &U
   for &v in &cache[&label] {
     deps.insert(v);
   }
-  simplify(&mut src, dst);
+  Some(src)
 }
 

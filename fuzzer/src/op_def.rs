@@ -2,7 +2,8 @@ use num_derive::FromPrimitive;
 
 #[derive(FromPrimitive)]
 pub enum RGD {
-  Bool = 0,
+  Uninit = 0,
+  Bool,
   Constant,
   Read,
   Concat,

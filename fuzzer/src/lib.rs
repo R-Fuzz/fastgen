@@ -36,3 +36,4 @@ pub mod grad;
 pub mod mut_input;
 pub mod gd;
 pub mod solution;
+pub mod search_task;

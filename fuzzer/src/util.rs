@@ -10,6 +10,7 @@ use std::path::Path;
 use std::fs::OpenOptions;
 use std::io::BufWriter;
 use std::io::BufReader;
+use crate::search_task::SearchTask;
 
 pub fn to_rgd_op(op: u32) -> u32 { match op {
     DFSAN_BVEQ => RGD::Equal as u32,
@@ -39,6 +40,7 @@ fn get_name(op: u32) -> String {
     Some(RGD::Ult) => "ult".to_string(),
     Some(RGD::Ule) => "ule".to_string(),
     Some(RGD::Bool) => "bool".to_string(),
+    Some(RGD::Constant) => "constant".to_string(),
     Some(RGD::Read) => "read".to_string(),
     Some(RGD::Concat) => "concat".to_string(),
     Some(RGD::Extract) => "extract".to_string(),
@@ -59,6 +61,10 @@ fn get_name(op: u32) -> String {
     Some(RGD::Shl) => "shl".to_string(),
     Some(RGD::LShr) => "lshr".to_string(),
     Some(RGD::AShr) => "ashr".to_string(),
+    Some(RGD::LNot) => "lnot".to_string(),
+    Some(RGD::LAnd) => "land".to_string(),
+    Some(RGD::LOr) => "lor".to_string(),
+    Some(RGD::Uninit) => "Uninit".to_string(),
     _ => "".to_string(),
   }
 }
@@ -85,11 +91,12 @@ pub fn do_print(node: &AstNode) {
 
 pub fn print_node(node: &AstNode) {
   do_print(node);
-  println!("");
+  print!("");
 }
 
 pub fn print_task(task: &SearchTask) {
-  for cons in task.get_constraints() {
+  for cons_set in &task.flip_cons.0 {
+    for cons in cons_set {
     println!("constraint label is {}", cons.get_label());
     print_node(cons.get_node());
 /*
@@ -103,6 +110,7 @@ pub fn print_task(task: &SearchTask) {
       println!("offset {} iv {}", amap.get_k(), amap.get_v());
     }
 */
+  }
   }
 }
 

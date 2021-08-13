@@ -14,19 +14,14 @@ use std::time;
 use crate::parser::*;
 use blockingqueue::BlockingQueue;
 use crate::solution::Solution;
+use crate::search_task::SearchTask;
+use crate::op_def::*;
 
-//each input offset has a corresponding slot
-//pub struct BranchDep {
- // pub expr_labels: HashSet<u32>,
-//}
 
 pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_data: &mut VecDeque<Vec<u8>>,
     table: &UnionTable, tainted_size: usize, branch_gencount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>
     , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, buf: &Vec<u8>,
     tb: &mut SearchTaskBuilder, solution_queue: BlockingQueue<Solution>) {
-//  let mut branch_deps: Vec<Option<BranchDep>> = Vec::with_capacity(tainted_size);
-//  let mut uf = UnionFind::new(tainted_size);
-//  branch_deps.resize_with(tainted_size, || None);
 
   let t_start = time::Instant::now();
   let mut count = 0;
@@ -42,8 +37,6 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     if branch_gencount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
       gencount = *branch_gencount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
     }
-    //we have to continue here, the underlying task lookup with check the redudant as well. If it is redudant, the task will be loaded
-    //without inserting caching 
 
     if hitcount > 1 {
       if label.6 == 2 {
@@ -53,21 +46,20 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     }
 
 
-    let mut node = AstNode::new();
-    let mut cons = Constraint::new();
+    let mut node_opt: Option<AstNode> = None;
     //let mut cons_reverse = Constraint::new();
     let mut inputs = HashSet::new();
+    let mut node_cache = HashMap::new();
     if label.6 == 1 {
-      get_gep_constraint(label.1, label.2, &mut node, table, &mut inputs);
+      //node_opt = get_gep_constraint(label.1, label.2, table, &mut inputs);
     } else if label.6 == 0 {
-      get_one_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
+      node_opt = get_one_constraint(label.1, label.2 as u32, table, &mut inputs, &mut node_cache);
     } else if label.6 == 2 {
       let data = memcmp_data.pop_front().unwrap();
       let (index, size) = get_fmemcmp_constraint(label.2 as u32, table, &mut inputs);
       if data.len() >= size {
         //unsafe { submit_fmemcmp(data.as_ptr(), index, size as u32, label.0, label.3); }
-        let mut sol = HashMap::new();
-        for i in 0..size {
+        let mut sol = HashMap::new(); for i in 0..size {
           sol.insert(index + i as u32, data[i]);
         }
         let rsol = Solution::new(sol, label.0, label.3, 0, 0, 0, index as usize, size);
@@ -75,141 +67,50 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       }
       continue;
     } else if label.6 == 3 {
-      get_addcons_constraint(label.1, label.2 as u32, &mut node, table, &mut inputs);
+      //node_opt = get_addcons_constraint(label.1, label.2 as u32, table, &mut inputs);
     }
 
 
-    if inputs.is_empty() { 
-      //warn!("Skip constraint!"); 
-      continue; 
-    }
-/*
-    let mut init = false;
-    //build union table
-    let mut v0 = 0;
-    for &v in inputs.iter() {
-      if !init {
-        v0 = v;
-        init = true;
+    if let Some(node) = node_opt { 
+      //print_node(&node);
+
+      debug!("direction is {}",label.2);
+
+      let breakdown = to_dnf(&node);
+      let cons_breakdown = analyze_maps(&breakdown, &node_cache, buf);
+      let reverse_cons_breakdown = de_morgan(&cons_breakdown);
+      //cons_breakdown is a lor of lands
+      
+      let mut task;
+      if label.2 == 1 {
+        task = SearchTask::new((reverse_cons_breakdown,true), 
+                              (cons_breakdown,false), 
+                              label.0, label.3, label.4, label.5, label.2);
+      } else {
+        task = SearchTask::new((cons_breakdown, false), 
+                            (reverse_cons_breakdown, true), 
+                            label.0, label.3, label.4, label.5, label.2);
       }
-      uf.union(v as usize, v0 as usize);
-    }
-    //step 2: add constraints
-    let mut added = HashSet::new();
-    for off in uf.get_set(v0 as usize) {
-      let deps_opt = &branch_deps[off as usize];
-      if let Some(deps) = deps_opt {
-        //for &l in deps.expr_labels.iter() {
-         // added.insert(l);
-        //}
-      }
-    }
-*/
 
-    //we dont solve add_cons
-    // add constraints
-    cons.set_node(node);
-
-
-    analyze_meta(&mut cons, buf);
-    cons.set_label(label.1);
-
-    let mut task = SearchTask::new();
-    task.mut_constraints().push(cons);
-/*
-    for &l in added.iter() {
-      let mut c = Constraint::new();
-      c.set_label(l);
-      task.mut_constraints().push(c);
-    }
-*/
-    task.set_fid(label.0);
-    task.set_addr(label.3);
-    task.set_ctx(label.4);
-    task.set_order(label.5);
-    task.set_direction(label.2);
-
-    if hitcount <= 5 && gencount == 0 && label.6 !=3 {
       tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
-    } else {
-      tb.submit_task_rust(&task, solution_queue.clone(), false, &inputs);
-    }
-
-    //step 3: nested branch
-/*
-    for &off in inputs.iter() {
-      let mut is_empty = false;
-      {
-        let deps_opt = &branch_deps[off as usize];
-        if deps_opt.is_none() {
-          is_empty = true;
-        }
-      }
-      if is_empty {
-        branch_deps[off as usize] =
-          Some(BranchDep {expr_labels: HashSet::new()});
-      }
-      let deps_opt = &mut branch_deps[off as usize];
-      let deps = deps_opt.as_mut().unwrap(); 
-      deps.expr_labels.insert(label.1);
-      //we just need to add the constraint to one byte
-      break;
-    }
+     /* 
+         if hitcount <= 5 && gencount == 0 && label.6 !=3 {
+         tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
+         } else {
+         tb.submit_task_rust(&task, solution_queue.clone(), false, &inputs);
+         }
 */
-    let used_t1 = t_start.elapsed().as_secs() as u32;
-    if (used_t1 > 90)  {//1s
-      break;
+       
+      let used_t1 = t_start.elapsed().as_secs() as u32;
+      if (used_t1 > 90)  {//1s
+        break;
+      }
     }
   }
   info!("submitted {} tasks", count);
 }
 
-fn append_meta(cons: &mut Constraint, 
-    local_map: &HashMap<u32,u32>, 
-    shape: &HashMap<u32,u32>, 
-    input_args: &Vec<(bool,u64)>,
-    inputs: &Vec<(u32,u8)>,
-    const_num: u32) {
-  let mut meta = NodeMeta::new();
-  for (&k,&v) in local_map.iter() {
-    let mut amap = Mapping::new();
-    amap.set_k(k);
-    amap.set_v(v);
-    meta.mut_map().push(amap);
-  }
-  for (&k,&v) in shape.iter() {
-    let mut ashape = Shape::new();
-    ashape.set_offset(k);
-    ashape.set_start(v);
-    meta.mut_shape().push(ashape);
-  }
-  for arg in input_args {
-    let mut aarg = Arg::new();
-    aarg.set_isinput(arg.0);
-    aarg.set_v(arg.1);
-    meta.mut_args().push(aarg);
-  }
-  for input in inputs {
-    let mut ainput = Input::new();
-    ainput.set_offset(input.0);
-    ainput.set_iv(input.1 as u32);
-    meta.mut_inputs().push(ainput);
-  }
-  meta.set_const_num(const_num);
-  cons.set_meta(meta);
-}
 
-
-fn analyze_meta(cons: &mut Constraint, buf: &Vec<u8>) {
-  let mut local_map = HashMap::new();
-  let mut shape = HashMap::new();
-  let mut input_args = Vec::new();
-  let mut inputs = Vec::new();
-  let mut visited = HashSet::new();
-  let mut const_num = 0;
-  map_args(cons.mut_node(), &mut local_map, &mut shape, &mut input_args, &mut inputs, &mut visited, &mut const_num, buf);
-  append_meta(cons, &local_map, &shape, &input_args, &inputs, const_num);
-}
 
 
 #[cfg(test)]
