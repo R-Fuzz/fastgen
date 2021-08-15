@@ -109,6 +109,16 @@ pub fn node_fill(node: &mut AstNode,
   if node.get_kind() == RGD::Uninit as u32  {
     *node = node_cache[&node.get_label()].clone();
   }
+
+  for i in 0..node.get_children().len() {
+    let c  = &mut node.mut_children()[i];
+    let label = c.get_label();
+    if label!=0 && visited.contains(&label) {
+      continue;
+    }
+    visited.insert(label);
+    node_fill(c,visited, node_cache);
+  }
 }
 
 
@@ -149,6 +159,40 @@ pub fn simplify_clone(src: &AstNode) -> AstNode {
           if cv == 0 {
             dst = c00.clone();
             flip_op(&mut dst);
+          } else {
+            dst = c00.clone();
+          }
+        }
+      } else if c00.get_kind() == RGD::LOr as u32 {
+        let cv = right.get_value().parse::<u64>().expect("expect u64 number in value field");
+        if src.get_kind() == RGD::Distinct as u32 {
+          if cv == 0 {
+            dst = c00.clone();
+          } else {
+            dst = c00.clone();
+            dst.set_kind(RGD::LAnd as u32);
+          }
+        } else { // RGD::Equal
+          if cv == 0 {
+            dst = c00.clone();
+            dst.set_kind(RGD::LAnd as u32);
+          } else {
+            dst = c00.clone();
+          }
+        }
+      } else if c00.get_kind() == RGD::LAnd as u32 {
+        let cv = right.get_value().parse::<u64>().expect("expect u64 number in value field");
+        if src.get_kind() == RGD::Distinct as u32 {
+          if cv == 0 {
+            dst = c00.clone();
+          } else {
+            dst = c00.clone();
+            dst.set_kind(RGD::LOr as u32);
+          }
+        } else { // RGD::Equal
+          if cv == 0 {
+            dst = c00.clone();
+            dst.set_kind(RGD::LOr as u32);
           } else {
             dst = c00.clone();
           }
@@ -365,11 +409,22 @@ fn analyze_meta(node: &AstNode, buf: &Vec<u8>, node_cache: &HashMap<u32, AstNode
   let mut node_copy = node.clone();
   node_fill(&mut node_copy, &mut visited, node_cache);
   //TODO simplify
-  let node_simplify = simplify_clone(&node_copy);
+  let mut node_simplify;
+  if node_copy.get_kind() == RGD::Not as u32 && node_copy.get_bits() == 1 {
+    warn!("lnot simplification start");
+    print_node(&node_copy);
+    flip_op(&mut node_copy.mut_children()[0]);
+    node_simplify = simplify_clone(&node_copy.get_children()[0]);
+    warn!("lnot simplification end");
+    print_node(&node_simplify);
+  }
+  else {
+    node_simplify = simplify_clone(&node_copy);
+  }
   let mut visited1 = HashSet::new();
-  map_args(&mut node_copy, &mut local_map, &mut shape,
+  map_args(&mut node_simplify, &mut local_map, &mut shape,
             &mut input_args, &mut inputs, &mut visited1, &mut const_num, buf);
-  cons.set_node(node_copy);
+  cons.set_node(node_simplify);
   append_meta(&mut cons, &local_map, &shape, &input_args, &inputs, const_num);
   cons
 }
@@ -419,9 +474,39 @@ pub fn to_dnf(node: &AstNode) -> Vec<Vec<AstNode>> {
       res.push(single_row);
     }
   } else {
-    let mut single_row = Vec::new();
-    single_row.push(node.clone());
-    res.push(single_row);
+    let node_copy = simplify_clone(node);
+    if node_copy.get_kind() == RGD::LOr as u32  {
+      let left_list = to_dnf(&node_copy.get_children()[0]);
+      let right_list = to_dnf(&node_copy.get_children()[1]);
+      for single_row in left_list {
+        res.push(single_row);
+      }
+      for single_row in right_list {
+        res.push(single_row);
+      }
+    } else if node_copy.get_kind() == RGD::LAnd as u32 {
+      let left_list = to_dnf(&node_copy.get_children()[0]);
+      let right_list = to_dnf(&node_copy.get_children()[1]);
+      for single_left_row in &left_list {
+        for single_right_row in &right_list {
+          let mut combined = Vec::new();
+          for item in single_left_row {
+            combined.push(item.clone());
+          }
+          for item in single_right_row {
+            combined.push(item.clone());
+          }
+          res.push(combined);
+        }
+      }
+    } else {
+      let mut single_row = Vec::new();
+      //we are dropping constant
+      if node_copy.get_kind() != RGD::Constant as u32 {
+        single_row.push(node.clone());
+      }
+      res.push(single_row);
+    }
   }
   res
 }

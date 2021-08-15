@@ -240,12 +240,17 @@ impl<'a> SearchTaskBuilder<'a> {
   }
 
   //vector of disjointed futs
-  pub fn construct_task(&mut self, task: &SearchTask, inputs: &HashSet<u32>, v0: u32) -> Vec<Vec<Fut<'a>>> {
+  pub fn construct_task(&mut self, task: &SearchTask, inputs: &HashSet<u32>, v0: u32) -> (Vec<Vec<Fut<'a>>>, Vec<Vec<Fut<'a>>>) {
 
     //jit the function of the task
     let mut all_branch_cons = self.task_jit(&task.flip_cons);
 
     //cross-product of the dependecies
+    let mut res_opt = Vec::new();
+    for land in &all_branch_cons {
+      let disjoint = self.break_disjoint(&land);
+      res_opt.push(disjoint);
+    }
 
     for off in self.uf.get_set(v0 as usize) {
       let deps_opt = &self.branch_deps[off as usize];
@@ -265,12 +270,12 @@ impl<'a> SearchTaskBuilder<'a> {
     }
 
 
-    let mut res = Vec::new();
-    for land in all_branch_cons {
+    let mut res_nes = Vec::new();
+    for land in &all_branch_cons {
       let disjoint = self.break_disjoint(&land);
-      res.push(disjoint);
+      res_nes.push(disjoint);
     }
-    res
+    (res_nes, res_opt)
   }
 
   pub fn append_meta(&self, cons: &Rc<RefCell<Cons>>, 
@@ -309,9 +314,32 @@ impl<'a> SearchTaskBuilder<'a> {
     //union table build
     let v0 = self.union(inputs);   
 
+    let res = self.construct_task(task, inputs, v0);
     if solve {
-      let mut land = self.construct_task(task, inputs, v0);
-      for mut disjoints in land {
+      for mut disjoints in res.0 {
+        let mut result = true;
+        let mut overall_sol = HashMap::new();
+        for mut fut in disjoints {
+          fut.finalize();
+          result = result && gd_search(&mut fut);
+          debug!("search result {}", result);
+          for sol in fut.rgd_solutions {
+            for (k,v) in sol.iter() {
+              debug!("k: {} v: {}",k,v);
+              overall_sol.insert(*k,*v);
+            }
+          }
+
+        }
+        let sol_size = overall_sol.len();
+        let rgd_sol = Solution::new(overall_sol, task.fid, task.addr, task.ctx, 
+            task.order, task.direction, 0, sol_size);
+        solution_queue.push(rgd_sol);
+      }
+    }
+
+    if solve {
+      for mut disjoints in res.1 {
         let mut result = true;
         let mut overall_sol = HashMap::new();
         for mut fut in disjoints {

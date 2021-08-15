@@ -91,7 +91,7 @@ pub fn do_print(node: &AstNode) {
 
 pub fn print_node(node: &AstNode) {
   do_print(node);
-  print!("");
+  println!("");
 }
 
 pub fn print_task(task: &SearchTask) {
