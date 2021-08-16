@@ -53,7 +53,9 @@ fn eq_cur(current: &AstNode, other: &AstNode) -> bool {
           return false;
         }
         for i in 0..children_size  {
-          return eq_cur(&current.get_children()[i], &other.get_children()[i]);
+          if !eq_cur(&current.get_children()[i], &other.get_children()[i]) {
+            return false;
+          }
         }
         return true;
   }
@@ -67,7 +69,9 @@ fn eq_cur(current: &AstNode, other: &AstNode) -> bool {
           return false;
         }
         for i in 0..children_size  {
-          return eq_cur(&current.get_children()[i], &other.get_children()[i]);
+          if !eq_cur(&current.get_children()[i], &other.get_children()[i]) {
+            return false;
+          }
         }
         return true;
   }
@@ -81,7 +85,9 @@ fn eq_cur(current: &AstNode, other: &AstNode) -> bool {
           return false;
         }
         for i in 0..children_size  {
-          return eq_cur(&current.get_children()[i], &other.get_children()[i]);
+          if !eq_cur(&current.get_children()[i], &other.get_children()[i]) {
+            return false;
+          }
         }
         return true;
   }
@@ -94,7 +100,9 @@ fn eq_cur(current: &AstNode, other: &AstNode) -> bool {
     return false;
   }
   for i in 0..children_size  {
-    return eq_cur(&current.get_children()[i], &other.get_children()[i]);
+    if !eq_cur(&current.get_children()[i], &other.get_children()[i]) {
+      return false;
+    }
   }
 
   true 
