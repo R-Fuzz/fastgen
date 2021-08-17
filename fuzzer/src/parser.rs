@@ -323,9 +323,10 @@ impl<'a> SearchTaskBuilder<'a> {
     //union table build
     let v0 = self.union(inputs);   
 
-    let res = self.construct_task(task, inputs, v0);
+    let mut res = self.construct_task(task, inputs, v0);
 
     let mut opt_solved = false;
+    let mut nest_solved = false;
     if solve {
       for mut disjoints in res.1 {
         let mut result = true;
@@ -352,11 +353,11 @@ impl<'a> SearchTaskBuilder<'a> {
         if result { opt_solved = true; break; }
       }
     }
-    
-
+   
+    opt_solved = false; 
     if solve && opt_solved {
       let mut sub_clause_tried = 0;
-      for mut disjoints in res.0 {
+      for mut disjoints in &mut res.0 {
         let mut result = true;
         let mut overall_sol = HashMap::new();
         for mut fut in disjoints {
@@ -364,7 +365,7 @@ impl<'a> SearchTaskBuilder<'a> {
           result = result && gd_search(&mut fut);
           trace!("search result {}", result);
           if !result { break; }
-          for sol in fut.rgd_solutions {
+          for sol in &fut.rgd_solutions {
             for (k,v) in sol.iter() {
               trace!("k: {} v: {}",k,v);
               overall_sol.insert(*k,*v);
@@ -379,9 +380,9 @@ impl<'a> SearchTaskBuilder<'a> {
           solution_queue.push(rgd_sol);
         }
         sub_clause_tried += 1;
-        if result { break; }
+        if result { nest_solved = true; break; }
       }
-      debug!("tried {} sub-clauses", sub_clause_tried);
+      info!("tried {} sub-clauses, result {}, total {}  bid {}", sub_clause_tried, nest_solved, &res.0.len(), task.addr);
     }
 
     self.add_dependency(task, inputs, v0);

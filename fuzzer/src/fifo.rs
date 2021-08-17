@@ -52,7 +52,7 @@ pub fn make_pipe() {
   }
 }
 
-
+/*
 pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<Vec<u8>>) {
   let f = unsafe { File::from_raw_fd(piped) };
   let mut reader = BufReader::new(f);
@@ -98,8 +98,9 @@ pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<
   }
   (ret,retdata)
 }
+*/
 
-/*
+
 pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<Vec<u8>>) {
   let f = unsafe { File::from_raw_fd(piped) };
   let mut reader = BufReader::new(f);
@@ -136,7 +137,7 @@ pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<
   }
   (ret,retdata)
 }
-*/
+
 
 #[cfg(test)]
 mod tests {

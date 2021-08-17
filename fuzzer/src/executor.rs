@@ -164,7 +164,7 @@ impl Executor {
 
   pub fn track(&mut self, id: usize, buf: &Vec<u8>) -> (std::process::Child, RawFd) {
     //FIXME
-    let e = format!("taint_file={} tid={} shmid={} pipeid=0", &self.cmd.out_file, &id, &self.shmid);
+    let e = format!("taint_file={} tid={} shmid={} pipeid=200", &self.cmd.out_file, &id, &self.shmid);
     info!("Track {}, e is {}", &id, e);
     self.envs.insert(
         defs::TAINT_OPTIONS.to_string(),

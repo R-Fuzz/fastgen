@@ -56,7 +56,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       node_opt = get_one_constraint(label.1, label.2 as u32, table, &mut inputs, &mut node_cache);
     } else if label.6 == 2 {
       let data = memcmp_data.pop_front().unwrap();
-      let (index, size) = get_fmemcmp_constraint(label.2 as u32, table, &mut inputs);
+      let (index, size) = get_fmemcmp_constraint(label.1 as u32, table, &mut inputs);
       if data.len() >= size {
         //unsafe { submit_fmemcmp(data.as_ptr(), index, size as u32, label.0, label.3); }
         let mut sol = HashMap::new(); for i in 0..size {

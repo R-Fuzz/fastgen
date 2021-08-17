@@ -123,6 +123,15 @@ struct expr_equal1 {
   }
 };
 
+struct pipe_msg {
+  u32 type; //gep, cond, add_constraints, strcmp 
+  u32 tid;   //0: cond 1: gep 2: strcmp 3: add_cons
+  u32 label;  //size for memcmp
+  u64 result; //direction for conditional branch, index for GEP and memcmp
+  void* addr;
+  u64 ctx; 
+  u32 localcnt; 
+} __attribute__((packed));
 
 Flags __dfsan::flags_data;
 
@@ -724,25 +733,21 @@ static dfsan_label rejectBranch(dfsan_label label) {
 }
 
 
-static bool get_fmemcmp(dfsan_label label, dfsan_label *ret_label, u64* size, u8* data) {
+static bool get_fmemcmp(dfsan_label label, dfsan_label *ret_label, u64* size, u8** data) {
   dfsan_label_info *info = get_label_info(label); 
   //we only support const == Load
   if (info->l1 >= CONST_OFFSET || info->l2 < CONST_OFFSET)
     return false; 
-  //dfsan_label_info *info2 = get_label_info(info->l2);
   *ret_label = info->l2;
   //if (info2->op != Load)
    // return false;
-  //*index = get_label_info(info2->l1)->op1;
   *size = info->size;
-  if (*size<=1024)
-  read_data(data, (u8)*size, info->op1);
+  *data = (u8*)info->op1;
   return true;
 }
 
 static void __solve_cond(dfsan_label label,
-    void *addr, uint64_t ctx, int order, int skip, dfsan_label label1, dfsan_label label2, u8 r, u32 predicate) {
-  char content[100];
+    void *addr, uint64_t ctx, u32 order, int skip, dfsan_label label1, dfsan_label label2, u8 r, u32 predicate) {
   //session id, label, direction
   static int count = 0;
 
@@ -760,30 +765,26 @@ static void __solve_cond(dfsan_label label,
         if (reason > 2) { //fmemcmp 
           dfsan_label ret_label = 0;
           u64 size = 0;
-          u8 data[1024];
-          if (!get_fmemcmp(reason, &ret_label, &size, data)) return;
-          if (size <=  1024) {
+          u8* data;
+          if (!get_fmemcmp(reason, &ret_label, &size, &data)) return;
           //printf("get_fmemp index: %lu, size: %lu, data: %lu\n",index,size,data);
-            sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, size, ret_label, (uint64_t)addr, ctx, (uint32_t)order);
-            write(mypipe,content,strlen(content));
+           // sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, size, ret_label, (uint64_t)addr, ctx, (uint32_t)order);
+            struct pipe_msg msg = {.type = 2, .tid = __tid, .label = ret_label, .result = size, .addr = addr, .ctx = ctx, .localcnt = order };
+            //write(mypipe,content,strlen(content));
+            write(mypipe,&msg,sizeof(msg));
             fsync(mypipe);
-            char fmemcmpdata[10000];
-            for(int i=0;i<size;i++) {
-              sprintf(fmemcmpdata+4*i,"%03u,", data[i]);
-            }
-            sprintf(fmemcmpdata+4*size,"0\n");
-            write(mypipe,fmemcmpdata,strlen(fmemcmpdata));
+            write(mypipe,data,size);
             fsync(mypipe);
             get_label_info(label)->flags |= B_FLIPPED;
-          }
         }
         return; 
     }
     //printLabel(label);
     serialize(label);
-    sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 0\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order);
-    write(mypipe,content,strlen(content));
-          fsync(mypipe);
+    struct pipe_msg msg = {.type = 0, .tid = __tid, .label = label, .result = r, .addr = addr, .ctx = ctx, .localcnt = order };
+    //sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 0\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order);
+    write(mypipe,&msg, sizeof(msg));
+    fsync(mypipe);
     get_label_info(label)->flags |= B_FLIPPED;
     return;
   }
@@ -810,7 +811,7 @@ extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
 __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
     u64 c1, u64 c2) {
 
-  int order = 0;
+  u32 order = 0;
   int skip = 0;
   void *addr = __builtin_return_address(0);
   uint64_t acc = (uint64_t)addr;
@@ -878,19 +879,18 @@ __taint_trace_indcall(dfsan_label label) {
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
 add_constraints(dfsan_label label) {
-
   if ((get_label_info(label)->flags & B_FLIPPED)) {
       return;
   }
   void *addr = __builtin_return_address(0);
   uint64_t callstack = __taint_trace_callstack;
-  char content[100];
   printf("__add_constraint %d and solver_select is %d\n", __solver_select);
   if (__solver_select != 1) {
     if (rejectBranch(label)) {  return; }
     serialize(label);
-    sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 3\n",  __tid, label, 0, (uint64_t)addr, callstack, 0);
-    write(mypipe,content,strlen(content));
+    struct pipe_msg msg = {.type = 3, .tid = __tid, .label = label, .result = 0, .addr = addr, .ctx = callstack, .localcnt = 0 };
+    write(mypipe,&msg,sizeof(msg));
+    fsync(mypipe);
     get_label_info(label)->flags |= B_FLIPPED;
     return;
   }
@@ -898,7 +898,6 @@ add_constraints(dfsan_label label) {
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
 __taint_trace_gep(dfsan_label label, u64 r) {
-  char content[100];
   if (label == 0)
     return;
 
@@ -906,7 +905,7 @@ __taint_trace_gep(dfsan_label label, u64 r) {
     return;
 
 
-  int order = 0;
+  u32 order = 0;
   void *addr = __builtin_return_address(0);
   auto itr = __branches.find({__taint_trace_callstack, addr});
   if (itr == __branches.end()) {
@@ -928,8 +927,9 @@ __taint_trace_gep(dfsan_label label, u64 r) {
       return; }
     //printLabel(label);
     serialize(label);
-    sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 1\n",  __tid, label, r, (uint64_t)addr, callstack, (uint32_t)order);
-    write(mypipe,content,strlen(content));
+    struct pipe_msg msg = {.type = 1, .tid = __tid, .label = label, .result = r, .addr = addr, .ctx = callstack, .localcnt = order };
+    write(mypipe,&msg,sizeof(msg));
+    fsync(mypipe);
     get_label_info(label)->flags |= B_FLIPPED;
     return;
   }
@@ -1143,7 +1143,6 @@ static void dfsan_fini() {
     *(reinterpret_cast<u32*>(trace_id)) = __current_index;
     shmdt(trace_id);
   }
-  printf("finishing and closing\n");
   close(mypipe);
   shmdt(shmp);
 }
@@ -1157,27 +1156,17 @@ static void dfsan_init(int argc, char **argv, char **envp) {
   //printf("unsued addr %p and shadow addr %p and uniton addr %p\n", UnusedAddr(),ShadowAddr(),UnionTableAddr());
   //printf("mapping %lx bytes\n",UnusedAddr() - ShadowAddr());
   __dfsan_label_info = (dfsan_label_info *)UnionTableAddr();
-  //int shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
-  //  void* ret = shmat(shmid, (void *)ShadowAddr(), 0); 
-  //if (shmid == -1) {
-    //perror("Shared mmoery");
-  //} else {
-    if (__shmid == 0)
-      __shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
-    shmp = shmat(__shmid, (void *)UnionTableAddr(), 0);
-    if (shmp == (void*) -1) {
-      //perror("error shared memory attach");
-    }  else {
-      //printf("address mappped to shared mem\n");
-    }
-  //}
-  //mypipe = open("/tmp/wp", O_WRONLY | O_NONBLOCK);
-  mypipe = 200;
-  //mypipe = __pipeid;
-  //else {
-  //   printf("segment containts: \n\%s\n", shmp->buf);
-  //}
+  if (__shmid == 0)
+    __shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
+  shmp = shmat(__shmid, (void *)UnionTableAddr(), 0);
+  if (shmp == (void*) -1) {
+    Printf("FATAL: error shared memory attach");
+    Die();
+  }
+  mypipe = __pipeid;
+
   // init const size
+  internal_memset(&__dfsan_label_info[CONST_LABEL], 0, sizeof(dfsan_label_info));
   __dfsan_label_info[CONST_LABEL].size = 8;
 
   InitializeInterceptors();
@@ -1185,7 +1174,6 @@ static void dfsan_init(int argc, char **argv, char **envp) {
   // Protect the region of memory we don't use, to preserve the one-to-one
   // mapping from application to shadow memory.
   MmapFixedNoAccess(UnusedAddr(), AppAddr() - UnusedAddr());
-  MmapFixedNoReserve(HashTableAddr(), hashtable_size);
   __taint::allocator_init(HashTableAddr(), HashTableAddr() + hashtable_size);
 
   InitializeTaintFile();
