@@ -278,6 +278,7 @@ impl<'a> SearchTaskBuilder<'a> {
     }
 
 
+
     let mut res_nes = Vec::new();
     for land in &all_branch_cons {
       let disjoint = self.break_disjoint(&land);
@@ -323,29 +324,8 @@ impl<'a> SearchTaskBuilder<'a> {
     let v0 = self.union(inputs);   
 
     let res = self.construct_task(task, inputs, v0);
-    if solve {
-      for mut disjoints in res.0 {
-        let mut result = true;
-        let mut overall_sol = HashMap::new();
-        for mut fut in disjoints {
-          fut.finalize();
-          result = result && gd_search(&mut fut);
-          debug!("search result {}", result);
-          for sol in fut.rgd_solutions {
-            for (k,v) in sol.iter() {
-              debug!("k: {} v: {}",k,v);
-              overall_sol.insert(*k,*v);
-            }
-          }
 
-        }
-        let sol_size = overall_sol.len();
-        let rgd_sol = Solution::new(overall_sol, task.fid, task.addr, task.ctx, 
-            task.order, task.direction, 0, sol_size);
-        solution_queue.push(rgd_sol);
-      }
-    }
-
+    let mut opt_solved = false;
     if solve {
       for mut disjoints in res.1 {
         let mut result = true;
@@ -353,20 +333,55 @@ impl<'a> SearchTaskBuilder<'a> {
         for mut fut in disjoints {
           fut.finalize();
           result = result && gd_search(&mut fut);
-          debug!("search result {}", result);
+          debug!("opt search result {}", result);
+          if !result { break; }
           for sol in fut.rgd_solutions {
             for (k,v) in sol.iter() {
-              debug!("k: {} v: {}",k,v);
+              trace!("k: {} v: {}",k,v);
               overall_sol.insert(*k,*v);
             }
           }
 
         }
         let sol_size = overall_sol.len();
-        let rgd_sol = Solution::new(overall_sol, task.fid, task.addr, task.ctx, 
-            task.order, task.direction, 0, sol_size);
-        solution_queue.push(rgd_sol);
+        if result {
+          let rgd_sol = Solution::new(overall_sol, task.fid, task.addr, task.ctx, 
+              task.order, task.direction, 0, sol_size);
+          solution_queue.push(rgd_sol);
+        }
+        if result { opt_solved = true; break; }
       }
+    }
+    
+
+    if solve && opt_solved {
+      let mut sub_clause_tried = 0;
+      for mut disjoints in res.0 {
+        let mut result = true;
+        let mut overall_sol = HashMap::new();
+        for mut fut in disjoints {
+          fut.finalize();
+          result = result && gd_search(&mut fut);
+          trace!("search result {}", result);
+          if !result { break; }
+          for sol in fut.rgd_solutions {
+            for (k,v) in sol.iter() {
+              trace!("k: {} v: {}",k,v);
+              overall_sol.insert(*k,*v);
+            }
+          }
+
+        }
+        let sol_size = overall_sol.len();
+        if result {
+          let rgd_sol = Solution::new(overall_sol, task.fid, task.addr, task.ctx, 
+              task.order, task.direction, 0, sol_size);
+          solution_queue.push(rgd_sol);
+        }
+        sub_clause_tried += 1;
+        if result { break; }
+      }
+      debug!("tried {} sub-clauses", sub_clause_tried);
     }
 
     self.add_dependency(task, inputs, v0);

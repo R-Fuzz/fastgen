@@ -72,7 +72,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
 
     if let Some(node) = node_opt { 
-      print_node(&node);
+      //print_node(&node);
 
       debug!("direction is {}",label.2);
 
@@ -80,11 +80,13 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       let cons_breakdown = analyze_maps(&breakdown, &node_cache, buf);
       let reverse_cons_breakdown = de_morgan(&cons_breakdown);
       //cons_breakdown is a lor of lands
+/*
       for row in &cons_breakdown {
         for item in row {
           print_node(&item.get_node());
         }
       }
+*/
       
       let mut task;
       if label.2 == 1 {
@@ -107,7 +109,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 */
        
       let used_t1 = t_start.elapsed().as_secs() as u32;
-      if (used_t1 > 90)  {//1s
+      if (used_t1 > 900)  {//90s
         break;
       }
     }
