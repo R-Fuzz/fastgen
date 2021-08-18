@@ -72,7 +72,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
 
     if let Some(node) = node_opt { 
-      //print_node(&node);
+      print_node(&node);
 
       debug!("direction is {}",label.2);
 

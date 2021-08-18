@@ -122,9 +122,34 @@ pub fn node_fill(node: &mut AstNode,
 }
 
 
+
 //e.g. equal(zext(equal(X, Y), 0))  => distinct(x,y)
 pub fn simplify_clone(src: &AstNode) -> AstNode {
-  let mut dst = AstNode::new();
+  //let mut dst = AstNode::new();
+  let mut dst;
+   
+
+  if src.get_kind() == RGD::Not as u32 && src.get_bits() == 1 {
+    warn!("simplify clone RGD::Not");
+    let c0 = &src.get_children()[0];
+    if c0.get_kind() == RGD::LOr as u32 {
+      dst = c0.clone();
+      dst.set_kind(RGD::LAnd as u32);
+      flip_op(&mut dst.mut_children()[0]);
+      flip_op(&mut dst.mut_children()[1]);
+    } else if c0.get_kind() == RGD::LAnd as u32 {
+      dst = c0.clone();
+      dst.set_kind(RGD::LOr as u32);
+      flip_op(&mut dst.mut_children()[0]);
+      flip_op(&mut dst.mut_children()[1]);
+    } else {
+      dst = c0.clone();
+      flip_op(&mut dst);
+    }
+    warn!("simplify clone RGD::Not return");
+    return dst; 
+  }
+
 
   if src.get_kind() == RGD::Distinct as u32 || src.get_kind() == RGD::Equal as u32 {
     let c0 = &src.get_children()[0];
@@ -171,11 +196,15 @@ pub fn simplify_clone(src: &AstNode) -> AstNode {
           } else {
             dst = c00.clone();
             dst.set_kind(RGD::LAnd as u32);
+            flip_op(&mut dst.mut_children()[0]);
+            flip_op(&mut dst.mut_children()[1]);
           }
         } else { // RGD::Equal
           if cv == 0 {
             dst = c00.clone();
             dst.set_kind(RGD::LAnd as u32);
+            flip_op(&mut dst.mut_children()[0]);
+            flip_op(&mut dst.mut_children()[1]);
           } else {
             dst = c00.clone();
           }
@@ -188,11 +217,15 @@ pub fn simplify_clone(src: &AstNode) -> AstNode {
           } else {
             dst = c00.clone();
             dst.set_kind(RGD::LOr as u32);
+            flip_op(&mut dst.mut_children()[0]);
+            flip_op(&mut dst.mut_children()[1]);
           }
         } else { // RGD::Equal
           if cv == 0 {
             dst = c00.clone();
             dst.set_kind(RGD::LOr as u32);
+            flip_op(&mut dst.mut_children()[0]);
+            flip_op(&mut dst.mut_children()[1]);
           } else {
             dst = c00.clone();
           }
@@ -210,6 +243,9 @@ pub fn simplify_clone(src: &AstNode) -> AstNode {
 }
 
 pub fn flip_op(node: &mut AstNode) {
+  if node.get_kind() == RGD::Constant as u32 {
+    return;
+  }
   let op = match FromPrimitive::from_u32(node.get_kind()) {
     Some(RGD::Equal) => RGD::Distinct as u32,
     Some(RGD::Distinct) => RGD::Equal as u32,
