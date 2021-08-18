@@ -259,8 +259,8 @@ impl<'a> SearchTaskBuilder<'a> {
       let disjoint = self.break_disjoint(&land);
       res_opt.push(disjoint);
     }
+
 /*
-    info!("start build");
     for off in self.uf.get_set(v0 as usize) {
       let deps_opt = &self.branch_deps[off as usize];
       if let Some(deps) = deps_opt {
@@ -277,8 +277,21 @@ impl<'a> SearchTaskBuilder<'a> {
         }
       }
     }
-    info!("end build all_branch_cons size {}", all_branch_cons.len());
+
 */
+    for row in &mut all_branch_cons {
+      for off in self.uf.get_set(v0 as usize) {
+        let deps_opt = &self.branch_deps[off as usize];
+        if let Some(deps) = deps_opt {
+          for onelabel in &deps.cons_set {
+              if onelabel.members.len() > 0 {
+                row.extend(onelabel.members[0].clone());
+              }
+          }
+        }
+      }
+    }
+
 
     let mut res_nes = Vec::new();
     for land in &all_branch_cons {
@@ -355,7 +368,6 @@ impl<'a> SearchTaskBuilder<'a> {
       }
     }
   
-    opt_solved = false; 
     if solve && opt_solved {
       let mut sub_clause_tried = 0;
       info!("the total of {} sub-clauses", &res.0.len());
