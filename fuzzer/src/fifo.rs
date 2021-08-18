@@ -21,6 +21,8 @@ struct PipeMsg {
   addr: u64,
   ctx: u64,
   localcnt: u32,
+  bid: u32,
+  sctx: u32,
 }
 
 impl PipeMsg {
@@ -32,6 +34,8 @@ impl PipeMsg {
     let addr = rdr.read_u64::<LittleEndian>()?;
     let ctx = rdr.read_u64::<LittleEndian>()?;
     let localcnt = rdr.read_u32::<LittleEndian>()?;
+    let bid = rdr.read_u32::<LittleEndian>()?;
+    let sctx = rdr.read_u32::<LittleEndian>()?;
 
     Ok(PipeMsg{
         msgtype,
@@ -41,6 +45,8 @@ impl PipeMsg {
         addr,
         ctx,
         localcnt,
+        bid,
+        sctx,
         })
   }
 }
@@ -101,7 +107,7 @@ pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<
 */
 
 
-pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<Vec<u8>>) {
+pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, VecDeque<Vec<u8>>) {
   let f = unsafe { File::from_raw_fd(piped) };
   let mut reader = BufReader::new(f);
   let mut ret = Vec::new();
@@ -116,7 +122,9 @@ pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<
       let ctx = rawmsg.ctx;
       let isgep  = rawmsg.msgtype;
       let order = rawmsg.localcnt;
-      ret.push((tid,label,direction,addr,ctx,order,isgep));
+      let bid = rawmsg.bid;
+      let sctx = rawmsg.sctx;
+      ret.push((tid,label,direction,addr,ctx,order,isgep,bid,sctx));
       if isgep == 2 {
         let mut data = Vec::new();
         for _i in 0..direction as usize {

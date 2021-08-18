@@ -361,7 +361,7 @@ impl<'a> SearchTaskBuilder<'a> {
         let sol_size = overall_sol.len();
         if result {
           let rgd_sol = Solution::new(overall_sol, task.fid, task.addr, task.ctx, 
-              task.order, task.direction, 0, sol_size);
+              task.order, task.direction, 0, sol_size, task.bid, task.sctx);
           solution_queue.push(rgd_sol);
         }
         if result { opt_solved = true; break; }
@@ -389,7 +389,7 @@ impl<'a> SearchTaskBuilder<'a> {
         let sol_size = overall_sol.len();
         if result {
           let rgd_sol = Solution::new(overall_sol, task.fid, task.addr, task.ctx, 
-              task.order, task.direction, 0, sol_size);
+              task.order, task.direction, 0, sol_size, task.bid, task.sctx);
           solution_queue.push(rgd_sol);
         }
         sub_clause_tried += 1;

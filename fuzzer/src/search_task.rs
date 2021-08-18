@@ -10,13 +10,16 @@ pub struct SearchTask {
   pub ctx: u64,
   pub order: u32,
   pub direction: u64,
+  pub bid: u32,
+  pub sctx: u32
 }
 
 impl SearchTask {
   pub fn new(flip_cons: (Vec<Vec<Rc<Constraint>>>,bool), 
             path_cons: (Vec<Vec<Rc<Constraint>>>,bool),
             fid: u32, addr: u64, 
-            ctx: u64, order: u32, direction: u64) -> Self {
+            ctx: u64, order: u32, direction: u64,
+            bid: u32, sctx: u32) -> Self {
     Self {
       flip_cons: flip_cons,
       path_cons: path_cons,
@@ -25,6 +28,8 @@ impl SearchTask {
       ctx: ctx, 
       order: order,
       direction: direction,
+      bid: bid,
+      sctx: sctx,
     }
   }
 }

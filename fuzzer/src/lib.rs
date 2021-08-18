@@ -37,3 +37,4 @@ pub mod mut_input;
 pub mod gd;
 pub mod solution;
 pub mod search_task;
+pub mod shm_conds;

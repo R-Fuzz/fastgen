@@ -5,7 +5,7 @@ use crate::pipe_fd::PipeFd;
 use crate::forksrv::Forksrv;
 
 use crate::{
-  branches, command,
+  branches, command,shm_conds,
     depot, 
 };
 use fastgen_common::{config, defs};
@@ -70,6 +70,7 @@ impl ConfigTrack for Command {
 pub struct Executor {
   pub cmd: command::CommandOpt,
       pub branches: branches::Branches,
+      pub t_conds: shm_conds::ShmConds,
       envs: HashMap<String, String>,
       //forksrv: Result<Forksrv,&'static str>,
       forksrv: Option<Forksrv>,
@@ -92,6 +93,7 @@ impl Executor {
       ) -> Self {
     // ** Share Memory **
     let branches = branches::Branches::new(global_branches);
+    let t_conds = shm_conds::ShmConds::new();
 
     // ** Envs **
     let mut envs = HashMap::new();
@@ -130,6 +132,7 @@ impl Executor {
     Self {
       cmd,
         branches,
+        t_conds,
         envs,
         forksrv,
         depot,
@@ -222,6 +225,16 @@ impl Executor {
     self.check_timeout(status);
     ret
   }
+
+  pub fn run_sync_with_cond(&mut self, buf: &Vec<u8>, cmpid: u32, ctx: u32, order: u32) -> (bool,usize)  {
+    self.run_init();
+    self.t_conds.set(cmpid,ctx,order);
+    let status = self.run_inner(buf);
+    let ret = self.do_if_has_new(buf, status);
+    self.check_timeout(status);
+    ret
+  }
+
 
   pub fn run_norun(&mut self, buf: &Vec<u8>)  {
     let status = StatusType::Normal;

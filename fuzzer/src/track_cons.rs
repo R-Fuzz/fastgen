@@ -18,7 +18,7 @@ use crate::search_task::SearchTask;
 use crate::op_def::*;
 
 
-pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_data: &mut VecDeque<Vec<u8>>,
+pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, memcmp_data: &mut VecDeque<Vec<u8>>,
     table: &UnionTable, tainted_size: usize, branch_gencount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>
     , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, buf: &Vec<u8>,
     tb: &mut SearchTaskBuilder, solution_queue: BlockingQueue<Solution>) {
@@ -62,7 +62,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
         let mut sol = HashMap::new(); for i in 0..size {
           sol.insert(index + i as u32, data[i]);
         }
-        let rsol = Solution::new(sol, label.0, label.3, 0, 0, 0, index as usize, size);
+        let rsol = Solution::new(sol, label.0, label.3, 0, 0, 0, index as usize, size, 0, 0);
         solution_queue.push(rsol);
       }
       continue;
@@ -92,11 +92,11 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       if label.2 == 1 {
         task = SearchTask::new((reverse_cons_breakdown,true), 
                               (cons_breakdown,false), 
-                              label.0, label.3, label.4, label.5, label.2);
+                              label.0, label.3, label.4, label.5, label.2, label.7, label.8);
       } else {
         task = SearchTask::new((cons_breakdown, false), 
                             (reverse_cons_breakdown, true), 
-                            label.0, label.3, label.4, label.5, label.2);
+                            label.0, label.3, label.4, label.5, label.2, label.7, label.8);
       }
 
       //tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
@@ -109,7 +109,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
 
        
       let used_t1 = t_start.elapsed().as_secs() as u32;
-      if (used_t1 > 900)  {//90s
+      if (used_t1 > 180)  { //3min
         break;
       }
     }

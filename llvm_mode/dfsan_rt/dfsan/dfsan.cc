@@ -95,6 +95,7 @@ static unsigned long long path_prefix_hash;
 static unsigned long long tmp_hash_symb;
 // filter?
 SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL u32 __taint_trace_callstack;
+SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL u32 __taint_trace_angcallstack;
 typedef std::pair<u32, void*> trace_context;
 struct context_hash {
   std::size_t operator()(const trace_context &context) const {
@@ -131,6 +132,8 @@ struct pipe_msg {
   void* addr;
   u64 ctx; 
   u32 localcnt; 
+  u32 bid;
+  u32 sctx;
 } __attribute__((packed));
 
 Flags __dfsan::flags_data;
@@ -747,7 +750,8 @@ static bool get_fmemcmp(dfsan_label label, dfsan_label *ret_label, u64* size, u8
 }
 
 static void __solve_cond(dfsan_label label,
-    void *addr, uint64_t ctx, u32 order, int skip, dfsan_label label1, dfsan_label label2, u8 r, u32 predicate) {
+    void *addr, uint64_t ctx, u32 order, int skip, dfsan_label label1, dfsan_label label2, 
+    u8 r, u32 predicate, u32 bid, u32 sctx) {
   //session id, label, direction
   static int count = 0;
 
@@ -769,7 +773,8 @@ static void __solve_cond(dfsan_label label,
           if (!get_fmemcmp(reason, &ret_label, &size, &data)) return;
           //printf("get_fmemp index: %lu, size: %lu, data: %lu\n",index,size,data);
            // sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, size, ret_label, (uint64_t)addr, ctx, (uint32_t)order);
-            struct pipe_msg msg = {.type = 2, .tid = __tid, .label = ret_label, .result = size, .addr = addr, .ctx = ctx, .localcnt = order };
+            struct pipe_msg msg = {.type = 2, .tid = __tid, .label = ret_label, 
+              .result = size, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx };
             //write(mypipe,content,strlen(content));
             write(mypipe,&msg,sizeof(msg));
             fsync(mypipe);
@@ -781,7 +786,8 @@ static void __solve_cond(dfsan_label label,
     }
     //printLabel(label);
     serialize(label);
-    struct pipe_msg msg = {.type = 0, .tid = __tid, .label = label, .result = r, .addr = addr, .ctx = ctx, .localcnt = order };
+    struct pipe_msg msg = {.type = 0, .tid = __tid, .label = label, 
+                .result = r, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx };
     //sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 0\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order);
     write(mypipe,&msg, sizeof(msg));
     fsync(mypipe);
@@ -835,14 +841,14 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
 
   dfsan_label temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
 
-  __solve_cond(temp, addr, __taint_trace_callstack,order,skip,op1,op2,r,predicate);
+  __solve_cond(temp, addr, __taint_trace_callstack,order,skip,op1,op2,r,predicate,0,0);
 }
 
 extern "C" void
 __unfold_branch_fn(u32 r) {}
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
-__taint_trace_cond(dfsan_label label, u8 r) {
+__taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
   static int count = 0;
   int order = 0;
   int skip = 0;
@@ -864,9 +870,9 @@ __taint_trace_cond(dfsan_label label, u8 r) {
     return;
   }
 
-  AOUT("solving cond: %u %u %u %p %u\n", label, r, __taint_trace_callstack, addr, itr->second);
+  AOUT("solving cond: %u %u %u %p %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
 
-  __solve_cond(label, addr, __taint_trace_callstack, order, skip, label,0, r,0);
+  __solve_cond(label, addr, __taint_trace_callstack, order, skip, label,0, r,0,bid,__taint_trace_angcallstack);
 }
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void

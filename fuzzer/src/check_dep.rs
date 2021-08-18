@@ -86,6 +86,6 @@ fn check_io_dir(in_dir: &str, out_dir: &str) {
 pub fn check_dep(in_dir: &str, out_dir: &str, cmd: &CommandOpt) {
     check_io_dir(in_dir, out_dir);
     //check_crash_handling();
-    check_fast(&cmd.main.0);
+    //check_fast(&cmd.main.0);
     check_track_llvm(&cmd.track.0);
 }
