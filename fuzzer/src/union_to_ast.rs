@@ -418,17 +418,17 @@ pub fn get_one_constraint(label: u32, direction: u32,
 }
 
 //we do not have direction
-pub fn get_addcons_constraint(label: u32, _direction: u32, table: &UnionTable, deps: &mut HashSet<u32>) -> Option<AstNode> {
+pub fn get_addcons_constraint(label: u32, _direction: u32, 
+            table: &UnionTable, deps: &mut HashSet<u32>, node_cache: &mut HashMap<u32, AstNode>) -> Option<AstNode> {
   let info = &table[label as usize];
   let op = (info.op >> 8) as u32;
   let mut cache = HashMap::new();
-  let mut node_cache = HashMap::new();
   if is_relational_by_dfsan(op) {
     if info.depth > config::AST_DEPTH  {
       warn!("large tree skipped depth is {}", info.depth);
       return None;
     }
-    let mut src = do_uta(label, table, &mut cache, &mut node_cache);
+    let mut src = do_uta(label, table, &mut cache, node_cache);
     
     for &v in &cache[&label] {
       deps.insert(v);
@@ -442,7 +442,7 @@ pub fn get_addcons_constraint(label: u32, _direction: u32, table: &UnionTable, d
         warn!("large tree skipped depth is {}", info.depth);
         return None;
       }
-      let src = do_uta(info.l2, table, &mut cache, &mut node_cache);
+      let src = do_uta(info.l2, table, &mut cache, node_cache);
       for &v in &cache[&info.l2] {
         deps.insert(v);
       }
@@ -479,9 +479,9 @@ pub fn get_fmemcmp_constraint(label: u32, table: &UnionTable, deps: &mut HashSet
   (min_v, len)
 }
 
-pub fn get_gep_constraint(label: u32, result: u64, table: &UnionTable, deps: &mut HashSet<u32>) -> Option<AstNode> {
+pub fn get_gep_constraint(label: u32, result: u64, table: &UnionTable, deps: &mut HashSet<u32>,
+          node_cache: &mut HashMap<u32, AstNode>) -> Option<AstNode> {
   let mut cache = HashMap::new();
-  let mut node_cache = HashMap::new();
   let info = &table[label as usize];
   let mut right = AstNode::new();
   let mut src = AstNode::new();
@@ -490,7 +490,7 @@ pub fn get_gep_constraint(label: u32, result: u64, table: &UnionTable, deps: &mu
     warn!("large tree skipped  depth is {}", info.depth);
     return None;
   }
-  let left = do_uta(label, table, &mut cache, &mut node_cache);
+  let left = do_uta(label, table, &mut cache, node_cache);
 
   //build left != result
   src.set_bits(left.get_bits() as u32);

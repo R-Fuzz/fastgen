@@ -348,7 +348,6 @@ pub fn fuzz_loop(
         progress.write_u32::<LittleEndian>(id).unwrap();
         std::fs::write("ce_progress", &progress).map_err(|err| println!("{:?}", err)).ok();
       }
-  break;
     } else {
       if config::RUNAFL {
         info!("run afl mutator");

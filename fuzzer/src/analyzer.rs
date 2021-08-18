@@ -130,7 +130,6 @@ pub fn simplify_clone(src: &AstNode) -> AstNode {
    
 
   if src.get_kind() == RGD::Not as u32 && src.get_bits() == 1 {
-    warn!("simplify clone RGD::Not");
     let c0 = &src.get_children()[0];
     if c0.get_kind() == RGD::LOr as u32 {
       dst = c0.clone();
@@ -146,7 +145,6 @@ pub fn simplify_clone(src: &AstNode) -> AstNode {
       dst = c0.clone();
       flip_op(&mut dst);
     }
-    warn!("simplify clone RGD::Not return");
     return dst; 
   }
 
@@ -447,12 +445,8 @@ fn analyze_meta(node: &AstNode, buf: &Vec<u8>, node_cache: &HashMap<u32, AstNode
   //TODO simplify
   let mut node_simplify;
   if node_copy.get_kind() == RGD::Not as u32 && node_copy.get_bits() == 1 {
-    warn!("lnot simplification start");
-    print_node(&node_copy);
     flip_op(&mut node_copy.mut_children()[0]);
     node_simplify = simplify_clone(&node_copy.get_children()[0]);
-    warn!("lnot simplification end");
-    print_node(&node_simplify);
   }
   else {
     node_simplify = simplify_clone(&node_copy);
@@ -539,7 +533,7 @@ pub fn to_dnf(node: &AstNode) -> Vec<Vec<AstNode>> {
       let mut single_row = Vec::new();
       //we are dropping constant
       if node_copy.get_kind() != RGD::Constant as u32 {
-        single_row.push(node.clone());
+        single_row.push(node_copy.clone());
       }
       res.push(single_row);
     }

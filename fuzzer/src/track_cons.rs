@@ -51,7 +51,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
     let mut inputs = HashSet::new();
     let mut node_cache = HashMap::new();
     if label.6 == 1 {
-      //node_opt = get_gep_constraint(label.1, label.2, table, &mut inputs);
+      node_opt = get_gep_constraint(label.1, label.2, table, &mut inputs, &mut node_cache);
     } else if label.6 == 0 {
       node_opt = get_one_constraint(label.1, label.2 as u32, table, &mut inputs, &mut node_cache);
     } else if label.6 == 2 {
@@ -67,12 +67,12 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
       }
       continue;
     } else if label.6 == 3 {
-      //node_opt = get_addcons_constraint(label.1, label.2 as u32, table, &mut inputs);
+      node_opt = get_addcons_constraint(label.1, label.2 as u32, table, &mut inputs, &mut node_cache);
     }
 
 
     if let Some(node) = node_opt { 
-      print_node(&node);
+      //print_node(&node);
 
       debug!("direction is {}",label.2);
 
@@ -99,14 +99,14 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32)>, memcmp_dat
                             label.0, label.3, label.4, label.5, label.2);
       }
 
-      tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
-     /* 
-         if hitcount <= 5 && gencount == 0 && label.6 !=3 {
+      //tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
+     
+         if hitcount <= 5 && gencount == 0 && label.6 != 3 {
          tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
          } else {
          tb.submit_task_rust(&task, solution_queue.clone(), false, &inputs);
          }
-*/
+
        
       let used_t1 = t_start.elapsed().as_secs() as u32;
       if (used_t1 > 900)  {//90s

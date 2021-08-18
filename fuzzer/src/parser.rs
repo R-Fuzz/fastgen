@@ -370,7 +370,6 @@ impl<'a> SearchTaskBuilder<'a> {
   
     if solve && opt_solved {
       let mut sub_clause_tried = 0;
-      info!("the total of {} sub-clauses", &res.0.len());
       for mut disjoints in &mut res.0 {
         let mut result = true;
         let mut overall_sol = HashMap::new();
@@ -396,7 +395,6 @@ impl<'a> SearchTaskBuilder<'a> {
         sub_clause_tried += 1;
         if result { nest_solved = true; break; }
       }
-      info!("tried {} sub-clauses, result {}, total {}  bid {}", sub_clause_tried, nest_solved, &res.0.len(), task.addr);
     }
 
     self.add_dependency(task, inputs, v0);
