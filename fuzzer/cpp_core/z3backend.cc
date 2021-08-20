@@ -1016,7 +1016,6 @@ void solve(int shmid, int pipefd) {
       uint8_t data[msg.result];
       if (read(pipefd, data, msg.result) == msg.result) {
         //bool try_solve = filter(addr, label, direction, &path_prefix);
-        printf("read strcmp %d\n", msg.result);
         bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
         if (try_solve)
           handle_fmemcmp(data, msg.label, msg.result, msg.tid, msg.addr, sol);
