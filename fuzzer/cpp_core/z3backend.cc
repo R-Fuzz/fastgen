@@ -720,7 +720,7 @@ bool bcount_filter(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t ord
   bcount_mutex.lock();
   bool res = false;
   auto itr = bcount_dedup.find(key);
-  if (itr != bcount_dedup.end()) {
+  if (itr == bcount_dedup.end()) {
     bcount_dedup.insert({key, 1});
     res = true;
   } else {
