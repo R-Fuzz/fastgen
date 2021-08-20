@@ -504,85 +504,6 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
       }
     }
     }
-/*
-    {
-      __z3_solver->reset();
-      z3::expr zero_v = __z3_context->bv_val((uint64_t)0, size);
-      __z3_solver->add(index < zero_v);
-      z3::check_result res = __z3_solver->check();
-
-      //AOUT("\n%s\n", __z3_solver->to_smt2().c_str());
-      if (res == z3::sat) {
-        z3::model m_opt = __z3_solver->get_model();
-        __z3_solver->push();
-
-        // 2. add constraints
-        expr_set_t added;
-        for (auto off : inputs) {
-          auto &deps = branch_deps[off];
-          for (auto &expr : deps.expr_deps) {
-            if (added.insert(expr).second) {
-              __z3_solver->add(expr);
-            }
-          }
-        }
-
-        res = __z3_solver->check();
-        if (res == z3::sat) {
-          z3::model m = __z3_solver->get_model();
-          sol.clear();
-          generate_solution(m, sol);
-          RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
-          solution_queue.push(rsol);
-        } else {
-          opt_sol.clear();
-          generate_solution(m_opt, opt_sol);
-          RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
-          solution_queue.push(rsol);
-        }
-      }
-    }
-    for (int i=0; i<128;i++)
-    {
-      __z3_solver->reset();
-      z3::expr cur_v = __z3_context->bv_val((uint64_t)i, size);
-      __z3_solver->add(index == cur_v);
-      z3::check_result res = __z3_solver->check();
-
-      //AOUT("\n%s\n", __z3_solver->to_smt2().c_str());
-      if (res == z3::sat) {
-        z3::model m_opt = __z3_solver->get_model();
-        __z3_solver->push();
-
-        // 2. add constraints
-        expr_set_t added;
-        for (auto off : inputs) {
-          auto &deps = branch_deps[off];
-          for (auto &expr : deps.expr_deps) {
-            if (added.insert(expr).second) {
-              __z3_solver->add(expr);
-            }
-          }
-        }
-
-        res = __z3_solver->check();
-        if (res == z3::sat) {
-          z3::model m = __z3_solver->get_model();
-          sol.clear();
-          generate_solution(m, sol);
-          RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
-          solution_queue.push(rsol);
-        } else {
-          opt_sol.clear();
-          generate_solution(m_opt, opt_sol);
-          RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
-          solution_queue.push(rsol);
-        }
-      }
-    }
-
-
-*/
     // preserve
     for (auto off : inputs) {
       auto &deps = branch_deps[off];
@@ -590,8 +511,6 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
       deps.expr_deps.insert(index == result);
     }
 
-    // mark as visited
-    get_label_info(label)->flags |= B_FLIPPED;
   } catch (z3::exception e) {
     printf("WARNING: index solving error: %s\n", e.msg());
     //printf("Expr is %s\n", __z3_solver->to_smt2().c_str());
