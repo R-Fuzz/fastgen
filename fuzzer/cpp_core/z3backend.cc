@@ -732,6 +732,7 @@ bool bcount_filter(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t ord
     }
   }
   bcount_mutex.unlock();
+  return res;
 }
 
 void insert_flip_status(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t order) {
