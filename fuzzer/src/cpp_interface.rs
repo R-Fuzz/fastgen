@@ -17,4 +17,5 @@ extern {
   pub fn get_next_input_id() -> u32;
   pub fn fini_core();
   pub fn run_solver(shmid: i32, pipefd: i32);
+  pub fn insert_flip(addr: u64, ctx: u64, direction: u64, order: u32);
 }

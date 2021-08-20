@@ -111,14 +111,7 @@ pub fn grading_loop(
         let direction_out = executor.get_cond();
         if (direction_out == 0 && direction == 1) || (direction_out == 1 && direction == 0) {
           info!("Flipped!!!!!!");
-        } else if (direction_out == std::u32::MAX) {
-          //if !blacklist.contains(&addr) {
-          info!("Not reached!!!! {}", addr);
-          //}
-        } else if (direction_out  > 1) {
-          info!("Abnormal Direction!!!!!");
-        } else {
-          info!("Not Flippped!!!!!");
+          unsafe { insert_flip(addr, ctx, direction, order); }
         }
         let mut solcount = 1;
         if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
@@ -230,8 +223,8 @@ pub fn fuzz_loop(
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
-      //let mut buf = depot.get_input_buf(depot.next_random());
-      //run_afl_mutator(&mut executor,&mut buf);
+      let mut buf = depot.get_input_buf(depot.next_random());
+      run_afl_mutator(&mut executor,&mut buf);
       thread::sleep(time::Duration::from_secs(1));
       //break;
     }

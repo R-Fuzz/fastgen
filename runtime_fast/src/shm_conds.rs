@@ -44,10 +44,10 @@ impl ShmConds {
     pub fn check_match(&mut self, cmpid: u32, context: u32) -> bool {
         //eprintln!("check {} {}, original {} {}", cmpid, context, self.cond.cmpid, self.cond.context);
         if self.cond.cmpid == cmpid && self.cond.context == context {
-           // self.rt_order += 1;
-           // if self.cond.order & 0xFFFF == self.rt_order {
+           self.rt_order += 1;
+           if self.cond.order & 0xFFFF == self.rt_order {
                 return true;
-           // }
+           }
         }
         false
     }

@@ -132,7 +132,8 @@ static std::vector<uint32_t> global_counter;
 static std::unordered_map<uint32_t, std::vector<uint32_t>> seed_map;
 
 //bcount filter  <pc,ctx,direction, local_bucket_count>
-static std::unordered_set<std::tuple<uint64_t, uint64_t, uint64_t, uint32_t>, dedup_hash, dedup_equal> fmemcmp_dedup;
+std::mutex bcount_mutex;
+static std::unordered_map<std::tuple<uint64_t, uint64_t, uint64_t, uint32_t>, uint32_t, dedup_hash, dedup_equal> bcount_dedup;
 
 std::unordered_map<uint32_t,z3::expr> expr_cache;
 std::unordered_map<uint32_t,uint32_t> tsize_cache;
@@ -437,9 +438,11 @@ static void solve_divisor() {
 
 }
 
-static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t tid) {
+static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t tid,
+            std::unordered_map<uint32_t, uint8_t> &sol,
+            std::unordered_map<uint32_t, uint8_t> &opt_sol) {
 
-  if (label == 0 || !try_solve)
+  if (label == 0)
     return;
   //std::string input_file = "/magma_shared/findings/tmp/cur_input_2";
   //std::string input_file = "./corpus/tmp/cur_input_2";
@@ -447,8 +450,6 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
   if ((get_label_info(label)->flags & B_FLIPPED))
     return;
 
-  std::unordered_map<uint32_t, uint8_t> opt_sol; 
-  std::unordered_map<uint32_t, uint8_t> sol;
 
   unsigned char size = get_label_info(label)->size;
 
@@ -456,7 +457,7 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
     std::unordered_set<dfsan_label> inputs;
     z3::expr index = serialize(label, inputs);
     z3::expr result = __z3_context->bv_val((uint64_t)r, size);
-
+    if (try_solve) {
     // collect additional input deps
     std::vector<dfsan_label> worklist;
     worklist.insert(worklist.begin(), inputs.begin(), inputs.end());
@@ -497,16 +498,13 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
         z3::model m = __z3_solver->get_model();
         sol.clear();
         generate_solution(m, sol);
-        RGDSolution rsol = {sol, tid, 0, 0, 0, 0};
-        solution_queue.push(rsol);
       } else {
         opt_sol.clear();
         generate_solution(m_opt, opt_sol);
-        RGDSolution rsol = {opt_sol, tid, 0, 0, 0, 0};
-        solution_queue.push(rsol);
       }
     }
-
+    }
+/*
     {
       __z3_solver->reset();
       z3::expr zero_v = __z3_context->bv_val((uint64_t)0, size);
@@ -584,6 +582,7 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
     }
 
 
+*/
     // preserve
     for (auto off : inputs) {
       auto &deps = branch_deps[off];
@@ -604,11 +603,10 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
 static void solve_cond(dfsan_label label, uint32_t direction,
     std::unordered_map<uint32_t, uint8_t> &opt_sol, 
     std::unordered_map<uint32_t, uint8_t> &sol, bool try_solve) {
-  printf("entered solve cond\n");
 
   z3::expr result = __z3_context->bool_val(direction);
 
-  if (!label || !try_solve) 
+  if (!label) 
     return;
 
   try {
@@ -719,12 +717,28 @@ void mark_pp(uint64_t digest) {
 
 bool bcount_filter(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t order) {
   std::tuple<uint64_t,uint64_t, uint64_t, uint32_t> key{addr,ctx,direction,order};
-  if (fmemcmp_dedup.find(key) != fmemcmp_dedup.end()) {
-    return false;
+  bcount_mutex.lock();
+  bool res = false;
+  auto itr = bcount_dedup.find(key);
+  if (itr != bcount_dedup.end()) {
+    bcount_dedup.insert({key, 1});
+    res = true;
   } else {
-    fmemcmp_dedup.insert(key);
-    return true;
+    if (itr->second < 5) {
+      res = true;
+      itr->second++;  
+    } else {
+      res = false;
+    }
   }
+  bcount_mutex.unlock();
+}
+
+void insert_flip_status(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t order) {
+  std::tuple<uint64_t,uint64_t, uint64_t, uint32_t> key{addr,ctx,direction,order};
+  bcount_mutex.lock();
+  bcount_dedup[key] = 10;
+  bcount_mutex.unlock();
 }
 
 #if 0
@@ -890,6 +904,31 @@ bool hybrid_filter(uint64_t addr, uint64_t ctx, uint64_t direction,
 }
 #endif
 
+void handle_fmemcmp(uint8_t* data, uint32_t label, 
+              uint64_t size, uint32_t tid, uint64_t addr,
+            std::unordered_map<uint32_t, uint8_t> &sol) {
+  //concrete
+  try {
+    z3::expr op_concrete = __z3_context->bv_val(*data++, 8);
+    for (uint8_t i = 1; i < size; i++) {
+      op_concrete = z3::concat(__z3_context->bv_val(*data++, 8), op_concrete);
+    }
+
+    std::unordered_set<dfsan_label> inputs;
+    z3::expr op_symbolic = serialize(label, inputs);
+    __z3_solver->reset();
+    __z3_solver->add(op_symbolic ==  op_concrete);
+    z3::check_result res = __z3_solver->check();
+    if (res == z3::sat) {
+        z3::model m = __z3_solver->get_model();
+        generate_solution(m, sol);
+    }
+  } catch (z3::exception e) {
+    printf("WARNING: solving error: %s\n", e.msg());
+  }
+}
+
+/*
 void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
   std::unordered_map<uint32_t, uint8_t> rgd_solution;
   //std::string input_file = "/magma_shared/findings/tmp/cur_input_2";
@@ -904,6 +943,7 @@ void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, 
   //RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0};
   //solution_queue.push(sol);
 }
+*/
 
 
 void cleanup() {
@@ -940,7 +980,7 @@ void solve(int shmid, int pipefd) {
   struct pipe_msg msg;
   while (read(pipefd,&msg,sizeof(msg)) == sizeof(msg))
   {
-
+/*
     printf("read %d bytes\n", sizeof(msg)); 
     std::cout << "tid: " << msg.tid
       << " label: " << msg.label
@@ -949,6 +989,7 @@ void solve(int shmid, int pipefd) {
       << " ctx: " << msg.ctx
       << " localcnt: " << msg.localcnt
       << " type: " << msg.type << std::endl;
+*/
 
 
 
@@ -962,15 +1003,13 @@ void solve(int shmid, int pipefd) {
       if (skip_rest) continue;
       //bool try_solve = hybrid_filter(msg.addr, msg.ctx, msg.result, msg.localcnt, 
       //  label, &path_prefix, &per_seed_keys);
-      //if (try_solve) filtered_count++;
+      bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
       uint64_t tstart = getTimeStamp();
-      solve_cond(msg.label, msg.result, opt_sol, sol, true);
+      solve_cond(msg.label, msg.result, opt_sol, sol, try_solve);
       acc_time += getTimeStamp() - tstart;
-      if (acc_time > 90000000 || count > 5000 ) //90s
-        //skip_rest = true;
-        break;
-      //if (try_solve)
-      // solve_divisor();
+      if (acc_time > 180000000 || count > 5000 ) //90s
+        skip_rest = true;
+       // break;
     }
     else if (msg.type == 2) {  //strcmp
       uint8_t data[msg.result];
@@ -979,15 +1018,14 @@ void solve(int shmid, int pipefd) {
         printf("read strcmp %d\n", msg.result);
         bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
         if (try_solve)
-          handle_fmemcmp(data, msg.label, msg.result, msg.tid, msg.addr);
+          handle_fmemcmp(data, msg.label, msg.result, msg.tid, msg.addr, sol);
       } else {
         // pipe corruption
         break;
       }
     } else if (msg.type == 1) { //gep constraint
-      //bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
-      //if (try_solve)
-      //solve_gep(msg.label, msg.result, try_solve, msg.tid); 
+      bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
+      solve_gep(msg.label, msg.result, try_solve, msg.tid, sol, opt_sol); 
     }
 
 
@@ -997,21 +1035,10 @@ void solve(int shmid, int pipefd) {
       count++;
     }
     if (opt_sol.size()) {
-     // RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx};
-     // solution_queue.push(rsol);
-     // count++;
+      RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx};
+      solution_queue.push(rsol);
+      count++;
     }
-
-    /* 
-       if (sol.size()) {
-       generate_input(sol, input_file, "./ce_output", fid++);
-       count++;
-       }
-       if (opt_sol.size()) {
-       generate_input(opt_sol, input_file, "./ce_output", fid++);
-       count++;
-       }
-     */
   }
   total_generation_count += count;
   total_time += getTimeStamp() - one_start;
@@ -1046,6 +1073,10 @@ extern "C" {
 
   void post_gra() {
     sem_post(semagra);
+  }
+
+  void insert_flip(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t order) {
+    insert_flip_status(addr,ctx,direction,order);
   }
 
   void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
