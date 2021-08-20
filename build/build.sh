@@ -38,6 +38,7 @@ popd
 popd
 
 pushd llvm_mode_angora
+rm -rf build
 mkdir -p build
 pushd build
 CC=clang-6.0 CXX=clang++-6.0 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX2} -DCMAKE_BUILD_TYPE=Release ..

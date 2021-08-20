@@ -309,7 +309,7 @@ static void edit_params(u32 argc, char **argv) {
 
   if (!getenv("ANGORA_DONT_OPTIMIZE")) {
     cc_params[cc_par_cnt++] = "-g";
-    cc_params[cc_par_cnt++] = "-O3";
+    cc_params[cc_par_cnt++] = "-O1";
     cc_params[cc_par_cnt++] = "-funroll-loops";
   }
 

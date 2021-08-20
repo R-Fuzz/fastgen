@@ -19,7 +19,7 @@ use crate::op_def::*;
 
 
 pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, memcmp_data: &mut VecDeque<Vec<u8>>,
-    table: &UnionTable, tainted_size: usize, branch_gencount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>
+    table: &UnionTable, tainted_size: usize, branch_fliplist: &Arc<RwLock<HashSet<(u64,u64,u32,u64)>>>
     , branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, buf: &Vec<u8>,
     tb: &mut SearchTaskBuilder, solution_queue: BlockingQueue<Solution>) {
 
@@ -27,15 +27,16 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
   let mut count = 0;
   for &label in labels {
     let mut hitcount = 1;
-    let mut gencount = 0;
+    let mut flipped = false;
     if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
       hitcount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
       hitcount += 1;
     }
     branch_hitcount.write().unwrap().insert((label.3,label.4,label.5,label.2), hitcount);
 
-    if branch_gencount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
-      gencount = *branch_gencount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
+    if branch_fliplist.read().unwrap().contains(&(label.3,label.4,label.5,label.2)) {
+      info!("the branch is flipped");
+      flipped = true;
     }
 
     if hitcount > 1 {
@@ -101,7 +102,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
 
       //tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
      
-         if hitcount <= 5 && gencount == 0 && label.6 != 3 {
+         if hitcount <= 5 && (!flipped) && label.6 != 3 {
          tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
          } else {
          tb.submit_task_rust(&task, solution_queue.clone(), false, &inputs);

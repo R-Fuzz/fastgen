@@ -110,6 +110,10 @@ impl Executor {
         branches.get_id().to_string(),
         );
     envs.insert(
+        defs::COND_STMT_ENV_VAR.to_string(),
+        t_conds.get_id().to_string(),
+        );
+    envs.insert(
         defs::LD_LIBRARY_PATH_VAR.to_string(),
         cmd.ld_library.clone(),
         );
@@ -233,6 +237,10 @@ impl Executor {
     let ret = self.do_if_has_new(buf, status);
     self.check_timeout(status);
     ret
+  }
+
+  pub fn get_cond(&mut self) -> u32 {
+    return self.t_conds.cond.condition;
   }
 
 

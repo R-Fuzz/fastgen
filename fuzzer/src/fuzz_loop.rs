@@ -32,14 +32,14 @@ use wait_timeout::ChildExt;
 
 
 pub fn dispatcher(table: &UnionTable,
-    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
+    branch_fliplist: Arc<RwLock<HashSet<(u64,u64,u32,u64)>>>,
     branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
     buf: &Vec<u8>, id: RawFd, bq: BlockingQueue<Solution>) {
 
   let (labels,mut memcmp_data) = read_pipe(id);
   let mut tb = SearchTaskBuilder::new(buf.len());
   scan_nested_tasks(&labels, &mut memcmp_data, table, 
-      config::MAX_INPUT_LEN, &branch_gencount, 
+      config::MAX_INPUT_LEN, &branch_fliplist, 
       &branch_hitcount, buf, &mut tb, bq);
 }
 /*
@@ -178,7 +178,7 @@ pub fn grading_loop(
     depot: Arc<Depot>,
     global_branches: Arc<GlobalBranches>,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
-    branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    branch_fliplist: Arc<RwLock<HashSet<(u64,u64,u32,u64)>>>,
     forklock: Arc<Mutex<u32>>,
     bq: BlockingQueue<Solution>,
     ) {
@@ -223,14 +223,12 @@ pub fn grading_loop(
       let sol = bq.pop();
       if let Some(mut buf) = depot.get_input_buf(sol.fid as usize) {
         let mut_buf = mutate(buf, &sol.sol, sol.field_index, sol.field_size); 
-        let new_path = executor.run_sync(&mut_buf);
-        let mut solcount = 1;
-        if sol.addr != 0 && branch_solcount.read().unwrap().contains_key(&(sol.addr,sol.ctx,sol.order,sol.direction)) {
-          solcount = *branch_solcount.read().unwrap().get(&(sol.addr,sol.ctx,sol.order,sol.direction)).unwrap();
-          solcount += 1;
-          //info!("gencount is {}",count);
+        let new_path = executor.run_sync_with_cond(&mut_buf, sol.bid, sol.sctx, sol.order);
+        let direction_out = executor.get_cond();
+        if (direction_out == 0 && sol.direction == 1) || (direction_out == 1 && sol.direction == 0) {
+          //info!("Flipped!!!!!!");
+          branch_fliplist.write().unwrap().insert((sol.addr,sol.ctx,sol.order,sol.direction));
         }
-        branch_solcount.write().unwrap().insert((sol.addr,sol.ctx,sol.order,sol.direction), solcount);
         if new_path.0 {
           info!("grading input derived from on input {} by  \
               flipping branch@ {:#01x} ctx {:#01x} order {}, \
@@ -265,7 +263,7 @@ pub fn fuzz_loop(
     cmd_opt: CommandOpt,
     depot: Arc<Depot>,
     global_branches: Arc<GlobalBranches>,
-    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    branch_fliplist: Arc<RwLock<HashSet<(u64,u64,u32,u64)>>>,
     restart: bool,
     forklock: Arc<Mutex<u32>>,
     bq: BlockingQueue<Solution>,
@@ -310,7 +308,7 @@ pub fn fuzz_loop(
         let buf_cloned = buf.clone();
         //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
         let gbranch_hitcount = branch_hitcount.clone();
-        let gbranch_gencount = branch_gencount.clone();
+        let gbranch_fliplist = branch_fliplist.clone();
         let solution_queue = bq.clone();
 
 
@@ -319,7 +317,7 @@ pub fn fuzz_loop(
         let (mut child, read_end) = executor.track(id as usize, &buf);
 
         let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
-            dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end, solution_queue);
+            dispatcher(table, gbranch_fliplist, gbranch_hitcount, &buf_cloned, read_end, solution_queue);
             }).unwrap();
 
 
