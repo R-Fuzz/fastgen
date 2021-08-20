@@ -870,7 +870,7 @@ __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
     return;
   }
 
-  AOUT("solving cond: %u %u %u %p %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
+  AOUT("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
 
   __solve_cond(label, addr, __taint_trace_callstack, order, skip, label,0, r,0,bid,__taint_trace_angcallstack);
 }
@@ -890,7 +890,6 @@ add_constraints(dfsan_label label) {
   }
   void *addr = __builtin_return_address(0);
   uint64_t callstack = __taint_trace_callstack;
-  printf("__add_constraint %d and solver_select is %d\n", __solver_select);
   if (__solver_select != 1) {
     if (rejectBranch(label)) {  return; }
     serialize(label);
@@ -926,7 +925,6 @@ __taint_trace_gep(dfsan_label label, u64 r) {
 
   uint64_t callstack = __taint_trace_callstack;
   static int count = 0;
-  printf("__trace_gep %d and solver_select is %d\n",++count, __solver_select);
   if (__solver_select != 1) {
     if (rejectBranch(label)) { 
         //printLabel(label); 
@@ -1159,8 +1157,6 @@ static void dfsan_init(int argc, char **argv, char **envp) {
 
   InitializePlatformEarly();
   MmapFixedNoReserve(ShadowAddr(), UnionTableAddr() - ShadowAddr());
-  //printf("unsued addr %p and shadow addr %p and uniton addr %p\n", UnusedAddr(),ShadowAddr(),UnionTableAddr());
-  //printf("mapping %lx bytes\n",UnusedAddr() - ShadowAddr());
   __dfsan_label_info = (dfsan_label_info *)UnionTableAddr();
   if (__shmid == 0)
     __shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
