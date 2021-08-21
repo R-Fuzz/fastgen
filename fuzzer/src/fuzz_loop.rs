@@ -28,7 +28,6 @@ use nix::unistd::close;
 use crate::parser::*;
 use crate::solution::Solution;
 use blockingqueue::BlockingQueue;
-use wait_timeout::ChildExt;
 
 
 pub fn dispatcher(table: &UnionTable,

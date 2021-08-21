@@ -93,7 +93,7 @@ impl JITEngine {
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         // shift idx must be i64 to align with arugments
         let type_after = self.context.custom_width_int_type(left.get_bits());
-        let shift_idx = type_after.const_int(left.get_index() as u64, false);
+        let shift_idx = type_after.const_int(request.get_index() as u64, false);
         builder.build_int_truncate(builder.build_right_shift(c1, shift_idx, false, "lshr"),
                             self.context.custom_width_int_type(request.get_bits()), "truncate")
       },
