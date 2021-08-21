@@ -149,10 +149,16 @@ impl JITEngine {
         let c1 = self.codegen(builder, &left, local_map, fn_val, value_cache);
         let c2 = self.codegen(builder, &right, local_map, fn_val, value_cache);
         let va1 = type_after.const_int(1, false);
-        let va0 = type_after.const_int(0, false);
+        let va0 = type_after.const_zero();
+        let vam1 = type_after.const_int(0x8000000000000000,false);
+        let vam2 = type_after.const_int(0xFFFFFFFFFFFFFFFF,false);
         let cond = builder.build_int_compare(IntPredicate::EQ, c2, va0, "icmpeq");
+        let cond1 = builder.build_int_compare(IntPredicate::EQ, c1, vam1, "icmpeq");
+        let cond2 = builder.build_int_compare(IntPredicate::EQ, c2, vam2, "icmpeq");
+        let cond3 = builder.build_and(cond1,cond2,"land");
         let divisor = builder.build_select(cond, va1, c2, "select").into_int_value();
-        builder.build_int_signed_div(c1,divisor,"sdiv")
+        let divisor1 = builder.build_select(cond3, va1, divisor, "select").into_int_value();
+        builder.build_int_signed_div(c1,divisor1,"sdiv")
       },
       Some(RGD::URem) => {
         let left = &request.get_children()[0]; 
