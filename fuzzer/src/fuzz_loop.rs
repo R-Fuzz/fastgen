@@ -320,10 +320,15 @@ pub fn fuzz_loop(
             dispatcher(table, gbranch_fliplist, gbranch_hitcount, &buf_cloned, read_end, solution_queue);
             }).unwrap();
 
+        if handle.join().is_err() {
+          error!("Error happened in listening thread!");
+        }
+        //dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
+        close(read_end).map_err(|err| warn!("close read end {:?}", err)).ok();
 
-        let timeout = time::Duration::from_secs(10);
-        //match child.try_wait() {
-        match child.wait_timeout(timeout) {
+        //let timeout = time::Duration::from_secs(10);
+        match child.try_wait() {
+        //match child.wait_timeout(timeout) {
           Ok(Some(status)) => println!("exited with: {}", status),
             Ok(None) => {
               warn!("status not ready yet, let's really wait");
@@ -333,13 +338,6 @@ pub fn fuzz_loop(
             }
           Err(e) => println!("error attempting to wait: {}", e),
         }
-
-        if handle.join().is_err() {
-          error!("Error happened in listening thread!");
-        }
-        //dispatcher(table, gbranch_gencount, gbranch_hitcount, &buf_cloned, read_end);
-        close(read_end).map_err(|err| warn!("close read end {:?}", err)).ok();
-
 
         let used_t1 = t_start.elapsed();
         let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;

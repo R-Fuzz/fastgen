@@ -366,8 +366,10 @@ impl Executor {
       ) -> (std::process::Child, RawFd) {
     let guard = self.fl.lock().unwrap();
     let (read_end, write_end) = pipe().unwrap();
-    let mut cmd = Command::new(&target.0);
+    let mut cmd = Command::new("timeout");
     let mut child = cmd
+      .arg("10")
+      .arg(&target.0)
       .args(&target.1)
       //  .stdin(Stdio::null())
       .env_clear()
