@@ -175,11 +175,16 @@ impl<'a> SearchTaskBuilder<'a> {
           self.append_meta(&cons, &constraint, target_cons.1);
           if !func_cache.contains_key(&AstNodeWrapper(constraint.get_node().clone())) {
             let fun = engine.add_function(&constraint.get_node(), &cons.borrow().local_map);
-            //println!("miss and jitime is {}", t_start.elapsed().as_micros());
-            unsafe { debug!("miss/hit {}/{}", miss,hit); }
-            unsafe { miss += 1; }
-            func_cache.insert(AstNodeWrapper(constraint.get_node().clone()), fun.clone());
-            cons.borrow_mut().set_func(fun);
+            if fun.is_some() {
+              //println!("miss and jitime is {}", t_start.elapsed().as_micros());
+              let fun_extract = fun.unwrap();
+              unsafe { debug!("miss/hit {}/{}", miss,hit); }
+              unsafe { miss += 1; }
+              func_cache.insert(AstNodeWrapper(constraint.get_node().clone()), fun_extract.clone());
+              cons.borrow_mut().set_func(fun_extract);
+            } else {
+              continue;
+            }
           } else {
             let fun = func_cache[&AstNodeWrapper(constraint.get_node().clone())].clone();
             cons.borrow_mut().set_func(fun);
