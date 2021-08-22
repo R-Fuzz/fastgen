@@ -35,7 +35,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
     branch_hitcount.write().unwrap().insert((label.3,label.4,label.5,label.2), hitcount);
 
     if branch_fliplist.read().unwrap().contains(&(label.3,label.4,label.5,label.2)) {
-      info!("the branch is flipped");
+      debug!("the branch is flipped");
       flipped = true;
     }
 
