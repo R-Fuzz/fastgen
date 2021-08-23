@@ -148,6 +148,15 @@ pub fn simplify_clone(src: &AstNode) -> AstNode {
     return dst; 
   }
 
+  if src.get_kind() == RGD::Extract as u32 && src.get_bits() == 1 {
+    let c0 = &src.get_children()[0];
+    if c0.get_kind() == RGD::ZExt as u32 {
+      let c00 = &c0.get_children()[0];
+      dst = c00.clone();
+      return dst; 
+    }
+  }
+
 
   if src.get_kind() == RGD::Distinct as u32 || src.get_kind() == RGD::Equal as u32 {
     let c0 = &src.get_children()[0];
