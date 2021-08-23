@@ -152,8 +152,7 @@ pub fn simplify_clone(src: &AstNode) -> AstNode {
     let c0 = &src.get_children()[0];
     if c0.get_kind() == RGD::ZExt as u32 {
       let c00 = &c0.get_children()[0];
-      dst = c00.clone();
-      return dst; 
+      return simplify_clone(c00);
     }
   }
 
