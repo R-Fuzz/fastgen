@@ -110,7 +110,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
 
        
       let used_t1 = t_start.elapsed().as_secs() as u32;
-      if (used_t1 > 180)  { //3min
+      if (used_t1 > 90)  { //3min
         break;
       }
     }

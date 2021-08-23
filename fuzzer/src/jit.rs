@@ -375,9 +375,10 @@ impl JITEngine {
         //return value_cache[&request.get_label()];
       }
     };
-    
-    if request.get_label() != 0 {
-      value_cache.insert(request.get_label(), result.unwrap());
+    if result.is_some() {
+      if request.get_label() != 0 {
+        value_cache.insert(request.get_label(), result.unwrap());
+      }
     }
     result
     //return value_cache[&request.get_label()];
