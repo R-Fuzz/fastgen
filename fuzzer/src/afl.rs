@@ -34,7 +34,9 @@ pub fn mutate(buf: Vec<u8>, sol: &HashMap<u32,u8>, field_index: usize, field_siz
   }
   //mutation
   for (&k,&v) in sol {
-    ret[k as usize] = v;
+    if ( k as usize )< ret.len() {
+      ret[k as usize] = v;
+    }
   }
   ret
 }
