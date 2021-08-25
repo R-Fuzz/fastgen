@@ -31,6 +31,7 @@ use blockingqueue::BlockingQueue;
 
 
 pub fn dispatcher(table: &UnionTable,
+    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
     branch_fliplist: Arc<RwLock<HashSet<(u64,u64,u32,u64)>>>,
     branch_hitcount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
     buf: &Vec<u8>, id: RawFd, bq: BlockingQueue<Solution>) {
@@ -38,7 +39,7 @@ pub fn dispatcher(table: &UnionTable,
   let (labels,mut memcmp_data) = read_pipe(id);
   let mut tb = SearchTaskBuilder::new(buf.len());
   scan_nested_tasks(&labels, &mut memcmp_data, table, 
-      config::MAX_INPUT_LEN, &branch_fliplist, 
+      config::MAX_INPUT_LEN, &branch_gencount, &branch_fliplist, 
       &branch_hitcount, buf, &mut tb, bq);
 }
 /*
@@ -262,6 +263,7 @@ pub fn fuzz_loop(
     cmd_opt: CommandOpt,
     depot: Arc<Depot>,
     global_branches: Arc<GlobalBranches>,
+    branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     branch_fliplist: Arc<RwLock<HashSet<(u64,u64,u32,u64)>>>,
     restart: bool,
     forklock: Arc<Mutex<u32>>,
@@ -308,6 +310,7 @@ pub fn fuzz_loop(
         //let path = depot.get_input_path(id).to_str().unwrap().to_owned();
         let gbranch_hitcount = branch_hitcount.clone();
         let gbranch_fliplist = branch_fliplist.clone();
+        let gbranch_gencount = branch_gencount.clone();
         let solution_queue = bq.clone();
 
 
@@ -316,7 +319,7 @@ pub fn fuzz_loop(
         let (mut child, read_end) = executor.track(id as usize, &buf);
 
         let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
-            dispatcher(table, gbranch_fliplist, gbranch_hitcount, &buf_cloned, read_end, solution_queue);
+            dispatcher(table, gbranch_gencount, gbranch_fliplist, gbranch_hitcount, &buf_cloned, read_end, solution_queue);
             }).unwrap();
 
         if handle.join().is_err() {

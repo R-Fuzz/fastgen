@@ -102,11 +102,12 @@ pub fn fuzz_main(
     let d = depot.clone();
     let b = global_branches.clone();
     let cmd = command_option.specify(2);
+    let bg = branch_gencount.clone();
     let blist = branch_fliplist.clone();
     let fk = forklock.clone();
     let bqc = bq.clone();
     let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, blist, restart, fk, bqc);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, blist, restart, fk, bqc);
         }).unwrap();
     handlers.push(handle);
   }
