@@ -402,10 +402,10 @@ impl JITEngine {
     if let Some(body) = self.codegen(&builder, request, local_map, fn_val, &mut value_cache) {
       //let return_instruction = builder.build_return(Some(&body.unwrap()));
       let return_instruction = builder.build_return(Some(&body));
-      //dbg!("module: {:?}", module.clone());
       //dbg!("builder: {:?}", &builder);
       if !module.verify().is_ok() {
-        dbg!("module: {:?}", module.clone());
+        //dbg!("module: {:?}", module.clone());
+        warn!("JIT error");
         return None;
       }
       assert_eq!(return_instruction.get_num_operands(), 1);

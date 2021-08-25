@@ -172,7 +172,9 @@ impl<'a> SearchTaskBuilder<'a> {
         let mut row = Vec::new();
         for constraint in land {
           let mut cons = Rc::new(RefCell::new(Cons::new()));
-          self.append_meta(&cons, &constraint, target_cons.1);
+          if !self.append_meta(&cons, &constraint, target_cons.1) {
+            continue;
+          }
           if !func_cache.contains_key(&AstNodeWrapper(constraint.get_node().clone())) {
             let fun = engine.add_function(&constraint.get_node(), &cons.borrow().local_map);
             if fun.is_some() {
@@ -307,7 +309,7 @@ impl<'a> SearchTaskBuilder<'a> {
   }
 
   pub fn append_meta(&self, cons: &Rc<RefCell<Cons>>, 
-                      constraint: &Constraint, flip: bool) {
+                      constraint: &Constraint, flip: bool) -> bool {
     debug!("append_meta flip {}", flip);
     //print_node(constraint.get_node());
     for amap in constraint.get_meta().get_map() {
@@ -324,8 +326,12 @@ impl<'a> SearchTaskBuilder<'a> {
     }
     let mut comp = constraint.get_node().get_kind();
     if (flip) { comp = get_flipped_op(comp); }
+    if comp == 0 {
+      return false;
+    }
     cons.borrow_mut().comparison = comp;
     cons.borrow_mut().const_num = constraint.get_meta().get_const_num();
+    return true;
   }
 
   //submit a sinlge branch

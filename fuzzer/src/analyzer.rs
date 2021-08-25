@@ -248,9 +248,9 @@ pub fn simplify_clone(src: &AstNode) -> AstNode {
   return dst;
 }
 
-pub fn flip_op(node: &mut AstNode) {
+pub fn flip_op(node: &mut AstNode) -> bool {
   if node.get_kind() == RGD::Constant as u32 {
-    return;
+    return true;
   }
   let op = match FromPrimitive::from_u32(node.get_kind()) {
     Some(RGD::Equal) => RGD::Distinct as u32,
@@ -263,9 +263,14 @@ pub fn flip_op(node: &mut AstNode) {
     Some(RGD::Ugt) => RGD::Ule as u32,
     Some(RGD::Ule) => RGD::Ugt as u32,
     Some(RGD::Ult) => RGD::Uge as u32,
-    _ => panic!("Non-relational op!")
+    _ => 0,
   };
-  node.set_kind(op);
+  if op != 0 {
+    node.set_kind(op);
+    return true;
+  } else {
+    return false;
+  }
 }
 
 pub fn get_flipped_op(comp: u32) -> u32 {
@@ -280,7 +285,8 @@ pub fn get_flipped_op(comp: u32) -> u32 {
       Some(RGD::Ugt) => RGD::Ule as u32,
       Some(RGD::Ule) => RGD::Ugt as u32,
       Some(RGD::Ult) => RGD::Uge as u32,
-      _ => panic!("Non-relational op!")
+      _ => 0,
+     // _ => panic!("Non-relational op!")
   };
   op
 }

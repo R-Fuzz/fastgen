@@ -27,7 +27,7 @@ pub extern "C" fn __angora_trace_cmp(
       }
     }
     _ => {
-      eprintln!("no conds");
+//      eprintln!("no conds");
     }
   }
   condition
