@@ -100,6 +100,7 @@ public:
   GlobalVariable *AngoraMapPtr;
   GlobalVariable *AngoraPrevLoc;
   GlobalVariable *AngoraContext;
+  GlobalVariable *AngoraContextOri;
   GlobalVariable *AngoraCondId;
   GlobalVariable *AngoraCallSite;
 
@@ -258,6 +259,11 @@ void AngoraLLVMPass::initVariables(Module &M) {
   AngoraContext =
       new GlobalVariable(M, Int32Ty, false, GlobalValue::CommonLinkage,
                          ConstantInt::get(Int32Ty, 0), "__angora_context", 0,
+                         GlobalVariable::GeneralDynamicTLSModel, 0, false);
+
+  AngoraContextOri =
+      new GlobalVariable(M, Int32Ty, false, GlobalValue::CommonLinkage,
+                         ConstantInt::get(Int32Ty, 0), "__angora_contextori", 0,
                          GlobalVariable::GeneralDynamicTLSModel, 0, false);
 
   AngoraCallSite = new GlobalVariable(
@@ -435,7 +441,7 @@ void AngoraLLVMPass::countEdge(Module &M, BasicBlock &BB) {
   Value *NewPrevLoc = NULL;
   if (num_fn_ctx != 0) { // Call-based context
     // Load ctx
-    LoadInst *CtxVal = IRB.CreateLoad(AngoraContext);
+    LoadInst *CtxVal = IRB.CreateLoad(AngoraContextOri);
     setInsNonSan(CtxVal);
 
     Value *CtxValCasted = IRB.CreateZExt(CtxVal, Int32Ty);
@@ -469,6 +475,9 @@ void AngoraLLVMPass::addFnWrap(Function &F) {
   Value *OriCtxVal =IRB.CreateLoad(AngoraContext);
   setValueNonSan(OriCtxVal);
 
+  Value *OriCtxValOri =IRB.CreateLoad(AngoraContextOri);
+  setValueNonSan(OriCtxValOri);
+
 
   // ***** Add Context *****
   // instrument code before and after each function call to add context
@@ -486,8 +495,14 @@ void AngoraLLVMPass::addFnWrap(Function &F) {
   Value *UpdatedCtx = IRB.CreateXor(OriCtxVal, rrv);
   setValueNonSan(UpdatedCtx);
 
+  Value *UpdatedCtxOri = IRB.CreateXor(OriCtxValOri, rrv);
+  setValueNonSan(UpdatedCtxOri);
+
   StoreInst *SaveCtx = IRB.CreateStore(UpdatedCtx, AngoraContext);
   setInsNonSan(SaveCtx);
+
+  StoreInst *SaveCtxOri = IRB.CreateStore(UpdatedCtxOri, AngoraContextOri);
+  setInsNonSan(SaveCtxOri);
 
   // *** Post Fn ***
 
@@ -498,6 +513,8 @@ void AngoraLLVMPass::addFnWrap(Function &F) {
       // ***** Reload Context *****
       IRBuilder<> Post_IRB(Inst);
      Post_IRB.CreateStore(OriCtxVal, AngoraContext)
+          ->setMetadata(NoSanMetaId, NoneMetaNode);
+     Post_IRB.CreateStore(OriCtxValOri, AngoraContextOri)
           ->setMetadata(NoSanMetaId, NoneMetaNode);
       //Post_IRB.CreateStore(LCS, AngoraContext)
        //    ->setMetadata(NoSanMetaId, NoneMetaNode);
