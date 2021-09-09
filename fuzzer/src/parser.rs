@@ -18,25 +18,27 @@ use std::cell::RefCell;
 use crate::union_find::*;
 use crate::search_task::SearchTask;
 use crate::analyzer::*;
+use protobuf::Message;
+use crate::cpp_interface;
+use protobuf::CodedInputStream;
 
 #[derive(Clone)]
-pub struct OneLabelCons<'a> {
-  pub members: Vec<Vec<Rc<RefCell<Cons<'a>>>>>,
+pub struct OneLabelCons {
+  pub members: Vec<Vec<Rc<RefCell<Cons>>>>,
 }
 
 #[derive(Clone)]
-pub struct BranchDep<'a> {
-  pub cons_set: Vec<OneLabelCons<'a>>,
+pub struct BranchDep {
+  pub cons_set: Vec<OneLabelCons>,
 }
 
 
-pub struct AstNodeWrapper(AstNode);
+pub struct AstNodeWrapper(Vec<u8>);
 
-static mut gengine: Option<JITEngine> = None;
-static mut gfuncache: Option<HashMap<AstNodeWrapper, JitFunction<JigsawFnType>>> = None;
-//static mut branch_deps: Option<Vec<Option<BranchDep>>> = None;
-static mut miss: u32 = 0;
-static mut hit : u32 = 0;
+pub static mut gengine: Option<JITEngine> = None;
+pub static mut gfuncache: Option<HashMap<AstNodeWrapper, usize>> = None;
+pub static mut miss: u32 = 0;
+pub static mut hit : u32 = 0;
 
 
 impl Eq for AstNodeWrapper {
@@ -110,25 +112,52 @@ fn eq_cur(current: &AstNode, other: &AstNode) -> bool {
 
 impl PartialEq for AstNodeWrapper {
   fn eq(&self, other: &Self) -> bool {
-    return eq_cur(&self.0, &other.0); 
+
+    let mut stream_this = CodedInputStream::from_bytes(&self.0);
+    stream_this.set_recursion_limit(1000);
+    let mut this_node = AstNode::new();
+    this_node.merge_from(&mut stream_this);
+
+    let mut stream_other = CodedInputStream::from_bytes(&other.0);
+    stream_other.set_recursion_limit(1000);
+    let mut other_node = AstNode::new();
+    other_node.merge_from(&mut stream_other);
+    return eq_cur(&this_node, &other_node); 
   }
 }
 
 impl Hash for AstNodeWrapper {
   fn hash<H: Hasher>(&self, state: &mut H) {
-    self.0.get_hash().hash(state);
+    let mut stream_this = CodedInputStream::from_bytes(&self.0);
+    stream_this.set_recursion_limit(1000);
+    let mut this_node = AstNode::new();
+    this_node.merge_from(&mut stream_this);
+    this_node.get_hash().hash(state);
   }
 }
 
 
-pub struct SearchTaskBuilder<'a> {
+pub struct SearchTaskBuilder {
   pub per_session_cache: HashMap<u32, Constraint>,  
   pub last_fid: u32,
-  pub branch_deps: Vec<Option<BranchDep<'a>>>,
+  pub branch_deps: Vec<Option<BranchDep>>,
   pub uf:UnionFind,
 }
 
-impl<'a> SearchTaskBuilder<'a> {
+
+pub fn init_engine() {
+    unsafe {
+      if gengine.is_none() {
+        gengine = Some(JITEngine::new());
+        gengine.as_mut().unwrap().init();
+      }
+      if gfuncache.is_none() {
+        gfuncache = Some(HashMap::new());
+      }
+    }
+  }
+
+impl SearchTaskBuilder {
   pub fn new(tainted_size: usize) -> Self {
     unsafe {
     Self {
@@ -154,15 +183,11 @@ impl<'a> SearchTaskBuilder<'a> {
     v0
   }
 
-  fn task_jit(&self, target_cons: &(Vec<Vec<Rc<Constraint>>>, bool)) -> Vec<Vec<Rc<RefCell<Cons<'a>>>>> {
+  
+
+  fn task_jit(&self, target_cons: &(Vec<Vec<Rc<Constraint>>>, bool)) -> Vec<Vec<Rc<RefCell<Cons>>>> {
     unsafe {
-      if gengine.is_none() {
-        gengine = Some(JITEngine::new());
-      }
-      if gfuncache.is_none() {
-        gfuncache = Some(HashMap::new());
-      }
-      let engine = gengine.as_ref().unwrap();
+      let mut engine = gengine.as_mut().unwrap();
       let func_cache = gfuncache.as_mut().unwrap();
 
       //build cons set
@@ -175,23 +200,27 @@ impl<'a> SearchTaskBuilder<'a> {
           if !self.append_meta(&cons, &constraint, target_cons.1) {
             continue;
           }
-          if !func_cache.contains_key(&AstNodeWrapper(constraint.get_node().clone())) {
+         // if !func_cache.contains_key(&AstNodeWrapper(constraint.get_node().clone())) {
+         // if !cpp_interface::contains(node_ser.as_ptr(), node_ser.len()) {
+          if !func_cache.contains_key(&AstNodeWrapper(constraint.get_node().write_to_bytes().unwrap())) {
             let fun = engine.add_function(&constraint.get_node(), &cons.borrow().local_map);
             if fun.is_some() {
               //println!("miss and jitime is {}", t_start.elapsed().as_micros());
               let fun_extract = fun.unwrap();
-              unsafe { debug!("miss/hit {}/{}", miss,hit); }
+              unsafe { info!("miss/hit {}/{}", miss,hit); }
               unsafe { miss += 1; }
-              func_cache.insert(AstNodeWrapper(constraint.get_node().clone()), fun_extract.clone());
+              func_cache.insert(AstNodeWrapper(constraint.get_node().write_to_bytes().unwrap()), fun_extract);
+        //      cpp_interface::add(node_ser.as_ptr(), node_ser.len(), idx);
               cons.borrow_mut().set_func(fun_extract);
             } else {
               continue;
             }
           } else {
-            let fun = func_cache[&AstNodeWrapper(constraint.get_node().clone())].clone();
-            cons.borrow_mut().set_func(fun);
+            let fun_idx = func_cache[&AstNodeWrapper(constraint.get_node().write_to_bytes().unwrap())];
+            //let fun_idx = cpp_interface::get(node_ser.as_ptr(),node_ser.len());
+            cons.borrow_mut().set_func(fun_idx);
             unsafe { hit += 1; }
-            //println!("hit and jitime is {}", t_start.elapsed().as_micros());
+            //info!("hit and jitime is {}", t_start.elapsed().as_micros());
           }
           row.push(cons.clone());
         }
@@ -224,7 +253,7 @@ impl<'a> SearchTaskBuilder<'a> {
     deps.cons_set.push(onecons);
   }
 
-  pub fn break_disjoint(&mut self, land: &Vec<Rc<RefCell<Cons<'a>>>>) -> Vec<Fut<'a>> {
+  pub fn break_disjoint(&mut self, land: &Vec<Rc<RefCell<Cons>>>) -> Vec<Fut> {
     let mut res = Vec::new();
     let mut global_map = HashMap::new();
     for item in land {
@@ -255,7 +284,7 @@ impl<'a> SearchTaskBuilder<'a> {
   }
 
   //vector of disjointed futs
-  pub fn construct_task(&mut self, task: &SearchTask, inputs: &HashSet<u32>, v0: u32) -> (Vec<Vec<Fut<'a>>>, Vec<Vec<Fut<'a>>>) {
+  pub fn construct_task(&mut self, task: &SearchTask, inputs: &HashSet<u32>, v0: u32) -> (Vec<Vec<Fut>>, Vec<Vec<Fut>>) {
 
     //jit the function of the task
     let mut all_branch_cons = self.task_jit(&task.flip_cons);
@@ -352,6 +381,7 @@ impl<'a> SearchTaskBuilder<'a> {
 
     let mut opt_solved = false;
     let mut nest_solved = false;
+
     if solve {
       for mut disjoints in res.1 {
         let mut result = true;

@@ -4,6 +4,8 @@ use inkwell::OptimizationLevel;
 use inkwell::values::FunctionValue;
 use inkwell::values::IntValue;
 use inkwell::builder::Builder;
+use inkwell::execution_engine::ExecutionEngine;
+use inkwell::module::Module;
 use inkwell::IntPredicate;
 use crate::rgd::*;
 use std::collections::HashMap;
@@ -19,15 +21,26 @@ type Addition = unsafe extern "C" fn(i32, i32) -> i32;
 
 
 
-pub struct JITEngine {
+pub struct JITEngine<'a> {
   uuid: AtomicU64,
   context: Context,
+  engine: Option<ExecutionEngine<'a>>,
   //let context = Cntext::create();
 }
 
-impl JITEngine {
+impl<'a> JITEngine<'a> {
+
+  pub fn init(&'a mut self) {
+    let module_id = format!("rgdjit_base");
+    let module = self.context.create_module(&module_id);
+    let execution_engine = module
+        .create_jit_execution_engine(OptimizationLevel::None)
+        .unwrap();
+    self.engine = Some(execution_engine.clone());
+  }
+
   pub fn new() -> Self {
-    Self {uuid: AtomicU64::new(0),  context:Context::create()}
+    Self {uuid: AtomicU64::new(0),  context:Context::create(), engine: None}
   }
 
   fn codegen<'b>(&'b self, builder: &'b Builder, request: &AstNode, 
@@ -384,7 +397,10 @@ impl JITEngine {
     //return value_cache[&request.get_label()];
   }
 
-  pub fn add_function(&self, request: &AstNode, local_map: &HashMap<u32,u32>) -> Option<JitFunction<JigsawFnType>> {
+  
+
+  //pub fn add_function(&self, request: &AstNode, local_map: &HashMap<u32,u32>) -> Option<JitFunction<JigsawFnType>> {
+  pub fn add_function(&self, request: &AstNode, local_map: &HashMap<u32,u32>) -> Option<usize> {
     let id = self.uuid.fetch_add(1, Ordering::Relaxed);
     let module_id = format!("rgdjit_m{}", id);
     let module = self.context.create_module(&module_id);
@@ -409,10 +425,13 @@ impl JITEngine {
         return None;
       }
       assert_eq!(return_instruction.get_num_operands(), 1);
+/*
       let execution_engine = module
         .create_jit_execution_engine(OptimizationLevel::None)
         .unwrap();
-      let fun = unsafe { execution_engine.get_function(&func_id).unwrap() };
+*/
+      self.engine.as_ref().unwrap().add_module(&module);
+      let fun = unsafe { self.engine.as_ref().unwrap().get_function_address(&func_id).unwrap() };
       Some(fun)
     } else {
       None

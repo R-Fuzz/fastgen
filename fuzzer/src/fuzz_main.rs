@@ -20,6 +20,7 @@ use fastgen_common::config;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use blockingqueue::BlockingQueue;
+use crate::parser::init_engine;
 
 pub fn fuzz_main(
     in_dir: &str,
@@ -77,6 +78,7 @@ pub fn fuzz_main(
   }
 
   //unsafe { init_core(config::SAVING_WHOLE, config::USE_CODECACHE); }
+  init_engine();
   let mut handlers = vec![];
 
   for g in 0.._num_graders

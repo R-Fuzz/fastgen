@@ -7,8 +7,10 @@ use crate::mut_input::MutInput;
 use crate::grad::Grad;
 use std::rc::Rc;
 use std::cell::RefCell;
-pub struct Cons<'a> {
-  pub func: Option<JitFunction<'a, JigsawFnType>>,
+use crate::parser::gfunstore;
+use std::mem::transmute_copy;
+pub struct Cons {
+  pub func: Option<usize>,
   pub comparison: u32,
   pub local_map: HashMap<u32, u32>,
   pub input_args: Vec<(bool,u64)>,
@@ -17,7 +19,7 @@ pub struct Cons<'a> {
   pub const_num: u32,
 }
 
-impl<'a> Cons<'a> {
+impl Cons {
   pub fn new() -> Self {
     let local_map = HashMap::new();
     let input_args = Vec::new();
@@ -33,13 +35,17 @@ impl<'a> Cons<'a> {
     }
   }
 
-  pub fn set_func(&mut self, func: JitFunction<'a, JigsawFnType>) {
-      self.func = Some(func);
+  pub fn set_func(&mut self, func_idx: usize) {
+      self.func = Some(func_idx);
   }
   
   pub fn call_func(&self, x: &mut [u64]) -> u64 {
-    if let Some(func) = &self.func  {
-      return unsafe { func.call(x.as_mut_ptr()) };
+    unsafe {
+      if let Some(func_idx) = &self.func  {
+        //let func_store = gfunstore.as_ref().unwrap();
+        let mut trans_func:JigsawFnType  = transmute_copy(func_idx);
+        return unsafe { (trans_func)(x.as_mut_ptr()) };
+      }
     }
     return 0;
   }
@@ -80,9 +86,9 @@ impl SContext {
 }
 
 
-pub struct Fut<'a> {
+pub struct Fut {
   pub num_exprs: u32,
-  pub constraints: Vec<Rc<RefCell<Cons<'a>>>>,
+  pub constraints: Vec<Rc<RefCell<Cons>>>,
   pub inputs: Vec<(u32, u8)>,
   pub shape: HashMap<u32,u32>,
   pub ctx: Option<SContext>, 
@@ -92,7 +98,7 @@ pub struct Fut<'a> {
   pub opti_solutions: Vec<HashMap<u32,u8>>,
 }
 
-impl<'a> Fut<'a> {
+impl Fut {
   pub fn new() -> Self {
     Self {
       num_exprs: 0,
