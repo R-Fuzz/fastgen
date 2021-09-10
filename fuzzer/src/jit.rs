@@ -432,6 +432,7 @@ impl<'a> JITEngine<'a> {
 */
       self.engine.as_ref().unwrap().add_module(&module);
       let fun = unsafe { self.engine.as_ref().unwrap().get_function_address(&func_id).unwrap() };
+      self.engine.as_ref().unwrap().remove_module(&module);
       Some(fun)
     } else {
       None

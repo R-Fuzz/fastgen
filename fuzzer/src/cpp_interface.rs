@@ -1,13 +1,13 @@
-#[link(name = "gd")]
-#[link(name = "protobuf")]
+//#[link(name = "gd")]
+//#[link(name = "protobuf")]
 //#[link(name = "LLVM")]
 //#[link(name = "stdc++")]
 //#[link(name = "z3")]
 
 extern {
-  pub fn contains(input: *const u8, input_length: usize) -> bool;
-  pub fn add(input: *const u8, input_length: usize, idx: usize);
-  pub fn get(input: *const u8, input_length: usize) -> usize;
+//  pub fn contains(input: *const u8, input_length: usize) -> bool;
+//  pub fn add(input: *const u8, input_length: usize, idx: usize);
+//  pub fn get(input: *const u8, input_length: usize) -> usize;
 //  pub fn submit_fmemcmp(data: *const u8, index: u32, size: u32, tid: u32, addr: u64);
 //  pub fn get_queue_length() -> u32;
 //  pub fn init_core(save_whole: bool, use_codecache: bool);
