@@ -7,7 +7,6 @@ use crate::mut_input::MutInput;
 use crate::grad::Grad;
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::parser::gfunstore;
 use std::mem::transmute_copy;
 pub struct Cons {
   pub func: Option<usize>,
