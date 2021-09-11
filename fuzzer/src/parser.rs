@@ -35,10 +35,14 @@ pub struct BranchDep {
 
 pub struct AstNodeWrapper(Vec<u8>);
 
-pub static mut gengine: Option<JITEngine> = None;
-pub static mut gfuncache: Option<HashMap<AstNodeWrapper, usize>> = None;
-pub static mut miss: u32 = 0;
-pub static mut hit : u32 = 0;
+pub static mut GENGINE: Option<JITEngine> = None;
+//AstNode -> function address
+pub static mut GFUNCACHE: Option<HashMap<AstNodeWrapper, usize>> = None;
+pub static mut MISS: u32 = 0;
+pub static mut HIT: u32 = 0;
+//
+pub static mut JTIME: u32 = 0;
+pub static mut STIME: u32 = 0;
 
 
 impl Eq for AstNodeWrapper {
@@ -147,12 +151,12 @@ pub struct SearchTaskBuilder {
 
 pub fn init_engine() {
     unsafe {
-      if gengine.is_none() {
-        gengine = Some(JITEngine::new());
-        gengine.as_mut().unwrap().init();
+      if GENGINE.is_none() {
+        GENGINE = Some(JITEngine::new());
+        GENGINE.as_mut().unwrap().init();
       }
-      if gfuncache.is_none() {
-        gfuncache = Some(HashMap::new());
+      if GFUNCACHE.is_none() {
+        GFUNCACHE = Some(HashMap::new());
       }
     }
   }
@@ -187,8 +191,8 @@ impl SearchTaskBuilder {
 
   fn task_jit(&self, target_cons: &(Vec<Vec<Rc<Constraint>>>, bool)) -> Vec<Vec<Rc<RefCell<Cons>>>> {
     unsafe {
-      let mut engine = gengine.as_mut().unwrap();
-      let func_cache = gfuncache.as_mut().unwrap();
+      let mut engine = GENGINE.as_mut().unwrap();
+      let func_cache = GFUNCACHE.as_mut().unwrap();
 
       //build cons set
       let mut cons_set = Vec::new();
@@ -203,12 +207,15 @@ impl SearchTaskBuilder {
          // if !func_cache.contains_key(&AstNodeWrapper(constraint.get_node().clone())) {
          // if !cpp_interface::contains(node_ser.as_ptr(), node_ser.len()) {
           if !func_cache.contains_key(&AstNodeWrapper(constraint.get_node().write_to_bytes().unwrap())) {
+            let t_start = time::Instant::now();
             let fun = engine.add_function(&constraint.get_node(), &cons.borrow().local_map);
             if fun.is_some() {
-              //println!("miss and jitime is {}", t_start.elapsed().as_micros());
+              let jtime = t_start.elapsed().as_micros();
+              
               let fun_extract = fun.unwrap();
-              unsafe { info!("miss/hit {}/{}", miss,hit); }
-              unsafe { miss += 1; }
+              unsafe { JTIME += jtime as u32; }
+              unsafe { info!("miss/hit {}/{}, jitime {} totoal {}", MISS, HIT, jtime, JTIME); }
+              unsafe { MISS += 1; }
               func_cache.insert(AstNodeWrapper(constraint.get_node().write_to_bytes().unwrap()), fun_extract);
         //      cpp_interface::add(node_ser.as_ptr(), node_ser.len(), idx);
               cons.borrow_mut().set_func(fun_extract);
@@ -219,7 +226,7 @@ impl SearchTaskBuilder {
             let fun_idx = func_cache[&AstNodeWrapper(constraint.get_node().write_to_bytes().unwrap())];
             //let fun_idx = cpp_interface::get(node_ser.as_ptr(),node_ser.len());
             cons.borrow_mut().set_func(fun_idx);
-            unsafe { hit += 1; }
+            unsafe { HIT += 1; }
             //info!("hit and jitime is {}", t_start.elapsed().as_micros());
           }
           row.push(cons.clone());
