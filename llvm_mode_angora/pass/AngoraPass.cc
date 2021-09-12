@@ -127,7 +127,7 @@ public:
 
   AngoraLLVMPass() : ModulePass(ID) {}
   bool runOnModule(Module &M) override;
-  u32 getInstructionId(Instruction *Inst);
+  u32 getInstructionId(Instruction *Inst, bool print);
   u32 getRandomBasicBlockId();
   bool skipBasicBlock();
   u32 getRandomNum();
@@ -178,13 +178,13 @@ u32 AngoraLLVMPass::getRandomContextId() {
 
 u32 AngoraLLVMPass::getRandomInstructionId() { return getRandomNum(); }
 
-u32 AngoraLLVMPass::getInstructionId(Instruction *Inst) {
+u32 AngoraLLVMPass::getInstructionId(Instruction *Inst, bool print) {
   u32 h = 0;
   DILocation *Loc = Inst->getDebugLoc();
   if (Loc) {
     u32 Line = Loc->getLine();
     u32 Col = Loc->getColumn();
-    h = (Col * 33 + Line) * 33 + 100;
+    h = (Col * 33 + Line) * 33 + 100 + ModId;
   }
 
   while (UniqCidSet.count(h) > 0) {
@@ -192,7 +192,7 @@ u32 AngoraLLVMPass::getInstructionId(Instruction *Inst) {
   }
   UniqCidSet.insert(h);
 
-  if (output_cond_loc) {
+  if (output_cond_loc && print) {
     errs() << "[ID] " << h << "\n";
     errs() << "[INS] " << *Inst << "\n";
     if (DILocation *Loc = Inst->getDebugLoc()) {
@@ -462,6 +462,7 @@ void AngoraLLVMPass::addFnWrap(Function &F) {
   Instruction *InsertPoint = &(*(BB->getFirstInsertionPt()));
   IRBuilder<> IRB(InsertPoint);
 
+
   u32 rr = hashCallName(F.getName(), ModName) % 1048576;
   //OKF("addFnWrap %u and function name is %s",rr,F.getName());
   Constant* rrv = ConstantInt::get(Int32Ty, rr); 
@@ -478,8 +479,9 @@ void AngoraLLVMPass::addFnWrap(Function &F) {
   // Implementation of function context for AFL by heiko eissfeldt:
   // https://github.com/vanhauser-thc/afl-patches/blob/master/afl-fuzz-context_sensitive.diff
 
-  OriCtxVal = IRB.CreateLShr(OriCtxVal, 1);
-  setValueNonSan(OriCtxVal);
+  //FIXME: we can't apply this recursion patch, due to the syncing discrepancies
+  //OriCtxVal = IRB.CreateLShr(OriCtxVal, 1);
+  //setValueNonSan(OriCtxVal);
 
 
   //Value *UpdatedCtx = IRB.CreateXor(OriCtxVal, CallSite);
@@ -507,7 +509,7 @@ void AngoraLLVMPass::addFnWrap(Function &F) {
 }
 
 void AngoraLLVMPass::processCall(Instruction *Inst) {
-  
+  return; 
   visitCompareFunc(Inst);
   visitExploitation(Inst);
 
@@ -560,7 +562,7 @@ void AngoraLLVMPass::visitCompareFunc(Instruction *Inst) {
   if (!isa<CallInst>(Inst) || !ExploitList.isIn(*Inst, CompareFuncCat)) {
     return;
   }
-  ConstantInt *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst));
+  ConstantInt *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst,false));
 
   if (!TrackMode)
     return;
@@ -738,6 +740,7 @@ void AngoraLLVMPass::visitCmpInst(Instruction *Inst) {
   Constant *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst));
   processCmp(Inst, Cid, InsertPoint);
 */
+
 }
 
 void AngoraLLVMPass::visitBranchInst(Instruction *Inst) {
@@ -746,7 +749,7 @@ void AngoraLLVMPass::visitBranchInst(Instruction *Inst) {
   if (Br->isConditional()) {
     IRBuilder<> IRB(Inst);
     Value *Cond = Br->getCondition();
-    Constant *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst));
+    Constant *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst,true));
     Value *CondExt = IRB.CreateZExt(Cond, Int32Ty);
     setValueNonSan(CondExt);
     LoadInst *CurCtx = IRB.CreateLoad(AngoraContext);
@@ -771,7 +774,7 @@ void AngoraLLVMPass::visitSwitchInst(Module &M, Instruction *Inst) {
   if (num_bytes == 0 || num_bits % 8 > 0)
     return;
 
-  Constant *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst));
+  Constant *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst,false));
   IRBuilder<> IRB(Sw);
 
   if (FastMode) {
@@ -818,6 +821,7 @@ void AngoraLLVMPass::visitSwitchInst(Module &M, Instruction *Inst) {
 }
 
 void AngoraLLVMPass::visitExploitation(Instruction *Inst) {
+  return;
   // For each instruction and called function.
   bool exploit_all = ExploitList.isIn(*Inst, ExploitCategoryAll);
   IRBuilder<> IRB(Inst);
@@ -842,7 +846,7 @@ void AngoraLLVMPass::visitExploitation(Instruction *Inst) {
       Type *ParamType = ParamVal->getType();
       if (ParamType->isIntegerTy() || ParamType->isPointerTy()) {
         if (!isa<ConstantInt>(ParamVal)) {
-          ConstantInt *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst));
+          ConstantInt *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst,false));
           int size = ParamVal->getType()->getScalarSizeInBits() / 8;
           if (ParamType->isPointerTy()) {
             size = 8;
@@ -883,7 +887,7 @@ bool AngoraLLVMPass::runOnModule(Module &M) {
 
   for (auto &F : M) {
     //if (F.isDeclaration() || F.getName().startswith(StringRef("asan.module")))
-    if (F.isDeclaration() )
+    if (F.isDeclaration() || F.isIntrinsic())
       continue;
 
     addFnWrap(F);

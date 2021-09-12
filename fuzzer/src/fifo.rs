@@ -3,9 +3,52 @@ use nix::sys::stat;
 //use std::io;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::fs::File;
 use std::collections::VecDeque;
 use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
+use byteorder::{LittleEndian, ReadBytesExt};
+use std::{
+    fs::File,
+    io::{self, Read},
+};
+
+
+struct PipeMsg {
+  msgtype: u32, //gep, cond, add_constraints, strcmp
+  tid: u32,
+  label: u32,
+  result: u64, //direction for conditional branch, index for GEP
+  addr: u64,
+  ctx: u64,
+  localcnt: u32,
+  bid: u32,
+  sctx: u32,
+}
+
+impl PipeMsg {
+  fn from_reader(mut rdr: impl Read) -> io::Result<Self> {
+    let msgtype = rdr.read_u32::<LittleEndian>()?;
+    let tid = rdr.read_u32::<LittleEndian>()?;
+    let label = rdr.read_u32::<LittleEndian>()?;
+    let result = rdr.read_u64::<LittleEndian>()?;
+    let addr = rdr.read_u64::<LittleEndian>()?;
+    let ctx = rdr.read_u64::<LittleEndian>()?;
+    let localcnt = rdr.read_u32::<LittleEndian>()?;
+    let bid = rdr.read_u32::<LittleEndian>()?;
+    let sctx = rdr.read_u32::<LittleEndian>()?;
+
+    Ok(PipeMsg{
+        msgtype,
+        tid,
+        label,
+        result,
+        addr,
+        ctx,
+        localcnt,
+        bid,
+        sctx,
+        })
+  }
+}
 
 pub fn make_pipe() {
   match unistd::mkfifo("/tmp/wp", stat::Mode::S_IRWXU) {
@@ -14,6 +57,7 @@ pub fn make_pipe() {
   }
 }
 
+/*
 pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<[u8;1024]>) {
   let f = unsafe { File::from_raw_fd(piped) };
   let mut reader = BufReader::new(f);
@@ -47,6 +91,46 @@ pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32)>, VecDeque<
         } else {
           break;
         }
+      }
+    } else  {
+      break;
+    }
+  }
+  (ret,retdata)
+}
+
+*/
+pub fn read_pipe(piped: RawFd) -> (Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, VecDeque<Vec<u8>>) {
+  let f = unsafe { File::from_raw_fd(piped) };
+  let mut reader = BufReader::new(f);
+  let mut ret = Vec::new();
+  let mut retdata = VecDeque::new();
+  loop {
+    let msg = PipeMsg::from_reader(&mut reader);
+    if let Ok(rawmsg) = msg {
+      let tid = rawmsg.tid; 
+      let label = rawmsg.label;
+      let direction = rawmsg.result;
+      let addr = rawmsg.addr;
+      let ctx = rawmsg.ctx;
+      let isgep  = rawmsg.msgtype;
+      let order = rawmsg.localcnt;
+      let bid = rawmsg.bid;
+      let sctx = rawmsg.sctx;
+      ret.push((tid,label,direction,addr,ctx,order,isgep,bid,sctx));
+      if isgep == 2 {
+        let mut data = Vec::new();
+        for _i in 0..direction as usize {
+            if let Ok(cur) = reader.read_u8() {
+              data.push(cur);
+            } else {
+              break;
+            }
+        } 
+        if data.len() < direction as usize {
+          break;
+        }
+        retdata.push_back(data);
       }
     } else  {
       break;

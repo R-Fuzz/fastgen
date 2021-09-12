@@ -42,20 +42,19 @@ impl ShmConds {
     }
 
     pub fn check_match(&mut self, cmpid: u32, context: u32) -> bool {
-        //eprintln!("check {} {}, original {} {}", cmpid, context, self.cond.cmpid, self.cond.context);
-        if self.cond.cmpid == cmpid && self.cond.context == context {
-           self.rt_order += 1;
-           if self.cond.order & 0xFFFF == self.rt_order {
-                return true;
-           }
+      if self.cond.cmpid == cmpid && self.cond.context == context {
+        self.rt_order += 1;
+        if self.cond.order & 0xFFFF == self.rt_order {
+          return true;
         }
-        false
-    }
+      }
+      false
+      }
 
     pub fn update_cmp(&mut self, condition: u32) -> u32 {
         //self.cond.arg1 = arg1;
         //self.cond.arg2 = arg2;
-        eprintln!("update_cmp {} {} condition {}", self.cond.cmpid, self.cond.context, condition);
+        //eprintln!("update_cmp {} {} condition {}", self.cond.cmpid, self.cond.context, condition);
         self.rt_order = 0x8000;
         set_cmpid(0);
         self.cond.condition = condition;

@@ -282,7 +282,7 @@ static void edit_params(u32 argc, char **argv) {
   if (!getenv("KO_DONT_OPTIMIZE")) {
     cc_params[cc_par_cnt++] = "-g";
     cc_params[cc_par_cnt++] = "-O1";
-    //cc_params[cc_par_cnt++] = "-funroll-loops";
+    cc_params[cc_par_cnt++] = "-funroll-loops";
   }
 
   if (is_cxx && !getenv("KO_USE_NATIVE_LIBCXX")) {

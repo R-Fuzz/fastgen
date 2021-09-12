@@ -58,6 +58,7 @@ struct RGDSolution {
   uint64_t direction;
   uint32_t bid;
   uint32_t sctx;
+  bool is_cmp;
 };
 
 
@@ -944,20 +945,22 @@ void solve(int shmid, int pipefd) {
       }
     } else if (msg.type == 1) { //gep constraint
       bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
-      solve_gep(msg.label, msg.result, try_solve, msg.tid, sol, opt_sol); 
+      solve_gep(msg.label, msg.result, try_solve, msg.tid, sol, opt_sol);
     }
 
 
     if (sol.size()) {
-      RGDSolution rsol = {sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx};
+      RGDSolution rsol = {sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx, msg.type == 0};
       solution_queue.push(rsol);
       count++;
     }
+
     if (opt_sol.size()) {
-      RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx};
+      RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx, msg.type == 0};
       solution_queue.push(rsol);
       count++;
     }
+
   }
   total_generation_count += count;
   total_time += getTimeStamp() - one_start;
@@ -1000,7 +1003,7 @@ extern "C" {
 
   void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
       uint32_t *order, uint32_t *fid, uint64_t *direction, 
-      uint32_t* bid, uint32_t* sctx, size_t size) {
+      uint32_t* bid, uint32_t* sctx, bool* is_cmp, size_t size) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
     // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
     //asert(!solutio_queue.empty());
@@ -1016,6 +1019,7 @@ extern "C" {
     *direction = item.direction;
     *bid = item.bid;
     *sctx = item.sctx;
+    *is_cmp = item.is_cmp;
   }
 
   uint32_t get_next_input_id() {

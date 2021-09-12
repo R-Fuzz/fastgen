@@ -28,6 +28,10 @@ use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
 use nix::unistd::pipe;
 use nix::unistd::close;
 
+pub static mut FLIPPED: u32 = 0;
+pub static mut ALL: u32 = 0;
+pub static mut REACHED: u32 = 0;
+pub static mut NOT_REACHED: u32 = 0;
 
 pub fn dispatcher(table: &UnionTable,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
@@ -38,6 +42,43 @@ pub fn dispatcher(table: &UnionTable,
   scan_nested_tasks(&labels, &mut memcmp_data, table, config::MAX_INPUT_LEN, &branch_gencount, &branch_hitcount, buf);
 }
 
+//check the status
+pub fn branch_verifier(addr: u64, ctx: u64, 
+    order: u32, direction: u64, fid: u32, id: RawFd) {
+  let mut status = 4; // not reached
+  let (labels,mut memcmp_data) = read_pipe(id);
+
+  for label in labels {
+    if label.6 == 2 {
+      memcmp_data.pop_front().unwrap();
+      continue;
+    }
+    if label.6 == 0 {
+      if label.3 == addr && label.4 == ctx && label.5 == order {
+        status = 2; //reached
+        if label.2 == 1-direction {
+          status = 1; //flipped
+        }
+        break;
+      }
+    }
+  }
+
+  unsafe {
+    ALL += 1;
+    if status == 2 {
+      REACHED += 1;
+    } else if status == 1 {
+      FLIPPED += 1;
+    } else if status == 4 {
+      NOT_REACHED += 1;
+      info!("not reached in tain verifier addr is {}  order is {}", addr, order);
+    }
+    info!("verify ({},{},{},{},{}), status {}, flipped/reached/not_reached/all: {}/{}/{}/{}", addr,ctx,order,direction,fid, status, FLIPPED, REACHED, NOT_REACHED, ALL);
+  }
+}
+
+
 
 pub fn grading_loop(
     running: Arc<AtomicBool>,
@@ -47,11 +88,20 @@ pub fn grading_loop(
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     ) {
+
+  let shmid =  unsafe {
+    libc::shmget(
+        libc::IPC_PRIVATE,
+        0xc00000000,
+        0o644 | libc::IPC_CREAT | libc::SHM_NORESERVE
+        )
+  };
+
   let mut executor = Executor::new(
       cmd_opt,
       global_branches,
       depot.clone(),
-      0,
+      shmid,
       );
 
   //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
@@ -89,30 +139,72 @@ pub fn grading_loop(
     let mut direction: u64 = 0;
     let mut bid: u32 = 0;
     let mut sctx: u32 = 0;
-    let mut blacklist = HashSet::new();
-    blacklist.insert(123145304594434u64);
-    blacklist.insert(123145304595428u64);
-    blacklist.insert(123145304637859u64);
-    blacklist.insert(123145304594406u64);
-    blacklist.insert(123145304595879u64);
-    blacklist.insert(123145304594378u64);
-    blacklist.insert(123145304594183u64);
-    blacklist.insert(123145304630498u64);
-    blacklist.insert(123145304594350u64);
-    blacklist.insert(123145304637166u64);
-    blacklist.insert(123145304637884u64);
-    blacklist.insert(123145304594718u64);
+    let mut flipped = 0;
+    let mut sol_conds = 0;
+    let mut all_conds = 0;
+    let mut reached = 0;
+    let mut not_reached = 0;
+    let mut is_cmp = false;
+
+    let mut blacklist: HashSet<u64> = HashSet::new();
+
     while running.load(Ordering::Relaxed) {
       let id = unsafe { get_next_input_id() };
       if id != std::u32::MAX {
         let mut buf: Vec<u8> = depot.get_input_buf(id as usize);
-        unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, buf.len()) };
+        unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, &mut is_cmp, buf.len()) };
         let new_path = executor.run_sync_with_cond(&buf, bid, sctx, order);
+
         let direction_out = executor.get_cond();
         if (direction_out == 0 && direction == 1) || (direction_out == 1 && direction == 0) {
-          info!("Flipped!!!!!!");
+          flipped += 1;
+          sol_conds += 1;
+          info!("flipped/reached/not_reached/sol_cons {}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, addr);
           unsafe { insert_flip(addr, ctx, direction, order); }
+        } else if (direction ==0 || direction == 1) && is_cmp  {
+          if !blacklist.contains(&addr) {
+            info!("not flipped {}, direction {}, direction_out {}, bid {} sctx {}", addr, direction, direction_out, bid, sctx);
+            //std::process::exit(0);
+          } 
+          if (direction_out != std::u32::MAX) {
+            reached += 1;
+          } else {
+          info!("not reached in tain verifier addr is {} bid {} sctx {} order is {}", addr, bid, sctx, order);
+            not_reached += 1;
+          }
+          sol_conds += 1;
+          info!("flipped/reached/not_reached/sol_cons {}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, addr);
         }
+
+        all_conds += 1;
+        info!("all_conds {}", all_conds);
+
+        if is_cmp {
+          let (read_end, write_end) = pipe().unwrap();
+          let handle = thread::spawn(move || {
+              branch_verifier(addr, ctx,order,direction,fid,read_end);
+              });
+
+          let mut child = executor.track(0, &buf,write_end);
+          close(write_end);
+
+          if handle.join().is_err() {
+            error!("Error happened in listening thread for branch verifier");
+          }
+
+          match child.try_wait() {
+            Ok(Some(status)) => println!("exited with: {}", status),
+              Ok(None) => {
+                println!("status not ready yet, let's really wait");
+                child.kill();
+                let res = child.wait();
+                println!("result: {:?}", res);
+              }
+            Err(e) => println!("error attempting to wait: {}", e),
+          }
+        }
+
+
         let mut solcount = 1;
         if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
           solcount = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
@@ -121,8 +213,8 @@ pub fn grading_loop(
         }
         branch_solcount.write().unwrap().insert((addr,ctx,order,direction), solcount);
         if new_path.0 {
-          info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {} direction {} bid {} sctx {}, it is a new input {}, saved as input #{}", 
-                fid, addr, ctx, order, direction, bid, sctx, new_path.0, new_path.1);
+       //   info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {} direction {} bid {} sctx {}, it is a new input {}, saved as input #{}", 
+        //        fid, addr, ctx, order, direction, bid, sctx, new_path.0, new_path.1);
           let mut count = 1;
           if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
             count = *branch_gencount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
@@ -143,7 +235,6 @@ pub fn grading_loop(
     }
   }
 }
-
 
 pub fn constraint_solver(shmid: i32, pipe: RawFd) {
   unsafe { run_solver(shmid, pipe) };
@@ -223,10 +314,15 @@ pub fn fuzz_loop(
       trace!("track time {}", used_us1);
       id = id + 1;
     } else {
-      let mut buf = depot.get_input_buf(depot.next_random());
-      run_afl_mutator(&mut executor,&mut buf);
-      thread::sleep(time::Duration::from_secs(1));
-      //break;
+      if config::RUNAFL {
+        info!("run afl mutator");
+        if let mut buf = depot.get_input_buf(depot.next_random()) {
+          run_afl_mutator(&mut executor,&mut buf);
+        }
+        thread::sleep(time::Duration::from_millis(10));
+      } else {
+        thread::sleep(time::Duration::from_secs(1));
+      }
     }
   }
 }
