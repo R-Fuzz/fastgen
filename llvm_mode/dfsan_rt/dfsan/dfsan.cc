@@ -47,13 +47,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#define XXH_STATIC_LINKING_ONLY
-#include "xxhash.h"
-
-#define OPTIMISTIC 1
-#define RESTRICT_CONSTRAINT 1
-#define PATH_PREFIX 0
-#define CTX_FILTER 0
 
 struct shmseg {
   int cnt;
@@ -89,10 +82,6 @@ static u32 __pipeid = 0;
 int mypipe;
 void* shmp;
 
-static XXH64_state_t state;
-static XXH64_state_t state_sym;
-static unsigned long long path_prefix_hash;
-static unsigned long long tmp_hash_symb;
 // filter?
 SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL u32 __taint_trace_callstack;
 SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL u32 __taint_trace_angcallstack;
@@ -750,15 +739,16 @@ static bool get_fmemcmp(dfsan_label label, dfsan_label *ret_label, u64* size, u8
 }
 
 static void __solve_cond(dfsan_label label,
-    void *addr, uint64_t ctx, u32 order, int skip, dfsan_label label1, dfsan_label label2, 
+    void *addr, uint64_t ctx, u32 order, 
     u8 r, u32 predicate, u32 bid, u32 sctx) {
   //session id, label, direction
   static int count = 0;
 
-  if ((get_label_info(label)->flags & B_FLIPPED)) {
-    //if (skip == 1)
+  if (label ==0 || (get_label_info(label)->flags & B_FLIPPED)) {
       return;
   }
+
+  printf("%u, %u, %lu, %lu, %lu, %u, 0, %u, %u\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order, bid, sctx);
 
   if (__solver_select != 1) {
     u32 reason  = rejectBranch(label);
@@ -787,8 +777,7 @@ static void __solve_cond(dfsan_label label,
     //printLabel(label);
     serialize(label);
     struct pipe_msg msg = {.type = 0, .tid = __tid, .label = label, 
-                .result = r, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx };
-    //sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 0\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order);
+                .result = r, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx};
     write(mypipe,&msg, sizeof(msg));
     fsync(mypipe);
     get_label_info(label)->flags |= B_FLIPPED;
@@ -818,13 +807,9 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
     u64 c1, u64 c2) {
 
   u32 order = 0;
-  int skip = 0;
   void *addr = __builtin_return_address(0);
   uint64_t acc = (uint64_t)addr;
   u8 r = get_const_result(c1,c2,predicate);
-  u8 sym_r = 1-r;
-  if ((op1 == 0 && op2 == 0))
-    return;
   auto itr = __branches.find({__taint_trace_callstack, addr});
   if (itr == __branches.end()) {
     itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
@@ -833,15 +818,16 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
     itr->second += 1;
     order = itr->second;
   } else {
-    skip += 1;
     return;
   }
 
   AOUT("solving cmp: %u %u %u %d %llu %llu @%p\n", op1, op2, size, predicate, c1, c2, addr);
 
-  dfsan_label temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
+  dfsan_label temp = 0;
+  if ((op1 != 0 || op2 != 0))
+    temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
 
-  __solve_cond(temp, addr, __taint_trace_callstack,order,skip,op1,op2,r,predicate,0,0);
+  __solve_cond(temp, addr, __taint_trace_callstack,order,r,predicate,0,0);
 }
 
 extern "C" void
@@ -855,9 +841,6 @@ __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
   void *addr = __builtin_return_address(0);
   uint64_t acc = (uint64_t)addr;
   r = r & 1;
-  u8 sym_r = 1-r;
-  if (label == 0)
-    return;
   auto itr = __branches.find({__taint_trace_callstack, addr});
   if (itr == __branches.end()) {
     itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
@@ -866,13 +849,13 @@ __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
     itr->second += 1;
     order = itr->second;
   } else {
-    skip += 1;
     return;
   }
 
-  AOUT("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
+  //AOUT("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
+  printf("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
 
-  __solve_cond(label, addr, __taint_trace_callstack, order, skip, label,0, r,0,bid,__taint_trace_angcallstack);
+  __solve_cond(label, addr, __taint_trace_callstack, order, r,0,bid,__taint_trace_angcallstack);
 }
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void

@@ -219,6 +219,10 @@ pub fn grading_loop(
   } else {
     let mut grade_count = 0;
     //let mut buf: Vec<u8> = Vec::with_capacity(config::MAX_INPUT_LEN);
+    let mut sol_conds = 0;
+    let mut flipped = 0;
+    let mut not_reached = 0;
+    let mut reached = 0;
     while running.load(Ordering::Relaxed) {
       let sol = bq.pop();
       if let Some(mut buf) = depot.get_input_buf(sol.fid as usize) {
@@ -226,8 +230,19 @@ pub fn grading_loop(
         let new_path = executor.run_sync_with_cond(&mut_buf, sol.bid, sol.sctx, sol.order);
         let direction_out = executor.get_cond();
         if (direction_out == 0 && sol.direction == 1) || (direction_out == 1 && sol.direction == 0) {
-          //info!("Flipped!!!!!!");
+          flipped += 1;
+          sol_conds += 1;
           branch_fliplist.write().unwrap().insert((sol.addr,sol.ctx,sol.order,sol.direction));
+          info!("flipped/reached/not_reached/sol_cons {}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, sol.addr);
+        } else if (sol.direction ==0 || sol.direction == 1) {
+          info!("not flipped {}, direction {}, direction_out {}, bid {} sctx {}", sol.addr, sol.direction, direction_out, sol.bid, sol.sctx);
+          if (direction_out != std::u32::MAX) {
+            reached += 1;
+          } else {
+            not_reached += 1;
+          }
+          sol_conds += 1;
+          info!("flipped/reached/not_reached/sol_cons {}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, sol.addr);
         }
         if new_path.0 {
           info!("grading input derived from on input {} by  \

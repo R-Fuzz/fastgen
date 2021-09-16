@@ -95,7 +95,6 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
         }
       }
 */
-      
       let mut task;
       if label.2 == 1 {
         task = SearchTask::new((reverse_cons_breakdown,true), 

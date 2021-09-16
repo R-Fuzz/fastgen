@@ -269,6 +269,7 @@ pub fn flip_op(node: &mut AstNode) -> bool {
     node.set_kind(op);
     return true;
   } else {
+    error!("flip error");
     return false;
   }
 }

@@ -415,7 +415,7 @@ impl SearchTaskBuilder {
         if result { opt_solved = true; break; }
       }
     }
-  
+
     if solve && opt_solved {
       let mut sub_clause_tried = 0;
       for mut disjoints in &mut res.0 {

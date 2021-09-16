@@ -7,7 +7,6 @@ set(DFSAN_RTL_SOURCES
   dfsan_interceptors.cc
   taint_allocator.cc
   union_util.cc
-	xxhash.cc
   union_hashtable.cc)
 
 set(DFSAN_RTL_HEADERS
