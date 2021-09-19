@@ -58,7 +58,10 @@ struct RGDSolution {
   uint64_t direction;
   uint32_t bid;
   uint32_t sctx;
+  //conditional branch or switch case
   bool is_cmp;
+  uint32_t predicate;
+  uint64_t target_cond;
 };
 
 
@@ -950,16 +953,21 @@ void solve(int shmid, int pipefd) {
 
 
     if (sol.size()) {
-      RGDSolution rsol = {sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx, msg.type == 0};
+      RGDSolution rsol = {sol, msg.tid, msg.addr, msg.ctx, 
+                          msg.localcnt, msg.result, msg.bid, msg.sctx, 
+                          msg.type == 0, msg.predicate, msg.target_cond};
       solution_queue.push(rsol);
       count++;
     }
-
+/*
     if (opt_sol.size()) {
-      RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx, msg.type == 0};
+      RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, 
+                          msg.localcnt, msg.result, msg.bid, msg.sctx,
+                          msg.type == 0, msg.predicate, msg.target_cond};
       solution_queue.push(rsol);
       count++;
     }
+*/
 
   }
   total_generation_count += count;
@@ -1003,7 +1011,7 @@ extern "C" {
 
   void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
       uint32_t *order, uint32_t *fid, uint64_t *direction, 
-      uint32_t* bid, uint32_t* sctx, bool* is_cmp, size_t size) {
+      uint32_t* bid, uint32_t* sctx, bool* is_cmp, uint32_t* predicate, uint64_t* target_cond, size_t size) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
     // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
     //asert(!solutio_queue.empty());
@@ -1020,6 +1028,8 @@ extern "C" {
     *bid = item.bid;
     *sctx = item.sctx;
     *is_cmp = item.is_cmp;
+    *predicate = item.predicate;
+    *target_cond = item.target_cond;
   }
 
   uint32_t get_next_input_id() {

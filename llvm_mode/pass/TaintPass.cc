@@ -1531,8 +1531,9 @@ void TaintFunction::visitCmpInst(CmpInst *I) {
   int predicate = I->getPredicate();
   ConstantInt *Predicate = ConstantInt::get(TT.ShadowTy, predicate);
 
+  ConstantInt *Cid = ConstantInt::get(TT.Int32Ty, 0);
   IRB.CreateCall(TT.TaintTraceCmpFn, {Op1Shadow, Op2Shadow, Size, Predicate,
-                 Op1, Op2});
+                 Op1, Op2, Cid});
 }
 
 void TaintVisitor::visitCmpInst(CmpInst &CI) {
@@ -1559,6 +1560,7 @@ void TaintFunction::visitSwitchInst(SwitchInst *I) {
   ConstantInt *Size = ConstantInt::get(TT.ShadowTy, size);
   ConstantInt *Predicate = ConstantInt::get(TT.ShadowTy, 32); // EQ, ==
 
+  ConstantInt *Cid = ConstantInt::get(TT.Int32Ty, TT.getInstructionId(I));
   for (auto C : I->cases()) {
     Value *CV = C.getCaseValue();
 
@@ -1566,7 +1568,7 @@ void TaintFunction::visitSwitchInst(SwitchInst *I) {
     Cond = IRB.CreateZExtOrTrunc(Cond, TT.Int64Ty);
     CV = IRB.CreateZExtOrTrunc(CV, TT.Int64Ty);
     IRB.CreateCall(TT.TaintTraceCmpFn, {CondShadow, TT.ZeroShadow, Size, Predicate,
-                   Cond, CV});
+                   Cond, CV, Cid});
   }
 }
 

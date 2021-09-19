@@ -7,7 +7,7 @@ pub struct CondStmtBase {
     pub cmpid: u32,
     pub context: u32,
     pub order: u32,
-    pub condition: u32,
+    pub condition: u64,
 }
 
 /*

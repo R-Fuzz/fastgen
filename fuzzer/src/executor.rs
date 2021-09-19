@@ -116,7 +116,7 @@ impl Executor {
   pub fn track(&mut self, id: usize, buf: &Vec<u8>, pipeid: RawFd) -> std::process::Child {
     //FIXME
     let e = format!("taint_file={} tid={} shmid={} pipeid={}", &self.cmd.out_file, &id, &self.shmid, pipeid.to_string());
-    info!("Track {}, e is {}", &id, e);
+    debug!("Track {}, e is {}", &id, e);
     self.envs.insert(
         defs::TAINT_OPTIONS.to_string(),
         e,
@@ -182,7 +182,7 @@ impl Executor {
     ret
   }
 
-  pub fn get_cond(&mut self) -> u32 {
+  pub fn get_cond(&mut self) -> u64 {
     return self.t_conds.cond.condition;
   }
 
