@@ -4,7 +4,7 @@ use crate::{
 };
 use std::sync::{
   atomic::{AtomicBool, Ordering},
-    Arc, RwLock,
+    Arc, RwLock, Mutex,
 };
 
 use std::time;
@@ -89,6 +89,7 @@ pub fn grading_loop(
     global_branches: Arc<GlobalBranches>,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    forklock: Arc<Mutex<u32>>,
     ) {
 
   let shmid =  unsafe {
@@ -104,6 +105,8 @@ pub fn grading_loop(
       global_branches,
       depot.clone(),
       shmid,
+      true,
+      forklock.clone(),
       );
 
   //let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32), u32>::new()));
@@ -120,15 +123,14 @@ pub fn grading_loop(
       //wait untill file fully flushed
       thread::sleep(time::Duration::from_millis(1));
       let buf = read_from_file(&fpath);
-      if buf.len() == 0 {
-        continue;
+      if let Some(buf) = buf {
+        //info!("grading {:?} and length is {}", &fpath, &buf.len());
+        //executor.run_norun(&buf);
+        let new_path = executor.run_sync(&buf);
+        info!("grading input {:?} it is a new input {}, saved as input {}", fpath, new_path.0, new_path.1);
+        //std::fs::remove_file(fpath).unwrap();
+        fid = fid + 1;
       }
-      //info!("grading {:?} and length is {}", &fpath, &buf.len());
-      //executor.run_norun(&buf);
-      let new_path = executor.run_sync(&buf);
-      info!("grading input {:?} it is a new input {}, saved as input {}", fpath, new_path.0, new_path.1);
-      //std::fs::remove_file(fpath).unwrap();
-      fid = fid + 1;
     }
   } else {
     let mut grade_count = 0;
@@ -153,7 +155,7 @@ pub fn grading_loop(
     while running.load(Ordering::Relaxed) {
       let id = unsafe { get_next_input_id() };
       if id != std::u32::MAX {
-        let mut buf: Vec<u8> = depot.get_input_buf(id as usize);
+        if let Some(mut buf) =  depot.get_input_buf(id as usize) {
         unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, &mut is_cmp, buf.len()) };
         let new_path = executor.run_sync_with_cond(&buf, bid, sctx, order);
 /*
@@ -182,17 +184,16 @@ pub fn grading_loop(
         info!("all_conds {}", all_conds);
 */
         if is_cmp {
-          let (read_end, write_end) = pipe().unwrap();
+          let (mut child, read_end) = executor.track(0, &buf);
+
           let handle = thread::spawn(move || {
               branch_verifier(addr, ctx,order,direction,fid,read_end);
               });
 
-          let mut child = executor.track(0, &buf,write_end);
-          close(write_end);
-
           if handle.join().is_err() {
             error!("Error happened in listening thread for branch verifier");
           }
+          close(read_end).map_err(|err| debug!("close read end {:?}", err)).ok();
 
           match child.try_wait() {
             Ok(Some(status)) => (),
@@ -226,6 +227,7 @@ pub fn grading_loop(
         }
         grade_count = grade_count + 1;
       }
+      }
       if grade_count % 1000 == 0 {
         let used_t1 = t_start.elapsed().as_secs() as u32;
         if used_t1 != 0 {
@@ -248,6 +250,7 @@ pub fn fuzz_loop(
     global_branches: Arc<GlobalBranches>,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     branch_solcount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
+    forklock: Arc<Mutex<u32>>,
     ) {
 
   let mut id: usize = 0;
@@ -270,21 +273,21 @@ pub fn fuzz_loop(
       global_branches,
       depot.clone(),
       shmid,
+      true, //not grading
+      forklock.clone(),
   );
 
   while running.load(Ordering::Relaxed) {
     if id < depot.get_num_inputs() {
 
-      let (read_end, write_end) = pipe().unwrap();
      // let handle = thread::spawn(move || {
       //    constraint_solver(shmid, read_end);
        //   });
 
       let t_start = time::Instant::now();
 
-      let buf = depot.get_input_buf(id);
-      let mut child = executor.track(id, &buf, write_end);
-      close(write_end);
+      if let Some(buf) = depot.get_input_buf(id) {
+      let (mut child, read_end) = executor.track(id, &buf);
 /*
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
@@ -292,7 +295,7 @@ pub fn fuzz_loop(
 */
       constraint_solver(shmid, read_end);
       info!("Done solving {}", id);
-      close(read_end);
+      close(read_end).map_err(|err| debug!("close read end {:?}", err)).ok();
 
       //let timeout = time::Duration::from_secs(90);
       //child.wait_timeout(timeout);
@@ -313,10 +316,11 @@ pub fn fuzz_loop(
       let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
       trace!("track time {}", used_us1);
       id = id + 1;
+      }
     } else {
       if config::RUNAFL {
         info!("run afl mutator");
-        if let mut buf = depot.get_input_buf(depot.next_random()) {
+        if let Some(mut buf) = depot.get_input_buf(depot.next_random()) {
           run_afl_mutator(&mut executor,&mut buf);
         }
         thread::sleep(time::Duration::from_millis(10));

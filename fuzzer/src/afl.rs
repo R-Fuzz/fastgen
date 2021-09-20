@@ -194,10 +194,13 @@ fn splice_two_vec(buf1: &Vec<u8>, buf2: &Vec<u8>) -> Option<Vec<u8>> {
 // GE algorithm
 fn splice(executor: &mut Executor, buf: &mut Vec<u8>) -> bool {
   let buf1 = buf.clone();
-  let buf2 = executor.random_input_buf();
-  if let Some(new_buf) = splice_two_vec(&buf1, &buf2) {
-    executor.run_sync(&new_buf);
-    true
+  if let Some(buf2) = executor.random_input_buf() {
+    if let Some(new_buf) = splice_two_vec(&buf1, &buf2) {
+      executor.run_sync(&new_buf);
+      true
+    } else {
+      false
+    }
   } else {
     false
   }

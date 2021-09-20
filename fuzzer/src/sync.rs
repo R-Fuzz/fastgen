@@ -24,7 +24,9 @@ pub fn sync_depot(executor: &mut Executor, running: Arc<AtomicBool>, dir: &Path)
                     fs::metadata(path).expect("Could not fetch metadata.").len() as usize;
                 if file_len < config::MAX_INPUT_LEN {
                     let buf = read_from_file(path);
-                    executor.run_sync(&buf);
+                    if let Some(rawbuf) = buf {
+                      executor.run_norun(&rawbuf);
+                    }
                 } else {
                     warn!("Seed discarded, too long: {:?}", path);
                 }
@@ -101,7 +103,9 @@ fn sync_one_afl_dir(
                         if file_len < config::MAX_INPUT_LEN {
                             info!("sync {:?}", path);
                             let buf = read_from_file(path);
-                            executor.run_norun(&buf);
+                            if let Some(rawbuf) = buf {
+                              executor.run_norun(&rawbuf);
+                            }
                         }
                         if id > max_id {
                             max_id = id;

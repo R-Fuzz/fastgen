@@ -5,7 +5,7 @@ use std::{
     path::{PathBuf, Path},
     sync::{
       atomic::{AtomicBool, Ordering},
-      Arc, RwLock,
+      Arc, RwLock, Mutex,
     },
     thread,
 };
@@ -53,6 +53,7 @@ pub fn fuzz_main(
   let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
   let branch_solcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
   let running = Arc::new(AtomicBool::new(true));
+  let forklock = Arc::new(Mutex::new(0));
   set_sigint_handler(running.clone());
 
   let mut executor = executor::Executor::new(
@@ -60,6 +61,8 @@ pub fn fuzz_main(
       global_branches.clone(),
       depot.clone(),
       0,
+      false, //not grading
+      forklock.clone(),
       );
 
   sync::sync_depot(&mut executor, running.clone(), &depot.dirs.seeds_dir);
@@ -78,9 +81,10 @@ pub fn fuzz_main(
     let cmd = command_option.specify(3+g);
     let bg = branch_gencount.clone();
     let bs = branch_solcount.clone();
+    let fk = forklock.clone();
     let handle = thread::spawn(move || {
         //fuzz_loop::branch_checking(r, cmd, d, b, bg, bs);
-        fuzz_loop::grading_loop(r, cmd, d, b, bg, bs);
+        fuzz_loop::grading_loop(r, cmd, d, b, bg, bs, fk);
         });
     handlers.push(handle);
   }
@@ -92,8 +96,9 @@ pub fn fuzz_main(
     let cmd = command_option.specify(2);
     let bg = branch_gencount.clone();
     let bs = branch_solcount.clone();
+    let fk = forklock.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs, fk);
         });
     handlers.push(handle);
   }
@@ -105,8 +110,9 @@ pub fn fuzz_main(
     let cmd = command_option.specify(3);
     let bg = branch_gencount.clone();
     let bs = branch_solcount.clone();
+    let fk = forklock.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs, fk);
         });
     handlers.push(handle);
   } 

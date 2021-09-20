@@ -11,7 +11,7 @@ pub fn get_file_name(dir: &Path, id: usize) -> PathBuf {
     dir.join(file_name)
 }
 
-pub fn read_from_file(path: &Path) -> Vec<u8> {
+pub fn read_from_file(path: &Path) -> Option<Vec<u8>> {
     let mut file;
     let mut i = 0;
     loop {
@@ -27,7 +27,8 @@ pub fn read_from_file(path: &Path) -> Vec<u8> {
         i += 1;
         if i == 10 {
             thread::sleep(time::Duration::from_millis(10));
-           // panic!();
+            return None
+            // panic!();
         }
     }
 
@@ -35,8 +36,8 @@ pub fn read_from_file(path: &Path) -> Vec<u8> {
 
     match file.read_to_end(&mut buf) {
         Ok(_) => (),
-        _ => panic!("Failed to read to end on file {:?}", path),
+        Err(error) =>  { warn!("Failed to read to end on file {:?} error {:?}", path, error); return None; },
     };
 
-    buf
+    Some(buf)
 }

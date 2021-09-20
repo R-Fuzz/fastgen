@@ -1,4 +1,4 @@
 #!/bin/bash
 rm -rf corpus
-RUST_LOG=info ../target/release/fastgen --sync_afl -i input_tiff -o corpus -t ./tiff.track -- ./tiff.fast @@
+RUST_LOG=info ../target/release/fastgen --sync_afl -i input_objdump -o corpus -t ./objdump.tracko1 -- ./objdump.fast -D @@
 

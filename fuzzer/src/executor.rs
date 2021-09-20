@@ -5,7 +5,7 @@ use crate::pipe_fd::PipeFd;
 use crate::forksrv::Forksrv;
 
 use crate::{
-  branches, command, shm_conds,
+  branches, command,shm_conds,
     depot, 
 };
 use fastgen_common::{config, defs};
@@ -15,24 +15,71 @@ use std::{
     process::{Command, Stdio},
     sync::{
       atomic::{compiler_fence, Ordering},
-      Arc,
+      Arc, Mutex,
     },
     time,
 };
 use wait_timeout::ChildExt;
 use std::os::unix::io::RawFd;
+use std::os::unix::process::CommandExt;
+use std::io::{self};
+use nix::unistd::{close, pipe, read, write};
+
+pub fn dup2(fd: i32, device: i32) -> Result<(), &'static str> {
+  match unsafe { libc::dup2(fd, device) } {
+    -1 => Err("dup2 failed"),
+      _ => Ok(()),
+  }
+}
+
+pub trait ConfigTrack {
+  fn setpipe(
+      &mut self,
+      track_read: RawFd,
+      track_write: RawFd,
+      ) -> &mut Self;
+}
+
+
+impl ConfigTrack for Command {
+  fn setpipe(
+      &mut self,
+      track_read: RawFd,
+      track_write: RawFd,
+      ) -> &mut Self {
+    let func = move || {
+
+      match dup2(track_write, 200) {
+        Ok(_) => (),
+        Err(_) => {
+          return Err(io::Error::last_os_error());
+        }
+      }
+      unsafe {
+        libc::close(track_read);
+        libc::close(track_write);
+      }
+      Ok(())
+    };
+
+    unsafe { self.pre_exec(func) }
+  }
+}
+
 
 pub struct Executor {
   pub cmd: command::CommandOpt,
       pub branches: branches::Branches,
       pub t_conds: shm_conds::ShmConds,
       envs: HashMap<String, String>,
+      //forksrv: Result<Forksrv,&'static str>,
       forksrv: Option<Forksrv>,
       depot: Arc<depot::Depot>,
       fd: PipeFd,
       tmout_cnt: usize,
       pub has_new_path: bool,
       pub shmid: i32,
+      pub fl: Arc<Mutex<u32>>,
 }
 
 impl Executor {
@@ -41,6 +88,8 @@ impl Executor {
       global_branches: Arc<branches::GlobalBranches>,
       depot: Arc<depot::Depot>,
       shmid: i32,
+      is_grading: bool,
+      forklock: Arc<Mutex<u32>>,
       ) -> Self {
     // ** Share Memory **
     let branches = branches::Branches::new(global_branches);
@@ -70,7 +119,7 @@ impl Executor {
         );
 
     let fd = pipe_fd::PipeFd::new(&cmd.out_file);
-    let forksrv = Some(forksrv::Forksrv::new(
+    let forksrv = if is_grading { forksrv::Forksrv::new(
           &cmd.forksrv_socket_path,
           &cmd.main,
           &envs,
@@ -79,7 +128,10 @@ impl Executor {
           cmd.uses_asan,
           cmd.time_limit,
           cmd.mem_limit,
-          ));
+          forklock.clone(),
+          ) } else {
+            None
+          };
 
     Self {
       cmd,
@@ -92,10 +144,12 @@ impl Executor {
         tmout_cnt: 0,
         has_new_path: false,
         shmid,
+        fl: forklock.clone(),
     }
   }
 
   pub fn rebind_forksrv(&mut self) {
+
     {
       // delete the old forksrv
       self.forksrv = None;
@@ -109,13 +163,15 @@ impl Executor {
         self.cmd.uses_asan,
         self.cmd.time_limit,
         self.cmd.mem_limit,
+        self.fl.clone(),
         );
-    self.forksrv = Some(fs);
+    self.forksrv = fs;
+
   }
 
-  pub fn track(&mut self, id: usize, buf: &Vec<u8>, pipeid: RawFd) -> std::process::Child {
+  pub fn track(&mut self, id: usize, buf: &Vec<u8>) -> (std::process::Child, RawFd) {
     //FIXME
-    let e = format!("taint_file={} tid={} shmid={} pipeid={}", &self.cmd.out_file, &id, &self.shmid, pipeid.to_string());
+    let e = format!("taint_file={} tid={} shmid={} pipeid=200", &self.cmd.out_file, &id, &self.shmid);
     debug!("Track {}, e is {}", &id, e);
     self.envs.insert(
         defs::TAINT_OPTIONS.to_string(),
@@ -126,23 +182,24 @@ impl Executor {
     self.write_test(buf);
 
     compiler_fence(Ordering::SeqCst);
-    let child = self.run_target(
+    let (child, read_end) = self.run_track(
         &self.cmd.track,
         config::MEM_LIMIT_TRACK,
         //self.cmd.time_limit *
         config::TIME_LIMIT_TRACK,
         );
     compiler_fence(Ordering::SeqCst);
-    /*
-       if ret_status != StatusType::Normal {
-       error!(
-       "Crash or hang while tracking! -- {:?},  id: {}",
-       ret_status, id
-       );
-       return;
-       }
-     */
-    return child;
+    (child,read_end)
+/*
+    if ret_status != StatusType::Normal {
+      error!(
+          "Crash or hang while tracking! -- {:?},  id: {}",
+          ret_status, id
+          );
+      return;
+    }
+
+*/
   }
 
 
@@ -186,6 +243,7 @@ impl Executor {
     return self.t_conds.cond.condition;
   }
 
+
   pub fn run_norun(&mut self, buf: &Vec<u8>)  {
     let status = StatusType::Normal;
     self.depot.save(status, &buf);
@@ -199,6 +257,7 @@ impl Executor {
   fn check_timeout(&mut self, status: StatusType) -> StatusType {
     let mut ret_status = status;
     if ret_status == StatusType::Error {
+      warn!("timeout we are rebinding forksrv");
       self.rebind_forksrv();
       ret_status = StatusType::Timeout;
     }
@@ -222,12 +281,16 @@ impl Executor {
     self.branches.clear_trace();
 
     compiler_fence(Ordering::SeqCst);
-    let ret_status = if let Some(ref mut fs) = self.forksrv {
-      fs.run()
+    let mut ret_status = StatusType::Error;
+    if let Some(ref mut fs) = self.forksrv {
+      ret_status = fs.run()
     } else {
-      warn!("run does not go through forksrv");
-      //self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit)
-      StatusType::Normal
+      warn!("run does not go through forksrv and we rebinding");
+      //ret_status = self.run_target(&self.cmd.main, self.cmd.mem_limit, self.cmd.time_limit);
+      self.rebind_forksrv();
+      if let Some(ref mut fs) = self.forksrv {
+        ret_status = fs.run()
+      }
     };
     compiler_fence(Ordering::SeqCst);
 
@@ -235,7 +298,7 @@ impl Executor {
   }
 
 
-  pub fn random_input_buf(&self) -> Vec<u8> {
+  pub fn random_input_buf(&self) -> Option<Vec<u8>> {
     let id = self.depot.next_random();
     self.depot.get_input_buf(id)
   }
@@ -247,13 +310,12 @@ impl Executor {
     }
   }
 
-
   fn run_target(
       &self,
       target: &(String, Vec<String>),
       mem_limit: u64,
       time_limit: u64,
-      ) -> std::process::Child {
+      ) -> StatusType {
     let mut cmd = Command::new(&target.0);
     let mut child = cmd
       .args(&target.1)
@@ -269,33 +331,86 @@ impl Executor {
       .expect("Could not run target");
 
 
-    return child;
-    /*
-       let timeout = time::Duration::from_secs(time_limit);
-       let ret = match child.wait_timeout(timeout) {
-       Ok(Some(status)) => {
-       if let Some(status_code) = status.code() {
-       if self.cmd.uses_asan && status_code == defs::MSAN_ERROR_CODE
-       {
-       StatusType::Crash
-       } else {
-       StatusType::Normal
-       }
-       } else {
-       StatusType::Crash
-       }
-       }
-       Ok(None) => {
-    // Timeout
-    // child hasn't exited yet
-    child.kill();
-    child.wait();
-    StatusType::Timeout
-    }
-    Err(_) => { StatusType::Timeout }
+    let timeout = time::Duration::from_secs(time_limit);
+    let ret = match child.wait_timeout(timeout) {
+    //let ret = match child.try_wait() {
+      Ok(Some(status)) => {
+        if let Some(status_code) = status.code() {
+          if self.cmd.uses_asan && status_code == defs::MSAN_ERROR_CODE
+          {
+            StatusType::Crash
+          } else {
+            StatusType::Normal
+          }
+        } else {
+          StatusType::Crash
+        }
+      }
+      Ok(None) => {
+        // Timeout
+        // child hasn't exited yet
+        child.kill().map_err(|err| warn!("child kill {:?}", err)).ok();
+        child.wait().map_err(|err| warn!("child wait {:?}", err)).ok();
+        StatusType::Timeout
+      }
+      Err(_) => { StatusType::Timeout }
     };
-     */
-    //ret
+    ret
+  }
+
+  fn run_track(
+      &self,
+      target: &(String, Vec<String>),
+      mem_limit: u64,
+      time_limit: u64,
+      ) -> (std::process::Child, RawFd) {
+    let guard = self.fl.lock().unwrap();
+    let (read_end, write_end) = pipe().unwrap();
+    let mut cmd = Command::new("timeout");
+    let mut child = cmd
+      .arg("5")
+      .arg(&target.0)
+      .args(&target.1)
+      //  .stdin(Stdio::null())
+      .env_clear()
+      .envs(&self.envs)
+      .stdout(Stdio::null())
+      .stderr(Stdio::null())
+      .mem_limit(mem_limit.clone())
+      .setsid()
+      .setpipe(read_end, write_end)
+      .pipe_stdin(self.fd.as_raw_fd(), self.cmd.is_stdin)
+      .spawn()
+      .expect("Could not run target");
+
+    close(write_end);
+    (child, read_end)
+/*
+    let timeout = time::Duration::from_secs(time_limit);
+    let ret = match child.wait_timeout(timeout) {
+      Ok(Some(status)) => {
+        if let Some(status_code) = status.code() {
+          if self.cmd.uses_asan && status_code == defs::MSAN_ERROR_CODE
+          {
+            StatusType::Crash
+          } else {
+            StatusType::Normal
+          }
+        } else {
+          StatusType::Crash
+        }
+      }
+      Ok(None) => {
+        // Timeout
+        // child hasn't exited yet
+        child.kill().map_err(|err| warn!("child kill {:?}", err)).ok();
+        child.wait().map_err(|err| warn!("child wait {:?}", err)).ok();
+        StatusType::Timeout
+      }
+      Err(_) => { StatusType::Timeout }
+    };
+    ret
+*/
   }
 
 }
