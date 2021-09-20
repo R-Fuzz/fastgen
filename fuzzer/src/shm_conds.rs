@@ -29,7 +29,7 @@ cond: shm::SHM::<CondStmtBase>::new(),
     self.cond.cmpid = cmpid;
     self.cond.context = ctx;
     self.cond.order= order;
-    self.cond.condition = std::u64::MAX;
+    self.cond.condition = std::u32::MAX;
   }
 
 }

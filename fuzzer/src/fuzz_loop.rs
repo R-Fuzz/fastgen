@@ -72,10 +72,9 @@ pub fn branch_verifier(addr: u64, ctx: u64,
       FLIPPED += 1;
     } else if status == 4 {
       NOT_REACHED += 1;
+      info!("not reached in tain verifier addr is {}  order is {}", addr, order);
     }
-    if ALL % 100 == 0 {
-      info!("verify ({},{},{},{},{}), status {}, flipped/reached/not_reached/all: {}/{}/{}/{}", addr,ctx,order,direction,fid, status, FLIPPED, REACHED, NOT_REACHED, ALL);
-    }
+    info!("verify ({},{},{},{},{}), status {}, flipped/reached/not_reached/all: {}/{}/{}/{}", addr,ctx,order,direction,fid, status, FLIPPED, REACHED, NOT_REACHED, ALL);
   }
 }
 
@@ -146,8 +145,6 @@ pub fn grading_loop(
     let mut reached = 0;
     let mut not_reached = 0;
     let mut is_cmp = false;
-    let mut predicate = 0; 
-    let mut target_cond = 0; 
 
     let mut blacklist: HashSet<u64> = HashSet::new();
 
@@ -155,48 +152,32 @@ pub fn grading_loop(
       let id = unsafe { get_next_input_id() };
       if id != std::u32::MAX {
         let mut buf: Vec<u8> = depot.get_input_buf(id as usize);
-        unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, 
-                      &mut is_cmp, &mut predicate, &mut target_cond, buf.len()) };
+        unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, &mut is_cmp, buf.len()) };
         let new_path = executor.run_sync_with_cond(&buf, bid, sctx, order);
 
         let direction_out = executor.get_cond();
         if (direction_out == 0 && direction == 1) || (direction_out == 1 && direction == 0) {
           flipped += 1;
           sol_conds += 1;
+          info!("flipped/reached/not_reached/sol_cons {}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, addr);
           unsafe { insert_flip(addr, ctx, direction, order); }
-        } else if is_cmp && predicate == 0 {  //condition
-          if (direction_out != std::u64::MAX) {
-            reached += 1;
-          } else {
-            not_reached += 1;
-          }
-          sol_conds += 1;
-        } else if is_cmp && predicate != 0 {  //switch case
-          sol_conds += 1;
-          if (direction_out != std::u64::MAX) {
-            reached += 1;
-          } else {
-            not_reached += 1;
-          }
-          if direction == 0 {
-            if direction_out == target_cond as u64 {
-              flipped += 1;
-              reached -= 1;
-              unsafe { insert_flip(addr, ctx, direction, order); }
-            }
+        } else if (direction ==0 || direction == 1) && is_cmp  {
+          if !blacklist.contains(&addr) {
+            info!("not flipped {}, direction {}, direction_out {}, bid {} sctx {}", addr, direction, direction_out, bid, sctx);
+            //std::process::exit(0);
           } 
-          if direction == 1 {
-            if direction_out != target_cond as u64 {
-              flipped += 1;
-              reached -= 1;
-              unsafe { insert_flip(addr, ctx, direction, order); }
-            }
+          if (direction_out != std::u32::MAX) {
+            reached += 1;
+          } else {
+          info!("not reached in tain verifier addr is {} bid {} sctx {} order is {}", addr, bid, sctx, order);
+            not_reached += 1;
           }
-        }
-
-        if sol_conds % 100 == 0 {
+          sol_conds += 1;
           info!("flipped/reached/not_reached/sol_cons {}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, addr);
         }
+
+        all_conds += 1;
+        info!("all_conds {}", all_conds);
 
         if is_cmp {
           let (read_end, write_end) = pipe().unwrap();
@@ -214,8 +195,10 @@ pub fn grading_loop(
           match child.try_wait() {
             Ok(Some(status)) => println!("exited with: {}", status),
               Ok(None) => {
+                println!("status not ready yet, let's really wait");
                 child.kill();
                 let res = child.wait();
+                println!("result: {:?}", res);
               }
             Err(e) => println!("error attempting to wait: {}", e),
           }

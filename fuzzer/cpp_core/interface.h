@@ -11,8 +11,6 @@ struct pipe_msg {
   uint32_t localcnt; 
   uint32_t bid;
   uint32_t sctx;
-  uint32_t predicate;
-  uint64_t target_cond;
 } __attribute__((packed));
 
 void init(bool saving_whole, bool use_codecache);

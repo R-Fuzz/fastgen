@@ -755,12 +755,13 @@ void AngoraLLVMPass::visitBranchInst(Instruction *Inst) {
     LoadInst *CurCtx = IRB.CreateLoad(AngoraContext);
     setInsNonSan(CurCtx);
     CallInst *ProxyCall =
-        IRB.CreateCall(TraceCmp, {Cid, CurCtx, CondExt});
+        IRB.CreateCall(TraceCmp, {CondExt, Cid, CurCtx});
     setInsNonSan(ProxyCall);
   }
 }
 
 void AngoraLLVMPass::visitSwitchInst(Module &M, Instruction *Inst) {
+  return;
   SwitchInst *Sw = dyn_cast<SwitchInst>(Inst);
   Value *Cond = Sw->getCondition();
 
@@ -776,12 +777,47 @@ void AngoraLLVMPass::visitSwitchInst(Module &M, Instruction *Inst) {
   Constant *Cid = ConstantInt::get(Int32Ty, getInstructionId(Inst,false));
   IRBuilder<> IRB(Sw);
 
-  Value *CondExt = IRB.CreateZExt(Cond, Int64Ty);
-  setValueNonSan(CondExt);
-  LoadInst *CurCtx = IRB.CreateLoad(AngoraContext);
-  setInsNonSan(CurCtx);
-  CallInst *ProxyCall = IRB.CreateCall(TraceSw, {Cid, CurCtx, CondExt});
-  setInsNonSan(ProxyCall);
+  if (FastMode) {
+    LoadInst *CurCid = IRB.CreateLoad(AngoraCondId);
+    setInsNonSan(CurCid);
+    Value *CmpEq = IRB.CreateICmpEQ(Cid, CurCid);
+    setValueNonSan(CmpEq);
+    BranchInst *BI = cast<BranchInst>(
+        SplitBlockAndInsertIfThen(CmpEq, Sw, false, ColdCallWeights));
+    setInsNonSan(BI);
+    IRBuilder<> ThenB(BI);
+    Value *CondExt = ThenB.CreateZExt(Cond, Int64Ty);
+    setValueNonSan(CondExt);
+    LoadInst *CurCtx = ThenB.CreateLoad(AngoraContext);
+    setInsNonSan(CurCtx);
+    CallInst *ProxyCall = ThenB.CreateCall(TraceSw, {Cid, CurCtx, CondExt});
+    setInsNonSan(ProxyCall);
+  } else if (TrackMode) {
+    Value *SizeArg = ConstantInt::get(Int32Ty, num_bytes);
+    SmallVector<Constant *, 16> ArgList;
+    for (auto It : Sw->cases()) {
+      Constant *C = It.getCaseValue();
+      if (C->getType()->getScalarSizeInBits() > Int64Ty->getScalarSizeInBits())
+        continue;
+      ArgList.push_back(ConstantExpr::getCast(CastInst::ZExt, C, Int64Ty));
+    }
+
+    ArrayType *ArrayOfInt64Ty = ArrayType::get(Int64Ty, ArgList.size());
+    GlobalVariable *ArgGV = new GlobalVariable(
+        M, ArrayOfInt64Ty, false, GlobalVariable::InternalLinkage,
+        ConstantArray::get(ArrayOfInt64Ty, ArgList),
+        "__angora_switch_arg_values");
+    Value *SwNum = ConstantInt::get(Int32Ty, ArgList.size());
+    Value *ArrPtr = IRB.CreatePointerCast(ArgGV, Int64PtrTy);
+    setValueNonSan(ArrPtr);
+    Value *CondExt = IRB.CreateZExt(Cond, Int64Ty);
+    setValueNonSan(CondExt);
+    LoadInst *CurCtx = IRB.CreateLoad(AngoraContext);
+    setInsNonSan(CurCtx);
+    CallInst *ProxyCall = IRB.CreateCall(
+        TraceSwTT, {Cid, CurCtx, SizeArg, CondExt, SwNum, ArrPtr});
+    setInsNonSan(ProxyCall);
+  }
 }
 
 void AngoraLLVMPass::visitExploitation(Instruction *Inst) {

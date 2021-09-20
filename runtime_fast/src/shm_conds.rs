@@ -51,7 +51,7 @@ impl ShmConds {
       false
       }
 
-    pub fn update_cmp(&mut self, condition: u64) -> u64 {
+    pub fn update_cmp(&mut self, condition: u32) -> u32 {
         //self.cond.arg1 = arg1;
         //self.cond.arg2 = arg2;
         //eprintln!("update_cmp {} {} condition {}", self.cond.cmpid, self.cond.context, condition);

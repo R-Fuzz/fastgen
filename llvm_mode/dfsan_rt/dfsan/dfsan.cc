@@ -123,9 +123,6 @@ struct pipe_msg {
   u32 localcnt; 
   u32 bid;
   u32 sctx;
-  //verify switch-case
-  u32 predicate;
-  u64 target_cond;
 } __attribute__((packed));
 
 Flags __dfsan::flags_data;
@@ -741,17 +738,17 @@ static bool get_fmemcmp(dfsan_label label, dfsan_label *ret_label, u64* size, u8
   return true;
 }
 
-
-//target cond for switch cases
 static void __solve_cond(dfsan_label label,
     void *addr, uint64_t ctx, u32 order, 
-    u8 r, u32 predicate, u32 bid, u32 sctx, u32 target_cond) {
+    u8 r, u32 predicate, u32 bid, u32 sctx) {
   //session id, label, direction
   static int count = 0;
 
   if (label ==0 || (get_label_info(label)->flags & B_FLIPPED)) {
       return;
   }
+
+  printf("%u, %u, %lu, %lu, %lu, %u, 0, %u, %u\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order, bid, sctx);
 
   if (__solver_select != 1) {
     u32 reason  = rejectBranch(label);
@@ -780,7 +777,7 @@ static void __solve_cond(dfsan_label label,
     //printLabel(label);
     serialize(label);
     struct pipe_msg msg = {.type = 0, .tid = __tid, .label = label, 
-                .result = r, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx, .predicate = predicate, .target_cond = target_cond};
+                .result = r, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx};
     write(mypipe,&msg, sizeof(msg));
     fsync(mypipe);
     get_label_info(label)->flags |= B_FLIPPED;
@@ -807,7 +804,7 @@ uint8_t get_const_result(uint64_t c1, uint64_t c2, uint32_t predicate) {
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
 __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
-    u64 c1, u64 c2, u32 bid) {
+    u64 c1, u64 c2) {
 
   u32 order = 0;
   void *addr = __builtin_return_address(0);
@@ -824,13 +821,13 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
     return;
   }
 
-  AOUT("solving cmp: %u %u %u %d %llu %llu %u %u @%p\n", op1, op2, size, predicate, c1, c2, bid, __taint_trace_angcallstack, addr);
+  AOUT("solving cmp: %u %u %u %d %llu %llu @%p\n", op1, op2, size, predicate, c1, c2, addr);
 
   dfsan_label temp = 0;
   if ((op1 != 0 || op2 != 0))
     temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
 
-  __solve_cond(temp, addr, __taint_trace_callstack,order,r,predicate,bid,__taint_trace_angcallstack, c2);
+  __solve_cond(temp, addr, __taint_trace_callstack,order,r,predicate,0,0);
 }
 
 extern "C" void
@@ -855,9 +852,10 @@ __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
     return;
   }
 
-  AOUT("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
+  //AOUT("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
+  printf("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
 
-  __solve_cond(label, addr, __taint_trace_callstack, order, r,0,bid,__taint_trace_angcallstack,0);
+  __solve_cond(label, addr, __taint_trace_callstack, order, r,0,bid,__taint_trace_angcallstack);
 }
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
