@@ -70,11 +70,13 @@ pub fn branch_verifier(addr: u64, ctx: u64,
       REACHED += 1;
     } else if status == 1 {
       FLIPPED += 1;
+      insert_flip(addr, ctx, direction, order);
     } else if status == 4 {
       NOT_REACHED += 1;
-      info!("not reached in tain verifier addr is {}  order is {}", addr, order);
     }
-    info!("verify ({},{},{},{},{}), status {}, flipped/reached/not_reached/all: {}/{}/{}/{}", addr,ctx,order,direction,fid, status, FLIPPED, REACHED, NOT_REACHED, ALL);
+    if ALL % 100 == 0 {
+      info!("verify ({},{},{},{},{}), status {}, flipped/reached/not_reached/all: {}/{}/{}/{}", addr,ctx,order,direction,fid, status, FLIPPED, REACHED, NOT_REACHED, ALL);
+    }
   }
 }
 
@@ -154,7 +156,7 @@ pub fn grading_loop(
         let mut buf: Vec<u8> = depot.get_input_buf(id as usize);
         unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, &mut is_cmp, buf.len()) };
         let new_path = executor.run_sync_with_cond(&buf, bid, sctx, order);
-
+/*
         let direction_out = executor.get_cond();
         if (direction_out == 0 && direction == 1) || (direction_out == 1 && direction == 0) {
           flipped += 1;
@@ -178,7 +180,7 @@ pub fn grading_loop(
 
         all_conds += 1;
         info!("all_conds {}", all_conds);
-
+*/
         if is_cmp {
           let (read_end, write_end) = pipe().unwrap();
           let handle = thread::spawn(move || {
@@ -193,12 +195,10 @@ pub fn grading_loop(
           }
 
           match child.try_wait() {
-            Ok(Some(status)) => println!("exited with: {}", status),
+            Ok(Some(status)) => (),
               Ok(None) => {
-                println!("status not ready yet, let's really wait");
                 child.kill();
                 let res = child.wait();
-                println!("result: {:?}", res);
               }
             Err(e) => println!("error attempting to wait: {}", e),
           }
@@ -213,8 +213,8 @@ pub fn grading_loop(
         }
         branch_solcount.write().unwrap().insert((addr,ctx,order,direction), solcount);
         if new_path.0 {
-       //   info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {} direction {} bid {} sctx {}, it is a new input {}, saved as input #{}", 
-        //        fid, addr, ctx, order, direction, bid, sctx, new_path.0, new_path.1);
+          info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {} direction {} bid {} sctx {}, it is a new input {}, saved as input #{}", 
+                fid, addr, ctx, order, direction, bid, sctx, new_path.0, new_path.1);
           let mut count = 1;
           if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
             count = *branch_gencount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
