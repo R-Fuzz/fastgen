@@ -210,8 +210,8 @@ impl Executor {
 
     if has_new_path {
       self.has_new_path = true;
+      new_id = self.depot.save(status, &buf) - 1;
     }
-    new_id = self.depot.save(status, &buf) - 1;
     (has_new_path,new_id)
   }
 
