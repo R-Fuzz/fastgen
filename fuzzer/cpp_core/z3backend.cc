@@ -634,9 +634,25 @@ void mark_pp(uint64_t digest) {
 // labe: if 0 concreate
 // addr: branch address
 // output: true: solve the constraints false: don't solve the constraints
+static uint8_t COUNT_LOOKUP[256] = {
+    0, 1, 2, 4, 8, 8, 8, 8, 16, 16, 16, 16, 16, 16, 16, 16, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
+    32, 32, 32, 32, 32, 32, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+    64, 64, 64, 64, 64, 64, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+};
+
 
 bool bcount_filter(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t order) {
-  std::tuple<uint64_t,uint64_t, uint64_t, uint32_t> key{addr,ctx,direction,order};
+  uint32_t bucket = COUNT_LOOKUP[order-1]; 
+  std::tuple<uint64_t,uint64_t, uint64_t, uint8_t> key{addr,ctx,direction,bucket};
   bcount_mutex.lock();
   bool res = false;
   auto itr = bcount_dedup.find(key);
@@ -656,7 +672,8 @@ bool bcount_filter(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t ord
 }
 
 void insert_flip_status(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t order) {
-  std::tuple<uint64_t,uint64_t, uint64_t, uint32_t> key{addr,ctx,direction,order};
+  uint32_t bucket = COUNT_LOOKUP[order-1]; 
+  std::tuple<uint64_t,uint64_t, uint64_t, uint32_t> key{addr,ctx,direction,bucket};
   bcount_mutex.lock();
   bcount_dedup[key] = 10;
   bcount_mutex.unlock();
@@ -937,15 +954,15 @@ void solve(int shmid, int pipefd) {
       if (read(pipefd, data, msg.result) == msg.result) {
         //bool try_solve = filter(addr, label, direction, &path_prefix);
         bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
-        if (try_solve)
-          handle_fmemcmp(data, msg.label, msg.result, msg.tid, msg.addr, sol);
+        //if (try_solve)
+         // handle_fmemcmp(data, msg.label, msg.result, msg.tid, msg.addr, sol);
       } else {
         // pipe corruption
         break;
       }
     } else if (msg.type == 1) { //gep constraint
       bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
-      solve_gep(msg.label, msg.result, try_solve, msg.tid, sol, opt_sol);
+      //solve_gep(msg.label, msg.result, try_solve, msg.tid, sol, opt_sol);
     }
 
 
@@ -954,13 +971,13 @@ void solve(int shmid, int pipefd) {
       solution_queue.push(rsol);
       count++;
     }
-
+/*
     if (opt_sol.size()) {
       RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx, msg.type == 0};
       solution_queue.push(rsol);
       count++;
     }
-
+*/
   }
   total_generation_count += count;
   total_time += getTimeStamp() - one_start;

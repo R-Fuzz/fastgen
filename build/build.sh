@@ -23,6 +23,7 @@ rm -rf ${PREFIX2}
 mkdir -p ${PREFIX2}
 mkdir -p ${PREFIX2}/lib
 #cp target/release/fuzzer ${PREFIX2}
+cp target/release/*.a ${PREFIX1}/lib
 cp target/release/*.a ${PREFIX2}/lib
 
 

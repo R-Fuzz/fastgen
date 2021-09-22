@@ -485,6 +485,8 @@ fun:__dfsw_*=discard
 # Ignores taint wrappers.
 fun:__taint_*=uninstrumented
 fun:__taint_*=discard
+fun:__grade_*=uninstrumented
+fun:__grade_*=discard
 
 # Don't add extra parameters to the Fuzzer callback.
 #fun:LLVMFuzzerTestOneInput=uninstrumented

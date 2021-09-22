@@ -6,8 +6,11 @@
 
 extern __thread uint32_t __angora_prev_loc;
 extern __thread uint32_t __angora_context;
+extern __thread uint32_t __taint_trace_callstack;
+
 
 void __angora_reset_context() {
   __angora_prev_loc = 0;
   __angora_context = 0;
+  __taint_trace_callstack = 0;
 }

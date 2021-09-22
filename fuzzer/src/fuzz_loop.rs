@@ -74,9 +74,9 @@ pub fn branch_verifier(addr: u64, ctx: u64,
     } else if status == 4 {
       NOT_REACHED += 1;
     }
-    if ALL % 100 == 0 {
+    //if ALL % 100 == 0 {
       info!("verify ({},{},{},{},{}), status {}, flipped/reached/not_reached/all: {}/{}/{}/{}", addr,ctx,order,direction,fid, status, FLIPPED, REACHED, NOT_REACHED, ALL);
-    }
+   // }
   }
 }
 
@@ -149,6 +149,7 @@ pub fn grading_loop(
     let mut reached = 0;
     let mut not_reached = 0;
     let mut is_cmp = false;
+    let mut saved = 0;
 
     let mut blacklist: HashSet<u64> = HashSet::new();
 
@@ -156,82 +157,85 @@ pub fn grading_loop(
       let id = unsafe { get_next_input_id() };
       if id != std::u32::MAX {
         if let Some(mut buf) =  depot.get_input_buf(id as usize) {
-        unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, &mut is_cmp, buf.len()) };
-        let new_path = executor.run_sync_with_cond(&buf, bid, sctx, order);
-/*
-        let direction_out = executor.get_cond();
-        if (direction_out == 0 && direction == 1) || (direction_out == 1 && direction == 0) {
-          flipped += 1;
-          sol_conds += 1;
-          info!("flipped/reached/not_reached/sol_cons {}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, addr);
-          unsafe { insert_flip(addr, ctx, direction, order); }
-        } else if (direction ==0 || direction == 1) && is_cmp  {
-          if !blacklist.contains(&addr) {
-            info!("not flipped {}, direction {}, direction_out {}, bid {} sctx {}", addr, direction, direction_out, bid, sctx);
-            //std::process::exit(0);
-          } 
-          if (direction_out != std::u32::MAX) {
-            reached += 1;
-          } else {
-          info!("not reached in tain verifier addr is {} bid {} sctx {} order is {}", addr, bid, sctx, order);
-            not_reached += 1;
+          unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, &mut is_cmp, buf.len()) };
+          let new_path = executor.run_sync_with_cond(&buf, bid, sctx, order);
+
+          let direction_out = executor.get_cond();
+          if (direction_out == 0 && direction == 1) || (direction_out == 1 && direction == 0) {
+            flipped += 1;
+            sol_conds += 1;
+            unsafe { insert_flip(addr, ctx, direction, order); }
+          } else if (direction ==0 || direction == 1) && is_cmp  {
+            if (direction_out != std::u32::MAX) {
+              reached += 1;
+            } else {
+              not_reached += 1;
+            }
+            sol_conds += 1;
           }
-          sol_conds += 1;
-          info!("flipped/reached/not_reached/sol_cons {}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, addr);
-        }
-
-        all_conds += 1;
-        info!("all_conds {}", all_conds);
-*/
-        if is_cmp {
-          let (mut child, read_end) = executor.track(0, &buf);
-
-          let handle = thread::spawn(move || {
-              branch_verifier(addr, ctx,order,direction,fid,read_end);
-              });
-
-          if handle.join().is_err() {
-            error!("Error happened in listening thread for branch verifier");
+          if new_path.0 {
+            saved += 1;
           }
-          close(read_end).map_err(|err| debug!("close read end {:?}", err)).ok();
 
-          match child.try_wait() {
-            Ok(Some(status)) => (),
-              Ok(None) => {
-                child.kill();
-                let res = child.wait();
-              }
-            Err(e) => println!("error attempting to wait: {}", e),
+          info!("flipped/reached/not_reached/sol_cons/saved {}/{}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, saved,addr);
+
+
+
+          if new_path.0 {
+            saved += 1;
           }
-        }
+
+          info!("saved {} {}", saved,addr);
+
+          if is_cmp {
+            let (mut child, read_end) = executor.track(0, &buf);
+
+            let handle = thread::spawn(move || {
+                branch_verifier(addr, ctx,order,direction,fid,read_end);
+                });
+
+            if handle.join().is_err() {
+              error!("Error happened in listening thread for branch verifier");
+            }
+            close(read_end).map_err(|err| debug!("close read end {:?}", err)).ok();
+
+            match child.try_wait() {
+              Ok(Some(status)) => (),
+                Ok(None) => {
+                  child.kill();
+                  let res = child.wait();
+                }
+              Err(e) => println!("error attempting to wait: {}", e),
+            }
+          }
 
 
-        let mut solcount = 1;
-        if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
-          solcount = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
-          solcount += 1;
-          //info!("gencount is {}",count);
-        }
-        branch_solcount.write().unwrap().insert((addr,ctx,order,direction), solcount);
-        if new_path.0 {
-          info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {} direction {} bid {} sctx {}, it is a new input {}, saved as input #{}", 
-                fid, addr, ctx, order, direction, bid, sctx, new_path.0, new_path.1);
-          let mut count = 1;
-          if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
-            count = *branch_gencount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
-            count += 1;
+          let mut solcount = 1;
+          if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
+            solcount = *branch_solcount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
+            solcount += 1;
             //info!("gencount is {}",count);
           }
-          branch_gencount.write().unwrap().insert((addr,ctx,order,direction), count);
-          //info!("next input addr is {:} ctx is {}",addr,ctx);
+          branch_solcount.write().unwrap().insert((addr,ctx,order,direction), solcount);
+          if new_path.0 {
+            info!("grading input derived from on input {} by flipping branch@ {:#01x} ctx {:#01x} order {} direction {} bid {} sctx {}, it is a new input {}, saved as input #{}", 
+                fid, addr, ctx, order, direction, bid, sctx, new_path.0, new_path.1);
+            let mut count = 1;
+            if addr != 0 && branch_gencount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {
+              count = *branch_gencount.read().unwrap().get(&(addr,ctx, order,direction)).unwrap();
+              count += 1;
+              //info!("gencount is {}",count);
+            }
+            branch_gencount.write().unwrap().insert((addr,ctx,order,direction), count);
+            //info!("next input addr is {:} ctx is {}",addr,ctx);
+          }
+          grade_count = grade_count + 1;
         }
-        grade_count = grade_count + 1;
-      }
       }
       if grade_count % 1000 == 0 {
         let used_t1 = t_start.elapsed().as_secs() as u32;
         if used_t1 != 0 {
-          //   warn!("Grading throughput is {}", grade_count / used_t1);
+            warn!("Grading throughput is {}", grade_count / used_t1);
         }
       }
     }

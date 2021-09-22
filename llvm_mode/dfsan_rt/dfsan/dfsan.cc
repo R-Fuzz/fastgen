@@ -84,7 +84,7 @@ void* shmp;
 
 // filter?
 SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL u32 __taint_trace_callstack;
-SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL u32 __taint_trace_angcallstack;
+SANITIZER_INTERFACE_ATTRIBUTE THREADLOCAL u32 __angora_context;
 typedef std::pair<u32, void*> trace_context;
 struct context_hash {
   std::size_t operator()(const trace_context &context) const {
@@ -825,13 +825,15 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
 
   dfsan_label temp = 0;
   if ((op1 != 0 || op2 != 0))
-    temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
+    dfsan_label temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
 
   __solve_cond(temp, addr, __taint_trace_callstack,order,r,predicate,0,0);
 }
 
 extern "C" void
 __unfold_branch_fn(u32 r) {}
+
+
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
 __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
@@ -853,9 +855,9 @@ __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
   }
 
   //AOUT("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
-  printf("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
+  printf("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __angora_context);
 
-  __solve_cond(label, addr, __taint_trace_callstack, order, r,0,bid,__taint_trace_angcallstack);
+  __solve_cond(label, addr, __taint_trace_callstack, order, r,0,bid,__angora_context);
 }
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void

@@ -12,6 +12,11 @@ static mut __angora_prev_loc: u32 = 0;
 #[thread_local]
 #[no_mangle]
 static mut __angora_context: u32 = 0;
+#[cfg(feature = "unstable")]
+#[thread_local]
+#[no_mangle]
+static mut __taint_trace_callstack: u32 = 0;
+
 
 #[inline(always)]
 pub unsafe fn reset_context() {
@@ -24,6 +29,8 @@ pub unsafe fn reset_context() {
         unsafe {
             __angora_prev_loc = 0;
             __angora_context = 0;
+            __angora_callstack = 0;
+            __angora_angcallstack = 0;
         }
     }
 }
