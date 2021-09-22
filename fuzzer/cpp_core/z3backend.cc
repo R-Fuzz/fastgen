@@ -971,13 +971,13 @@ void solve(int shmid, int pipefd) {
       solution_queue.push(rsol);
       count++;
     }
-/*
+
     if (opt_sol.size()) {
       RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, msg.bid, msg.sctx, msg.type == 0};
       solution_queue.push(rsol);
       count++;
     }
-*/
+
   }
   total_generation_count += count;
   total_time += getTimeStamp() - one_start;

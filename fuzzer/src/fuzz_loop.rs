@@ -178,15 +178,7 @@ pub fn grading_loop(
           }
 
           info!("flipped/reached/not_reached/sol_cons/saved {}/{}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, saved,addr);
-
-
-
-          if new_path.0 {
-            saved += 1;
-          }
-
-          info!("saved {} {}", saved,addr);
-
+/*
           if is_cmp {
             let (mut child, read_end) = executor.track(0, &buf);
 
@@ -208,7 +200,7 @@ pub fn grading_loop(
               Err(e) => println!("error attempting to wait: {}", e),
             }
           }
-
+*/
 
           let mut solcount = 1;
           if addr != 0 && branch_solcount.read().unwrap().contains_key(&(addr, ctx, order,direction)) {

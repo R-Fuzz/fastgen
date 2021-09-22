@@ -356,7 +356,8 @@ class Taint : public ModulePass {
   Constant *TaintDebugFn;
   Constant *CallStack;
   Constant *AngoraContext;
-  Constant *PrevLoc;
+  Constant *AngoraPrevLoc;
+  Constant *AngoraMapPtr;
   MDNode *ColdCallWeights;
   TaintABIList ABIList;
   DenseMap<Value *, Function *> UnwrappedFnMap;
@@ -393,6 +394,8 @@ public:
   void setInsNonSan(Instruction *v);
   bool doInitialization(Module &M) override;
   bool runOnModule(Module &M) override;
+  void countEdge(BasicBlock &BB);
+  uint32_t getRandomBasicBlockId();
 };
 
 struct TaintFunction {
@@ -868,6 +871,69 @@ Constant *Taint::getOrBuildTrampolineFunction(FunctionType *FT,
   return C;
 }
 
+uint32_t Taint::getRandomBasicBlockId() { return random() % 1048576; }
+
+void Taint::countEdge(BasicBlock &BB) {
+  //if (TrackMode || skipBasicBlock()) {
+  if (TrackMode) {
+    return;
+  }
+
+  unsigned int cur_loc = getRandomBasicBlockId();
+  ConstantInt *CurLoc = ConstantInt::get(Int32Ty, cur_loc);
+  
+  BasicBlock::iterator IP = BB.getFirstInsertionPt();
+  IRBuilder<> IRB(&(*IP));
+
+  LoadInst *PrevLoc = IRB.CreateLoad(AngoraPrevLoc);
+  setInsNonSan(PrevLoc);
+
+  Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, Int32Ty);
+  setValueNonSan(PrevLocCasted);
+
+  // Get Map[idx]
+  LoadInst *MapPtr = IRB.CreateLoad(AngoraMapPtr);
+  setInsNonSan(MapPtr);
+
+  Value *BrId = IRB.CreateXor(PrevLocCasted, CurLoc);
+  setValueNonSan(BrId);
+  Value *MapPtrIdx = IRB.CreateGEP(MapPtr, BrId);
+  setValueNonSan(MapPtrIdx);
+
+  // Increase 1 : IncRet <- Map[idx] + 1
+  LoadInst *Counter = IRB.CreateLoad(MapPtrIdx);
+  setInsNonSan(Counter);
+
+
+  Value *IncRet = IRB.CreateAdd(Counter, ConstantInt::get(Int8Ty, 1));
+  setValueNonSan(IncRet);
+  Value *IsZero = IRB.CreateICmpEQ(IncRet, ConstantInt::get(Int8Ty, 0));
+  setValueNonSan(IsZero);
+  Value *IncVal = IRB.CreateZExt(IsZero, Int8Ty);
+  setValueNonSan(IncVal);
+  IncRet = IRB.CreateAdd(IncRet, IncVal);
+  setValueNonSan(IncRet);
+
+  // Store Back Map[idx]
+  StoreInst *incret = IRB.CreateStore(IncRet, MapPtrIdx);
+  setInsNonSan(incret);
+
+  Value *NewPrevLoc = NULL;
+    // Load ctx
+  LoadInst *CtxVal = IRB.CreateLoad(AngoraContext);
+  setInsNonSan(CtxVal);
+
+  Value *CtxValCasted = IRB.CreateZExt(CtxVal, Int32Ty);
+  setValueNonSan(CtxValCasted);
+    // Udate PrevLoc
+  NewPrevLoc =
+      IRB.CreateXor(CtxValCasted, ConstantInt::get(Int32Ty, cur_loc >> 1));
+  setValueNonSan(NewPrevLoc);
+
+  StoreInst *Store = IRB.CreateStore(NewPrevLoc, AngoraPrevLoc);
+  setInsNonSan(Store);
+}
+
 bool Taint::runOnModule(Module &M) {
   if (ABIList.isIn(M, "skip"))
     return false;
@@ -978,11 +1044,16 @@ bool Taint::runOnModule(Module &M) {
       new GlobalVariable(M, Int32Ty, false, GlobalValue::CommonLinkage,
                          ConstantInt::get(Int32Ty, 0), "__angora_context", 0,
                          GlobalVariable::GeneralDynamicTLSModel, 0, false);
-
-  PrevLoc =
+  if (!TrackMode) {
+    AngoraPrevLoc =
       new GlobalVariable(M, Int32Ty, false, GlobalValue::CommonLinkage,
-                         ConstantInt::get(Int32Ty, 0), "__angora_prev_loc", 0,
-                         GlobalVariable::GeneralDynamicTLSModel, 0, false);
+          ConstantInt::get(Int32Ty, 0), "__angora_prev_loc", 0,
+          GlobalVariable::GeneralDynamicTLSModel, 0, false);
+    
+    AngoraMapPtr = new GlobalVariable(M, PointerType::get(Int8Ty, 0), false,
+                                      GlobalValue::ExternalLinkage, 0,
+                                      "__angora_area_ptr");
+  }
 
   std::vector<Function *> FnsToInstrument;
   std::vector<bool> addContext;
@@ -1159,6 +1230,9 @@ bool Taint::runOnModule(Module &M) {
         // TaintVisitor may split the current basic block, changing the current
         // instruction's next pointer and moving the next instruction to the
         // tail block from which we should continue.
+        if (Inst == &(*i->getFirstInsertionPt())) {
+          countEdge(*i);
+        }
         Instruction *Next = Inst->getNextNode();
         // TaintVisitor may delete Inst, so keep track of whether it was a
         // terminator.
