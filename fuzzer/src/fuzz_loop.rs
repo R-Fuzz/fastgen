@@ -150,6 +150,8 @@ pub fn grading_loop(
     let mut not_reached = 0;
     let mut is_cmp = false;
     let mut saved = 0;
+    let mut predicate = 0;
+    let mut target_cond = 0;
 
     let mut blacklist: HashSet<u64> = HashSet::new();
 
@@ -157,7 +159,7 @@ pub fn grading_loop(
       let id = unsafe { get_next_input_id() };
       if id != std::u32::MAX {
         if let Some(mut buf) =  depot.get_input_buf(id as usize) {
-          unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, &mut is_cmp, buf.len()) };
+          unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, &mut is_cmp, &mut predicate, &mut target_cond, buf.len()) };
           let new_path = executor.run_sync_with_cond(&buf, bid, sctx, order);
 
           let direction_out = executor.get_cond();
@@ -165,13 +167,34 @@ pub fn grading_loop(
             flipped += 1;
             sol_conds += 1;
             unsafe { insert_flip(addr, ctx, direction, order); }
-          } else if (direction ==0 || direction == 1) && is_cmp  {
-            if (direction_out != std::u32::MAX) {
+          } else if predicate == 0 && is_cmp  {
+            if (direction_out != std::u64::MAX) {
               reached += 1;
             } else {
               not_reached += 1;
             }
             sol_conds += 1;
+          } else if is_cmp && predicate !=0 {
+            sol_conds += 1;
+            if (direction_out != std::u64::MAX) {
+              reached += 1;
+            } else {
+              not_reached += 1;
+            }
+            if direction == 0 {
+              if direction_out == target_cond as u64 {
+                flipped += 1;
+                reached -= 1;
+                unsafe { insert_flip(addr, ctx, direction, order); }
+              }
+            }
+            if direction == 1 {
+              if direction_out != target_cond as u64 {
+                flipped += 1;
+                reached -= 1;
+                unsafe { insert_flip(addr, ctx, direction, order); }
+              }
+            }
           }
           if new_path.0 {
             saved += 1;

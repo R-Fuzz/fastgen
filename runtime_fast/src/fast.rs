@@ -14,10 +14,10 @@ fn fast_init() {
 
 #[no_mangle]
 pub extern "C" fn __angora_trace_cmp(
-    condition: u32,
     cmpid: u32,
     context: u32,
-    ) -> u32 {
+    condition: u64,
+    ) -> u64 {
   let mut conds = shm_conds::SHM_CONDS.lock().expect("SHM mutex poisoned.");
   //eprintln!("_angora_trace_cmp {} {} {}", cmpid, context, condition);
   match conds.deref_mut() {
@@ -35,13 +35,36 @@ pub extern "C" fn __angora_trace_cmp(
 
 #[no_mangle]
 pub extern "C" fn __grade_trace_cond(
-    condition: u32,
     cmpid: u32,
     context: u32,
-    ) -> u32 {
+    condition: u64,
+    ) -> u64 {
   
   let mut conds = shm_conds::SHM_CONDS.lock().expect("SHM mutex poisoned.");
-  //eprintln!("_grade_trace_cond {} {} {}", condition, cmpid, context);
+  //eprintln!("_grade_trace_cond {} {} {}", cmpid, context, condition);
+  match conds.deref_mut() {
+    &mut Some(ref mut c) => {
+      if c.check_match(cmpid, context) {
+        return c.update_cmp(condition);
+      }
+    }
+    _ => {
+      //eprintln!("no conds");
+    }
+  }
+  condition
+
+}
+
+#[no_mangle]
+pub extern "C" fn __grade_trace_switch(
+    cmpid: u32,
+    context: u32,
+    condition: u64,
+    ) -> u64 {
+  
+  let mut conds = shm_conds::SHM_CONDS.lock().expect("SHM mutex poisoned.");
+  //eprintln!("_grade_trace_switch {} {} {}",cmpid, context, condition);
   match conds.deref_mut() {
     &mut Some(ref mut c) => {
       if c.check_match(cmpid, context) {

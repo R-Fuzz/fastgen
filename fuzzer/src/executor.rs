@@ -239,7 +239,7 @@ impl Executor {
     ret
   }
 
-  pub fn get_cond(&mut self) -> u32 {
+  pub fn get_cond(&mut self) -> u64 {
     return self.t_conds.cond.condition;
   }
 

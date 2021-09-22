@@ -337,6 +337,7 @@ class Taint : public ModulePass {
   FunctionType *TaintTraceCmpFnTy;
   FunctionType *TaintTraceCondFnTy;
   FunctionType *GradeTraceCondFnTy;
+  FunctionType *GradeTraceSwitchFnTy;
   FunctionType *TaintTraceIndirectCallFnTy;
   FunctionType *TaintTraceGEPFnTy;
   FunctionType *TaintDebugFnTy;
@@ -351,6 +352,7 @@ class Taint : public ModulePass {
   Constant *TaintTraceCmpFn;
   Constant *TaintTraceCondFn;
   Constant *GradeTraceCondFn;
+  Constant *GradeTraceSwitchFn;
   Constant *TaintTraceIndirectCallFn;
   Constant *TaintTraceGEPFn;
   Constant *TaintDebugFn;
@@ -718,10 +720,13 @@ bool Taint::doInitialization(Module &M) {
       Type::getVoidTy(*Ctx), TaintTraceCmpArgs, false);
   Type *TaintTraceCondArgs[3] = { ShadowTy, Int8Ty, Int32Ty };
   Type *GradeTraceCondArgs[3] = { Int32Ty, Int32Ty, Int32Ty };
+  Type *GradeTraceSwitchArgs[3] = { Int32Ty, Int32Ty, Int64Ty };
   TaintTraceCondFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), TaintTraceCondArgs, false);
   GradeTraceCondFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), GradeTraceCondArgs, false);
+  GradeTraceSwitchFnTy = FunctionType::get(
+      Type::getVoidTy(*Ctx), GradeTraceSwitchArgs, false);
   TaintTraceIndirectCallFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), { ShadowTy }, false);
   TaintTraceGEPFnTy = FunctionType::get(
@@ -1017,9 +1022,12 @@ bool Taint::runOnModule(Module &M) {
     Mod->getOrInsertFunction("__taint_trace_cmp", TaintTraceCmpFnTy);
   TaintTraceCondFn =
     Mod->getOrInsertFunction("__taint_trace_cond", TaintTraceCondFnTy);
-  if (!TrackMode) 
-  GradeTraceCondFn =
-    Mod->getOrInsertFunction("__grade_trace_cond", GradeTraceCondFnTy);
+  if (!TrackMode)  {
+    GradeTraceCondFn =
+      Mod->getOrInsertFunction("__grade_trace_cond", GradeTraceCondFnTy);
+    GradeTraceSwitchFn =
+      Mod->getOrInsertFunction("__grade_trace_switch", GradeTraceSwitchFnTy);
+  }
   TaintTraceIndirectCallFn =
     Mod->getOrInsertFunction("__taint_trace_indcall", TaintTraceIndirectCallFnTy);
   TaintTraceGEPFn =
@@ -1074,6 +1082,7 @@ bool Taint::runOnModule(Module &M) {
         &i != TaintTraceGEPFn &&
         &i != TaintDebugFn &&
         &i != GradeTraceCondFn &&
+        &i != GradeTraceSwitchFn &&
         &i != TaintUnionStoreFn) {
       //errs() << "add to fns to instrument " <<  i.getName() << "\n";
       FnsToInstrument.push_back(&i);
@@ -1684,20 +1693,31 @@ void TaintFunction::visitSwitchInst(SwitchInst *I) {
   // get operand
   Value *Cond = I->getCondition();
   Value *CondShadow = getShadow(Cond);
-  if (CondShadow == TT.ZeroShadow)
-    return;
-  unsigned size = DL.getTypeSizeInBits(Cond->getType());
-  ConstantInt *Size = ConstantInt::get(TT.ShadowTy, size);
-  ConstantInt *Predicate = ConstantInt::get(TT.ShadowTy, 32); // EQ, ==
+  ConstantInt *Cid = ConstantInt::get(TT.Int32Ty, TT.getInstructionId(I));
+  if (TrackMode) {
+    if (CondShadow == TT.ZeroShadow)
+      return;
+    unsigned size = DL.getTypeSizeInBits(Cond->getType());
+    ConstantInt *Size = ConstantInt::get(TT.ShadowTy, size);
+    ConstantInt *Predicate = ConstantInt::get(TT.ShadowTy, 32); // EQ, ==
 
-  for (auto C : I->cases()) {
-    Value *CV = C.getCaseValue();
 
+    for (auto C : I->cases()) {
+      Value *CV = C.getCaseValue();
+
+      IRBuilder<> IRB(I);
+      Cond = IRB.CreateZExtOrTrunc(Cond, TT.Int64Ty);
+      CV = IRB.CreateZExtOrTrunc(CV, TT.Int64Ty);
+      IRB.CreateCall(TT.TaintTraceCmpFn, {CondShadow, TT.ZeroShadow, Size, Predicate,
+          Cond, CV, Cid});
+    }
+  } else {
     IRBuilder<> IRB(I);
+    LoadInst *CurCtx = IRB.CreateLoad(TT.AngoraContext);
     Cond = IRB.CreateZExtOrTrunc(Cond, TT.Int64Ty);
-    CV = IRB.CreateZExtOrTrunc(CV, TT.Int64Ty);
-    IRB.CreateCall(TT.TaintTraceCmpFn, {CondShadow, TT.ZeroShadow, Size, Predicate,
-                   Cond, CV});
+    IRB.CreateCall(TT.GradeTraceSwitchFn, {Cid,
+        CurCtx, Cond});
+
   }
 }
 
@@ -2153,7 +2173,7 @@ void TaintFunction::visitCondition(Value *Condition, Instruction *I) {
   } else {
     LoadInst *CurCtx = IRB.CreateLoad(TT.AngoraContext);
     ConstantInt *Cid = ConstantInt::get(TT.Int32Ty, TT.getInstructionId(I));
-    IRB.CreateCall(TT.GradeTraceCondFn, {Condition, Cid, CurCtx});
+    IRB.CreateCall(TT.GradeTraceCondFn, {Cid, CurCtx, Condition});
   }
 }
 
