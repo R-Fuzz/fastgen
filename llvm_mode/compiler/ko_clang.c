@@ -109,7 +109,7 @@ static void add_runtime() {
     cc_params[cc_par_cnt++] = alloc_printf("%s/lib/libruntime_fast.a", obj_path);
   }
 
-  if (is_cxx && !getenv("KO_USE_NATIVE_LIBCXX")) {
+  if (is_cxx && !getenv("KO_USE_NATIVE_LIBCXX") && clang_type == CLANG_DFSAN_TYPE) {
     cc_params[cc_par_cnt++] = "-Wl,--whole-archive";
     cc_params[cc_par_cnt++] = alloc_printf("%s/lib/libc++.a", obj_path);
     cc_params[cc_par_cnt++] = alloc_printf("%s/lib/libc++abi.a", obj_path);

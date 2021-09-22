@@ -856,8 +856,7 @@ __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
     return;
   }
 
-  //AOUT("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
-  printf("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __angora_context);
+  AOUT("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __angora_context);
 
   __solve_cond(label, addr, __taint_trace_callstack, order, r,0,bid,__angora_context, 0);
 }
