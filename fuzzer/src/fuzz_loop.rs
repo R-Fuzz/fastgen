@@ -137,70 +137,94 @@ pub fn grading_loop(
     //let mut buf: Vec<u8> = Vec::with_capacity(config::MAX_INPUT_LEN);
     //buf.resize(config::MAX_INPUT_LEN, 0);
     let mut addr: u64 = 0;
+    //calling context
     let mut ctx: u64 = 0;
+    //local count
     let mut order: u32 = 0;
     let mut fid: u32 = 0;
+    //direction
     let mut direction: u64 = 0;
+    //branch ID
     let mut bid: u32 = 0;
+    //calling context, instrumented using Angora way
     let mut sctx: u32 = 0;
     let mut flipped = 0;
+    //solved conditionns
     let mut sol_conds = 0;
-    let mut all_conds = 0;
     let mut reached = 0;
     let mut not_reached = 0;
+    //conditional branch or switch-case
     let mut is_cmp = false;
+    // number of solutions saved
     let mut saved = 0;
+    // preciate for trace_cmp, should be BVEQ
     let mut predicate = 0;
+    //the target case for switch-case
     let mut target_cond = 0;
+    //the hash for the constraint
+    let mut cons_hash = 0;
 
-    let mut blacklist: HashSet<u64> = HashSet::new();
+    let mut flipped_hashes: HashSet<u32> = HashSet::new();
+    let mut notflipped_hashes: HashSet<u32> = HashSet::new();
+    let mut notreached_hashes: HashSet<u32> = HashSet::new();
 
     while running.load(Ordering::Relaxed) {
       let id = unsafe { get_next_input_id() };
       if id != std::u32::MAX {
         if let Some(mut buf) =  depot.get_input_buf(id as usize) {
-          unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, &mut fid, &mut direction, &mut bid, &mut sctx, &mut is_cmp, &mut predicate, &mut target_cond, buf.len()) };
+          unsafe { get_next_input(buf.as_mut_ptr(), &mut addr, &mut ctx, &mut order, 
+                &mut fid, &mut direction, &mut bid, &mut sctx, 
+                &mut is_cmp, &mut predicate, &mut target_cond, &mut cons_hash, buf.len()) };
           let new_path = executor.run_sync_with_cond(&buf, bid, sctx, order);
 
           let direction_out = executor.get_cond();
           if (direction_out == 0 && direction == 1) || (direction_out == 1 && direction == 0) {
             flipped += 1;
             sol_conds += 1;
+            flipped_hashes.insert(cons_hash);
             unsafe { insert_flip(addr, ctx, direction, order); }
           } else if predicate == 0 && is_cmp  {
             if (direction_out != std::u64::MAX) {
               reached += 1;
+              notflipped_hashes.insert(cons_hash);
             } else {
               not_reached += 1;
+              notreached_hashes.insert(cons_hash);
             }
             sol_conds += 1;
           } else if is_cmp && predicate !=0 {
             sol_conds += 1;
-            if (direction_out != std::u64::MAX) {
-              reached += 1;
-            } else {
+            if (direction_out == std::u64::MAX) {
               not_reached += 1;
+              notreached_hashes.insert(cons_hash);
             }
             if direction == 0 {
               if direction_out == target_cond as u64 {
                 flipped += 1;
-                reached -= 1;
+                flipped_hashes.insert(cons_hash);
                 unsafe { insert_flip(addr, ctx, direction, order); }
+              } else if direction_out != std::u64::MAX {
+                reached += 1;
+                notflipped_hashes.insert(cons_hash);
               }
             }
             if direction == 1 {
               if direction_out != target_cond as u64 {
                 flipped += 1;
-                reached -= 1;
+                flipped_hashes.insert(cons_hash);
                 unsafe { insert_flip(addr, ctx, direction, order); }
               }
+            } else if direction_out != std::u64::MAX {
+              reached += 1;
+              notflipped_hashes.insert(cons_hash);
             }
           }
           if new_path.0 {
             saved += 1;
           }
 
-          info!("flipped/reached/not_reached/sol_cons/saved {}/{}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, saved,addr);
+          info!("flipped/reached/not_reached/sol_cons/saved/flipped_hashes/notflipped_hashes/notreached_hashes {}/{}/{}/{}/{}/{}/{}/{} {}", 
+                flipped, reached, not_reached, sol_conds, saved, flipped_hashes.len(), notflipped_hashes.len(), notreached_hashes.len(), addr);
 /*
           if is_cmp {
             let (mut child, read_end) = executor.track(0, &buf);

@@ -61,6 +61,7 @@ struct RGDSolution {
   bool is_cmp;
   uint32_t predicate;
   uint64_t target_cond;
+  uint32_t cons_hash;
 };
 
 
@@ -679,6 +680,7 @@ void insert_flip_status(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_
   bcount_mutex.lock();
   bcount_dedup[key] = 10;
   bcount_mutex.unlock();
+  return;
 }
 
 #if 0
@@ -939,6 +941,7 @@ void solve(int shmid, int pipefd) {
     //bool try_solve = filter(addr, label, direction, &path_prefix);
     std::unordered_map<uint32_t, uint8_t> sol;
     std::unordered_map<uint32_t, uint8_t> opt_sol;
+    uint32_t cons_hash = 0;
     if (msg.type == 0) {  //cond
       if (skip_rest) continue;
       //bool try_solve = hybrid_filter(msg.addr, msg.ctx, msg.result, msg.localcnt, 
@@ -946,6 +949,10 @@ void solve(int shmid, int pipefd) {
       bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
       uint64_t tstart = getTimeStamp();
       solve_cond(msg.label, msg.result, opt_sol, sol, try_solve);
+      dfsan_label_info *info = get_label_info(msg.label);
+      if (info) {
+        cons_hash = info->hash;
+      }
       acc_time += getTimeStamp() - tstart;
       if (acc_time > 180000000 || count > 5000 ) //90s
         skip_rest = true;
@@ -970,14 +977,14 @@ void solve(int shmid, int pipefd) {
 
     if (sol.size()) {
       RGDSolution rsol = {sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, 
-          msg.bid, msg.sctx, msg.type == 0, msg.predicate, msg.target_cond};
+          msg.bid, msg.sctx, msg.type == 0, msg.predicate, msg.target_cond, cons_hash};
       solution_queue.push(rsol);
       count++;
     }
 
     if (opt_sol.size()) {
       RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, 
-          msg.bid, msg.sctx, msg.type == 0, msg.predicate, msg.target_cond};
+          msg.bid, msg.sctx, msg.type == 0, msg.predicate, msg.target_cond, cons_hash};
       solution_queue.push(rsol);
       count++;
     }
@@ -1024,7 +1031,7 @@ extern "C" {
 
   void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
       uint32_t *order, uint32_t *fid, uint64_t *direction, 
-      uint32_t* bid, uint32_t* sctx, bool* is_cmp, uint32_t* predicate, uint64_t* target_cond, size_t size) {
+      uint32_t* bid, uint32_t* sctx, bool* is_cmp, uint32_t* predicate, uint64_t* target_cond, uint32_t* cons_hash, size_t size) {
     //std::pair<uint32_t, std::unordered_map<uint32_t, uint8_t>> item;
     // printf("get_next_loop and queue size is %u\n", solution_queue.size_approx());
     //asert(!solutio_queue.empty());
@@ -1043,6 +1050,7 @@ extern "C" {
     *is_cmp = item.is_cmp;
     *predicate = item.predicate;
     *target_cond = item.target_cond;
+    *cons_hash = item.cons_hash;
   }
 
   uint32_t get_next_input_id() {
