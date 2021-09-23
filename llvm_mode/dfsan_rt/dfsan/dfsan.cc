@@ -906,7 +906,7 @@ __taint_trace_gep(dfsan_label label, u64 r) {
     itr->second += 1;
     order = itr->second;
   } else {
-    //return;
+    return;
   }
 
   uint64_t callstack = __taint_trace_callstack;

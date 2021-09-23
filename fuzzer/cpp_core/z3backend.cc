@@ -654,7 +654,7 @@ static uint8_t COUNT_LOOKUP[256] = {
 
 
 bool bcount_filter(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t order) {
-  uint32_t bucket = COUNT_LOOKUP[order-1]; 
+  //uint32_t bucket = COUNT_LOOKUP[order-1]; 
   std::tuple<uint64_t,uint64_t, uint64_t, uint8_t> key{addr,ctx,direction,order};
   bcount_mutex.lock();
   bool res = false;
@@ -675,7 +675,7 @@ bool bcount_filter(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t ord
 }
 
 void insert_flip_status(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t order) {
-  uint32_t bucket = COUNT_LOOKUP[order-1]; 
+  //uint32_t bucket = COUNT_LOOKUP[order-1]; 
   std::tuple<uint64_t,uint64_t, uint64_t, uint32_t> key{addr,ctx,direction,order};
   bcount_mutex.lock();
   bcount_dedup[key] = 10;
@@ -683,168 +683,6 @@ void insert_flip_status(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_
   return;
 }
 
-#if 0
-bool filter(uint32_t label, uint64_t addr, uint64_t direction, 
-    XXH64_state_t* path_prefix) {
-
-  //address
-  XXH64_state_t tmp;
-  XXH64_reset(&tmp, 0);
-
-  XXH64_update(path_prefix, &addr, sizeof(addr));
-
-  //create a tmp prefix
-
-  uint8_t deter = 0;
-  if (label == 0)  {
-    deter = 1;
-    XXH64_update(path_prefix, &deter, sizeof(deter));
-    XXH64_update(path_prefix, &direction, sizeof(direction));
-    return false;
-  }
-
-  uint64_t direction_sym = 1 - direction;
-
-  //digest
-  uint64_t taken_digest;
-  uint64_t untaken_digest;
-
-  XXH64_update(path_prefix, &deter, sizeof(deter));
-  XXH64_copyState(&tmp,path_prefix);
-
-  XXH64_update(&tmp, &direction_sym, sizeof(direction_sym));
-  untaken_digest = XXH64_digest(&tmp); 
-
-  XXH64_update(path_prefix, &direction, sizeof(direction));
-  taken_digest = XXH64_digest(path_prefix); 
-
-  mark_pp(taken_digest);
-  return check_pp(untaken_digest);
-}
-#endif
-
-//roll in branch
-#if 0
-uint64_t roll_in_pp(uint32_t label, uint64_t addr, uint64_t direction, 
-    XXH64_state_t* path_prefix) {
-
-  //address
-  XXH64_state_t tmp;
-  XXH64_reset(&tmp, 0);
-
-  XXH64_update(path_prefix, &addr, sizeof(addr));
-
-  //create a tmp prefix
-
-  uint8_t deter = 0;
-  if (label == 0)  {
-    deter = 1;
-    XXH64_update(path_prefix, &deter, sizeof(deter));
-    XXH64_update(path_prefix, &direction, sizeof(direction));
-    return 0;
-  }
-
-  uint64_t direction_sym = 1 - direction;
-
-  //digest
-  uint64_t taken_digest;
-  uint64_t untaken_digest;
-
-  XXH64_update(path_prefix, &deter, sizeof(deter));
-  XXH64_copyState(&tmp,path_prefix);
-
-  XXH64_update(&tmp, &direction_sym, sizeof(direction_sym));
-  untaken_digest = XXH64_digest(&tmp); 
-
-  XXH64_update(path_prefix, &direction, sizeof(direction));
-  taken_digest = XXH64_digest(path_prefix); 
-
-  mark_pp(taken_digest);
-  return untaken_digest;
-
-}
-#endif
-
-
-bool dry_run(int32_t round, uint32_t seed_id) {
-  auto keys = seed_map.find(seed_id);
-  if (keys == seed_map.end()) {
-    return true;
-  }
-  for (auto key : keys->second) {
-    //unlikely
-    assert(key < global_counter.size());
-    if (key >= global_counter.size()) {
-      return true;
-    }
-    int32_t g_bucket = (uint32_t)log2(global_counter[key]);
-    if (g_bucket <= round) {
-      // as long as there's one branch can be sent to solver run it
-      return true;
-    }
-  }
-  return false; 
-}
-
-
-//the local_counter starting from 1
-#if 0
-bool hybrid_filter(uint64_t addr, uint64_t ctx, uint64_t direction,
-    uint32_t local_count, int32_t round,
-    uint32_t label,
-    XXH64_state_t* path_prefix, std::vector<uint32_t> *per_seed_keys) {
-
-  //first, I calculate the path prefix for the taken and untaken branch
-  //and in this function, I mark the taken branch
-  // and return the digest for the untkane branch
-  if (!label) return false;
-  uint64_t untaken_digest = roll_in_pp(addr,label,direction,path_prefix);
-
-  if (!check_pp(untaken_digest)) return false;
-
-  //assert(direction == 0 || direction == 1);
-
-  int32_t bucket = (uint32_t)log2(local_count);
-  //increase the global branch counter for the taken branch
-  std::tuple<uint64_t,uint64_t, uint64_t, uint32_t> key{addr,ctx,direction,bucket};
-  auto itr = global_hash_map.find(key);
-  if (itr == global_hash_map.end())  {
-    uint32_t index = global_counter.size();
-    global_counter.push_back(1);
-    global_hash_map.insert({key,index});
-  } else  {
-    global_counter[itr->second]++;
-  }
-
-
-  //I retrieve the global counter of the untaken branch
-  std::tuple<uint64_t,uint64_t, uint64_t, uint32_t> invkey{addr,ctx,1- direction,bucket};
-  auto itr_untaken = global_hash_map.find(invkey);
-  if (itr_untaken == global_hash_map.end())  {
-    uint32_t index = global_counter.size();
-    global_counter.push_back(1);
-    itr_untaken = global_hash_map.insert({invkey, index}).first;
-  }
-
-  //remember per seed's branches
-  per_seed_keys->push_back(itr_untaken->second);
-  //I calculate the bucket for the global untaken branch
-  assert(itr_untaken->second < global_counter.size());
-  int32_t g_bucket = (uint32_t)log2(global_counter[itr_untaken->second]);
-
-
-  //we check if we are solving it in this round
-  //assert(g_bucket >= round);
-  if (g_bucket <= round) {
-    //we are going to solve in this round, we then mark the pp
-    mark_pp(untaken_digest);  
-    //increase the untaken branch global counter
-    global_counter[itr_untaken->second]++;
-    return true;
-  }
-  return false;
-}
-#endif
 
 void handle_fmemcmp(uint8_t* data, uint32_t label, 
               uint64_t size, uint32_t tid, uint64_t addr,
@@ -859,7 +697,7 @@ void handle_fmemcmp(uint8_t* data, uint32_t label,
     std::unordered_set<dfsan_label> inputs;
     z3::expr op_symbolic = serialize(label, inputs);
     __z3_solver->reset();
-    __z3_solver->add(op_symbolic ==  op_concrete);
+    __z3_solver->add(op_symbolic == op_concrete);
     z3::check_result res = __z3_solver->check();
     if (res == z3::sat) {
         z3::model m = __z3_solver->get_model();
@@ -869,23 +707,6 @@ void handle_fmemcmp(uint8_t* data, uint32_t label,
     printf("WARNING: solving error: %s\n", e.msg());
   }
 }
-
-/*
-void handle_fmemcmp(uint8_t* data, uint64_t index, uint32_t size, uint32_t tid, uint64_t addr) {
-  std::unordered_map<uint32_t, uint8_t> rgd_solution;
-  //std::string input_file = "/magma_shared/findings/tmp/cur_input_2";
-  // std::string old_string = std::to_string(tid);
-  //std::string input_file = "/home/cju/fastgen/tests/switch/input_switch/i";
-  //std::string input_file = "corpus/angora/queue/id:" + std::string(6-old_string.size(),'0') + old_string;
-  for(uint32_t i=0;i<size;i++) {
-    //rgd_solution[(uint32_t)index+i] = (uint8_t) (data & 0xff);
-    rgd_solution[(uint32_t)index+i] = data[i];
-    //data = data >> 8 ;
-  }
-  //RGDSolution sol = {rgd_solution, tid, addr, 0, 0, 0};
-  //solution_queue.push(sol);
-}
-*/
 
 
 void cleanup() {
@@ -1011,18 +832,6 @@ extern "C" {
 
   void run_solver(int shmid, uint32_t pipefd) {
     solve(shmid, pipefd);
-  }
-
-  bool try_dry_run(int32_t round, uint32_t seed_id) {
-    return dry_run(round, seed_id);
-  }
-
-  void wait_ce() {
-    sem_wait(semace);
-  }
-
-  void post_gra() {
-    sem_post(semagra);
   }
 
   void insert_flip(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t order) {
