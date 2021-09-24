@@ -63,6 +63,12 @@ static inline dfsan_label get_label_for(int fd, off_t offset) {
   else return (offset + CONST_OFFSET);
 }
 
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+__taint_trace_offset(dfsan_label offset_label, int64_t offset, unsigned size);
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+__taint_trace_size(dfsan_label size_label, int64_t count, unsigned size);
+
 extern "C" {
 SANITIZER_INTERFACE_ATTRIBUTE int
 __dfsw_stat(const char *path, struct stat *buf, dfsan_label path_label,
@@ -438,6 +444,10 @@ __dfsw_pread(int fd, void *buf, size_t count, off_t offset,
       dfsan_set_label(0, buf, ret);
     }
   }
+  if (offset_label)
+    __taint_trace_offset(offset_label, offset, sizeof(offset) * 8);
+  if (count_label)
+    __taint_trace_size(count_label, count, sizeof(count) * 8);
   return ret;
 }
 
@@ -462,6 +472,8 @@ __dfsw_read(int fd, void *buf, size_t count,
       dfsan_set_label(0, buf, ret);
     }
   }
+  if (count_label)
+    __taint_trace_size(count_label, count, sizeof(count) * 8);
   return ret;
 }
 
@@ -1385,6 +1397,8 @@ __dfsw_fread(void *ptr, size_t size, size_t nmemb, FILE *stream,
       dfsan_set_label(0, ptr, ret * size);
     }
   }
+  if (nmemb_label)
+    __taint_trace_size(nmemb_label, nmemb, sizeof(nmemb) * 8);
   return ret;
 }
 
@@ -1431,6 +1445,8 @@ __dfsw_fread_unlocked(
       dfsan_set_label(0, ptr, ret * size);
     }
   }
+  if (nmemb_label)
+    __taint_trace_size(nmemb_label, nmemb, sizeof(nmemb) * 8);
   return ret;
 }
 
@@ -1796,9 +1812,7 @@ __dfsw_lseek(int fd, off_t offset, int whence, dfsan_label fd_label,
     if (taint_get_file(fd)) {
       taint_set_offset_label(offset_label);
       if (offset_label) {
-        dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset) * 8,
-            0, offset);
-        add_constraints(sc);
+        __taint_trace_offset(offset_label, offset, sizeof(offset) * 8);
       }
     }
     *ret_label = offset_label;
@@ -1816,9 +1830,7 @@ __dfsw_fseek(FILE *stream, long offset, int whence, dfsan_label stream_label,
   if (ret == 0 && taint_get_file(fd)) {
     taint_set_offset_label(offset_label);
     if (offset_label) {
-      dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset) * 8,
-          0, offset);
-      add_constraints(sc);
+      __taint_trace_offset(offset_label, offset, sizeof(offset) * 8);
     }
   }
   return ret;
@@ -1834,9 +1846,7 @@ __dfsw_fseeko(FILE *stream, off_t offset, int whence, dfsan_label stream_label,
   if (ret == 0 && taint_get_file(fd)) {
     taint_set_offset_label(offset_label);
     if (offset_label) {
-      dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset) * 8,
-          0, offset);
-      add_constraints(sc);
+      __taint_trace_offset(offset_label, offset, sizeof(offset) * 8);
     }
   }
   return ret;
@@ -1852,9 +1862,7 @@ __dfsw_fseeko64(FILE *stream, off64_t offset, int whence, dfsan_label stream_lab
   if (ret == 0 && taint_get_file(fd)) {
     taint_set_offset_label(offset_label);
     if (offset_label) {
-      dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, sizeof(offset) * 8,
-          0, offset);
-      add_constraints(sc);
+      __taint_trace_offset(offset_label, offset, sizeof(offset) * 8);
     }
   }
   return ret;

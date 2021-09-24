@@ -870,7 +870,7 @@ __taint_trace_indcall(dfsan_label label) {
 }
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
-add_constraints(dfsan_label label) {
+__add_constraints(dfsan_label label, bool is_offset) {
   if ((get_label_info(label)->flags & B_FLIPPED)) {
       return;
   }
@@ -879,12 +879,28 @@ add_constraints(dfsan_label label) {
   if (__solver_select != 1) {
     if (rejectBranch(label)) {  return; }
     serialize(label);
-    struct pipe_msg msg = {.type = 3, .tid = __tid, .label = label, .result = 0, .addr = addr, .ctx = callstack, .localcnt = 0 };
+    struct pipe_msg msg;
+    if (is_offset)
+      msg = {.type = 3, .tid = __tid, .label = label, .result = 0, .addr = addr, .ctx = callstack, .localcnt = 0 };
+    else  //size constraints
+      msg = {.type = 4, .tid = __tid, .label = label, .result = 0, .addr = addr, .ctx = callstack, .localcnt = 0 };
     write(mypipe,&msg,sizeof(msg));
     fsync(mypipe);
     get_label_info(label)->flags |= B_FLIPPED;
     return;
   }
+}
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+__taint_trace_offset(dfsan_label offset_label, int64_t offset, unsigned size) {
+  dfsan_label sc = dfsan_union(offset_label, 0, (bveq << 8) | ICmp, size, 0, offset);
+  __add_constraints(sc, true);
+}
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+__taint_trace_size(dfsan_label size_label, int64_t count, unsigned size) {
+  dfsan_label sc = dfsan_union(size_label, 0, (bveq << 8) | ICmp, size, 0, count);
+  __add_constraints(sc, false);
 }
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void

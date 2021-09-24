@@ -675,8 +675,7 @@ void solve(int shmid, int pipefd) {
         skip_rest = true;
     } else if (msg.type == 1) { //gep constraint
       bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
-      if (msg.result != 0)
-        size_constraints += 1;
+      offset_constraints += 1;
       solve_gep(msg.label, msg.result, try_solve, msg.tid, sol, opt_sol);
     } else if (msg.type == 2) {  //strcmp
       uint8_t data[msg.result];
@@ -691,6 +690,8 @@ void solve(int shmid, int pipefd) {
       }
     } else if (msg.type == 3) {
       offset_constraints += 1;
+    } else if (msg.type == 4) {
+      size_constraints += 1;
     }
 
 
@@ -716,7 +717,7 @@ void solve(int shmid, int pipefd) {
   std::cerr << "generate count " << count 
     << " total count " << total_generation_count 
     << " process_time " << getTimeStamp() - one_start 
-    << " nommal: " << normal_constraints
+    << " normal: " << normal_constraints
     << " size: " << size_constraints
     << " offset: " << offset_constraints
     << std::endl;
