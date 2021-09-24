@@ -323,20 +323,21 @@ pub fn fuzz_loop(
   while running.load(Ordering::Relaxed) {
     if id < depot.get_num_inputs() {
 
-     // let handle = thread::spawn(move || {
-      //    constraint_solver(shmid, read_end);
-       //   });
 
       let t_start = time::Instant::now();
 
       if let Some(buf) = depot.get_input_buf(id) {
       let (mut child, read_end) = executor.track(id, &buf);
-/*
+
+      let handle = thread::spawn(move || {
+          constraint_solver(shmid, read_end);
+          });
+
       if handle.join().is_err() {
         error!("Error happened in listening thread!");
       }
-*/
-      constraint_solver(shmid, read_end);
+
+//      constraint_solver(shmid, read_end);
       info!("Done solving {}", id);
       close(read_end).map_err(|err| debug!("close read end {:?}", err)).ok();
 
