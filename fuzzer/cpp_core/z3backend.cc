@@ -32,7 +32,6 @@
 #define B_FLIPPED 0x1
 //global variables
 
-static dfsan_label divisor_label = 0;
 static std::atomic<uint64_t> fid;
 bool SAVING_WHOLE; 
 z3::context *__z3_context;
@@ -44,8 +43,6 @@ sem_t * semace;
 uint32_t total_generation_count = 0;
 uint64_t total_time = 0;
 
-std::string input_file = "./corpus/angora/tmp/cur_input_2";
-//std::string input_file = "/magma_shared/findings/tmp/cur_input_2";
 static dfsan_label_info *__union_table;
 
 struct RGDSolution {
@@ -184,7 +181,7 @@ static z3::expr get_cmd(z3::expr const &lhs, z3::expr const &rhs, uint32_t predi
                       break;
   }
   // should never reach here
-  //Die();
+  throw z3::exception("unsupported predicate");
 }
 
 static inline z3::expr cache_expr(dfsan_label label, z3::expr const &e, std::unordered_set<uint32_t> &deps) {
@@ -327,8 +324,8 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
     case DFSAN_ADD:     return cache_expr(label, op1 + op2, deps);
     case DFSAN_SUB:     return cache_expr(label, op1 - op2, deps);
     case DFSAN_MUL:     return cache_expr(label, op1 * op2, deps);
-    case DFSAN_UDIV:    divisor_label = info->l2; return cache_expr(label, z3::udiv(op1, op2), deps);
-    case DFSAN_SDIV:    divisor_label = info->l2; return cache_expr(label, op1 / op2, deps);
+    case DFSAN_UDIV:    return cache_expr(label, z3::udiv(op1, op2), deps);
+    case DFSAN_SDIV:    return cache_expr(label, op1 / op2, deps);
     case DFSAN_UREM:    return cache_expr(label, z3::urem(op1, op2), deps);
     case DFSAN_SREM:    return cache_expr(label, z3::srem(op1, op2), deps);
                         // relational
@@ -340,13 +337,12 @@ static z3::expr serialize(dfsan_label label, std::unordered_set<uint32_t> &deps)
                         throw z3::exception("unsupported operator");
                         break;
   }
-  // should never reach here
-  //Die();
+ 
+  throw z3::exception("invalid label"); 
 }
 
 void init(bool saving_whole) {
   SAVING_WHOLE = saving_whole;
-  //initZ3Solver();
 }
 
 static void generate_solution(z3::model &m, std::unordered_map<uint32_t, uint8_t> &solu) {
@@ -363,93 +359,12 @@ static void generate_solution(z3::model &m, std::unordered_map<uint32_t, uint8_t
   }
 }
 
-static void solve_divisor() {
-  if (divisor_label <= CONST_OFFSET) return;
-  dfsan_label label = divisor_label;
-  if ((get_label_info(label)->flags & B_FLIPPED))
-    return;
-  try {
-    std::unordered_set<dfsan_label> inputs;
-    z3::expr cond = serialize(label, inputs);
-    std::unordered_map<uint32_t, uint8_t> opt_sol; 
-    std::unordered_map<uint32_t, uint8_t> sol;
-    //std::string input_file = "./corpus/tmp/cur_input_2";
-    //std::string input_file = "/magma_shared/findings/tmp/cur_input_2";
-    unsigned char size = get_label_info(label)->size;
-#if 0
-    if (get_label_info(label)->tree_size > 50000) {
-      // don't bother?
-      throw z3::exception("formula too large");
-    }
-#endif
-    z3::expr zero_v = __z3_context->bv_val((uint64_t)0, size);
-
-    // collect additional input deps
-    std::vector<dfsan_label> worklist;
-    worklist.insert(worklist.begin(), inputs.begin(), inputs.end());
-    while (!worklist.empty()) {
-      auto off = worklist.back();
-      worklist.pop_back();
-
-      auto &deps = branch_deps[off];
-      for (auto i : deps.input_deps) {
-        if (inputs.insert(i).second)
-          worklist.push_back(i);
-      }
-    }
-
-    __z3_solver->reset();
-    //AOUT("%s\n", cond.to_string().c_str());
-    __z3_solver->add(cond == zero_v);
-    z3::check_result res = __z3_solver->check();
-    if (res == z3::sat) {
-      z3::model m_opt = __z3_solver->get_model();
-      __z3_solver->push();
-
-      // 2. add constraints
-      expr_set_t added;
-      for (auto off : inputs) {
-        //AOUT("adding offset %d\n", off);
-        auto &deps = branch_deps[off];
-        for (auto &expr : deps.expr_deps) {
-          if (added.insert(expr).second) {
-            //AOUT("adding expr: %s\n", expr.to_string().c_str());
-            __z3_solver->add(expr);
-          }
-        }
-      } 
-      res = __z3_solver->check();
-      //printf("\n%s\n", __z3_solver->to_smt2().c_str()); 
-      if (res == z3::sat) {
-        z3::model m = __z3_solver->get_model();
-        sol.clear();
-        generate_solution(m, sol);
-        //generate_input(sol, input_file, "./ce_output", fid++);
-        RGDSolution rsol = {sol, 0, 0, 0, 0, 0};
-        solution_queue.push(rsol);
-      } else {
-        opt_sol.clear();
-        generate_solution(m_opt, opt_sol);
-        RGDSolution rsol = {opt_sol, 0, 0, 0, 0, 0};
-        solution_queue.push(rsol);
-        //generate_input(opt_sol, input_file, "./ce_output", fid++);
-      }
-    }
-  } catch (z3::exception e) {
-    printf("WARNING: solving error: %s\n", e.msg());
-    //printf("Expr is %s\n", __z3_solver->to_smt2().c_str());
-  }
-
-}
-
 static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t tid,
-            std::unordered_map<uint32_t, uint8_t> &sol,
-            std::unordered_map<uint32_t, uint8_t> &opt_sol) {
+    std::unordered_map<uint32_t, uint8_t> &sol,
+    std::unordered_map<uint32_t, uint8_t> &opt_sol) {
 
   if (label == 0)
     return;
-  //std::string input_file = "/magma_shared/findings/tmp/cur_input_2";
-  //std::string input_file = "./corpus/tmp/cur_input_2";
 
   if ((get_label_info(label)->flags & B_FLIPPED))
     return;
@@ -462,51 +377,51 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
     z3::expr index = serialize(label, inputs);
     z3::expr result = __z3_context->bv_val((uint64_t)r, size);
     if (try_solve) {
-    // collect additional input deps
-    std::vector<dfsan_label> worklist;
-    worklist.insert(worklist.begin(), inputs.begin(), inputs.end());
-    while (!worklist.empty()) {
-      auto off = worklist.back();
-      worklist.pop_back();
+      // collect additional input deps
+      std::vector<dfsan_label> worklist;
+      worklist.insert(worklist.begin(), inputs.begin(), inputs.end());
+      while (!worklist.empty()) {
+        auto off = worklist.back();
+        worklist.pop_back();
 
-      auto &deps = branch_deps[off];
-      for (auto i : deps.input_deps) {
-        if (inputs.insert(i).second)
-          worklist.push_back(i);
-      }
-    }
-
-    __z3_solver->reset();
-
-    __z3_solver->add(index > result);
-    z3::check_result res = __z3_solver->check();
-
-    //AOUT("\n%s\n", __z3_solver->to_smt2().c_str());
-    if (res == z3::sat) {
-      z3::model m_opt = __z3_solver->get_model();
-      __z3_solver->push();
-
-      // 2. add constraints
-      expr_set_t added;
-      for (auto off : inputs) {
         auto &deps = branch_deps[off];
-        for (auto &expr : deps.expr_deps) {
-          if (added.insert(expr).second) {
-            __z3_solver->add(expr);
-          }
+        for (auto i : deps.input_deps) {
+          if (inputs.insert(i).second)
+            worklist.push_back(i);
         }
       }
 
-      res = __z3_solver->check();
+      __z3_solver->reset();
+
+      __z3_solver->add(index > result);
+      z3::check_result res = __z3_solver->check();
+
+      //AOUT("\n%s\n", __z3_solver->to_smt2().c_str());
       if (res == z3::sat) {
-        z3::model m = __z3_solver->get_model();
-        sol.clear();
-        generate_solution(m, sol);
-      } else {
-        opt_sol.clear();
-        generate_solution(m_opt, opt_sol);
+        z3::model m_opt = __z3_solver->get_model();
+        __z3_solver->push();
+
+        // 2. add constraints
+        expr_set_t added;
+        for (auto off : inputs) {
+          auto &deps = branch_deps[off];
+          for (auto &expr : deps.expr_deps) {
+            if (added.insert(expr).second) {
+              __z3_solver->add(expr);
+            }
+          }
+        }
+
+        res = __z3_solver->check();
+        if (res == z3::sat) {
+          z3::model m = __z3_solver->get_model();
+          sol.clear();
+          generate_solution(m, sol);
+        } else {
+          opt_sol.clear();
+          generate_solution(m_opt, opt_sol);
+        }
       }
-    }
     }
     // preserve
     for (auto off : inputs) {
@@ -520,6 +435,7 @@ static void solve_gep(dfsan_label label, uint64_t r, bool try_solve, uint32_t ti
     //printf("Expr is %s\n", __z3_solver->to_smt2().c_str());
   }
 
+  return;
 }
 
 
@@ -606,50 +522,27 @@ static void solve_cond(dfsan_label label, uint32_t direction,
     printf("WARNING: solving error: %s\n", e.msg());
     //printf("Expr is %s\n", __z3_solver->to_smt2().c_str());
   }
+  return;
 }
 
-std::string get_current_dir() {
-  char buff[FILENAME_MAX]; //create string buffer to hold path
-  getcwd( buff, FILENAME_MAX );
-  std::string current_working_dir(buff);
-  return current_working_dir;
-}
-
-const int kMapSize  = 1<<27;
-
-uint8_t pp_map[kMapSize];
-
-bool check_pp(uint64_t digest) {
-  uint32_t hash = digest % (kMapSize * CHAR_BIT);
-  uint32_t idx = hash / CHAR_BIT;
-  uint32_t mask = 1 << (hash % CHAR_BIT);
-  return (pp_map[idx] & mask) == 0;
-}
-
-void mark_pp(uint64_t digest) {
-  uint32_t hash = digest % (kMapSize * CHAR_BIT);
-  uint32_t idx = hash / CHAR_BIT;
-  uint32_t mask = 1 << (hash % CHAR_BIT);
-  pp_map[idx] |= mask;
-}
 
 //check if we need to solve a branch given
 // labe: if 0 concreate
 // addr: branch address
 // output: true: solve the constraints false: don't solve the constraints
 static uint8_t COUNT_LOOKUP[256] = {
-    0, 1, 2, 4, 8, 8, 8, 8, 16, 16, 16, 16, 16, 16, 16, 16, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
-    32, 32, 32, 32, 32, 32, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+  0, 1, 2, 4, 8, 8, 8, 8, 16, 16, 16, 16, 16, 16, 16, 16, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
+  32, 32, 32, 32, 32, 32, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+  64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+  64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+  64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+  64, 64, 64, 64, 64, 64, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+  128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+  128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+  128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+  128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+  128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+  128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
 };
 
 
@@ -685,8 +578,8 @@ void insert_flip_status(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_
 
 
 void handle_fmemcmp(uint8_t* data, uint32_t label, 
-              uint64_t size, uint32_t tid, uint64_t addr,
-            std::unordered_map<uint32_t, uint8_t> &sol) {
+    uint64_t size, uint32_t tid, uint64_t addr,
+    std::unordered_map<uint32_t, uint8_t> &sol) {
   //concrete
   try {
     z3::expr op_concrete = __z3_context->bv_val(*data++, 8);
@@ -700,8 +593,8 @@ void handle_fmemcmp(uint8_t* data, uint32_t label,
     __z3_solver->add(op_symbolic == op_concrete);
     z3::check_result res = __z3_solver->check();
     if (res == z3::sat) {
-        z3::model m = __z3_solver->get_model();
-        generate_solution(m, sol);
+      z3::model m = __z3_solver->get_model();
+      generate_solution(m, sol);
     }
   } catch (z3::exception e) {
     printf("WARNING: solving error: %s\n", e.msg());
@@ -717,6 +610,7 @@ void cleanup() {
   shmdt(__union_table);
   delete __z3_solver;
   delete __z3_context;
+  return;
 }
 
 void solve(int shmid, int pipefd) {
@@ -743,16 +637,16 @@ void solve(int shmid, int pipefd) {
   struct pipe_msg msg;
   while (read(pipefd,&msg,sizeof(msg)) == sizeof(msg))
   {
-/*
-    printf("read %d bytes\n", sizeof(msg)); 
-    std::cout << "tid: " << msg.tid
-      << " label: " << msg.label
-      << " result: " << msg.result
-      << " addr: " << msg.addr
-      << " ctx: " << msg.ctx
-      << " localcnt: " << msg.localcnt
-      << " type: " << msg.type << std::endl;
-*/
+    /*
+       printf("read %d bytes\n", sizeof(msg)); 
+       std::cout << "tid: " << msg.tid
+       << " label: " << msg.label
+       << " result: " << msg.result
+       << " addr: " << msg.addr
+       << " ctx: " << msg.ctx
+       << " localcnt: " << msg.localcnt
+       << " type: " << msg.type << std::endl;
+     */
 
 
 
@@ -777,7 +671,7 @@ void solve(int shmid, int pipefd) {
       acc_time += getTimeStamp() - tstart;
       if (acc_time > 180000000 || count > 5000 ) //90s
         skip_rest = true;
-       // break;
+      // break;
     }
     else if (msg.type == 2) {  //strcmp
       uint8_t data[msg.result];
@@ -798,14 +692,14 @@ void solve(int shmid, int pipefd) {
 
     if (sol.size()) {
       RGDSolution rsol = {sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, 
-          msg.bid, msg.sctx, msg.type == 0, msg.predicate, msg.target_cond, cons_hash};
+        msg.bid, msg.sctx, msg.type == 0, msg.predicate, msg.target_cond, cons_hash};
       solution_queue.push(rsol);
       count++;
     }
 
     if (opt_sol.size()) {
       RGDSolution rsol = {opt_sol, msg.tid, msg.addr, msg.ctx, msg.localcnt, msg.result, 
-          msg.bid, msg.sctx, msg.type == 0, msg.predicate, msg.target_cond, cons_hash};
+        msg.bid, msg.sctx, msg.type == 0, msg.predicate, msg.target_cond, cons_hash};
       solution_queue.push(rsol);
       count++;
     }
@@ -819,6 +713,7 @@ void solve(int shmid, int pipefd) {
     << " total count " << total_generation_count 
     << " process_time " << getTimeStamp() - one_start 
     << std::endl;
+  return;
 }
 
 
@@ -827,15 +722,17 @@ extern "C" {
   void init_core(bool saving_whole) { 
     init(saving_whole); 
     printf("the length of union_table is %u\n", 0xC00000000/sizeof(dfsan_label_info));
-    memset(pp_map, 0, kMapSize);
+    return;
   }
 
   void run_solver(int shmid, uint32_t pipefd) {
     solve(shmid, pipefd);
+    return;
   }
 
   void insert_flip(uint64_t addr, uint64_t ctx, uint64_t direction, uint32_t order) {
     insert_flip_status(addr,ctx,direction,order);
+    return;
   }
 
   void get_next_input(unsigned char* input, uint64_t *addr, uint64_t *ctx, 
@@ -860,6 +757,7 @@ extern "C" {
     *predicate = item.predicate;
     *target_cond = item.target_cond;
     *cons_hash = item.cons_hash;
+    return;
   }
 
   uint32_t get_next_input_id() {
