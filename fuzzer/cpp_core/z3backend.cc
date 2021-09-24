@@ -41,6 +41,9 @@ static uint32_t max_label_per_session = 0;
 sem_t * semagra;
 sem_t * semace;
 uint32_t total_generation_count = 0;
+uint32_t normal_constraints = 0;
+uint32_t size_constraints = 0;
+uint32_t offset_constraints = 0;
 uint64_t total_time = 0;
 
 static dfsan_label_info *__union_table;
@@ -659,8 +662,6 @@ void solve(int shmid, int pipefd) {
     uint32_t cons_hash = 0;
     if (msg.type == 0) {  //cond
       if (skip_rest) continue;
-      //bool try_solve = hybrid_filter(msg.addr, msg.ctx, msg.result, msg.localcnt, 
-      //  label, &path_prefix, &per_seed_keys);
       bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
       uint64_t tstart = getTimeStamp();
       solve_cond(msg.label, msg.result, opt_sol, sol, try_solve);
@@ -669,14 +670,18 @@ void solve(int shmid, int pipefd) {
         cons_hash = info->hash;
       }
       acc_time += getTimeStamp() - tstart;
+      normal_constraints += 1;
       if (acc_time > 180000000 || count > 5000 ) //90s
         skip_rest = true;
-      // break;
-    }
-    else if (msg.type == 2) {  //strcmp
+    } else if (msg.type == 1) { //gep constraint
+      bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
+      if (msg.result != 0)
+        size_constraints += 1;
+      solve_gep(msg.label, msg.result, try_solve, msg.tid, sol, opt_sol);
+    } else if (msg.type == 2) {  //strcmp
       uint8_t data[msg.result];
       if (read(pipefd, data, msg.result) == msg.result) {
-        //bool try_solve = filter(addr, label, direction, &path_prefix);
+        size_constraints += 1;    
         bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
         if (try_solve)
           handle_fmemcmp(data, msg.label, msg.result, msg.tid, msg.addr, sol);
@@ -684,9 +689,8 @@ void solve(int shmid, int pipefd) {
         // pipe corruption
         break;
       }
-    } else if (msg.type == 1) { //gep constraint
-      bool try_solve = bcount_filter(msg.addr, msg.ctx, 0, msg.localcnt);
-      solve_gep(msg.label, msg.result, try_solve, msg.tid, sol, opt_sol);
+    } else if (msg.type == 3) {
+      offset_constraints += 1;
     }
 
 
@@ -712,6 +716,9 @@ void solve(int shmid, int pipefd) {
   std::cerr << "generate count " << count 
     << " total count " << total_generation_count 
     << " process_time " << getTimeStamp() - one_start 
+    << " nommal: " << normal_constraints
+    << " size: " << size_constraints
+    << " offset: " << offset_constraints
     << std::endl;
   return;
 }
