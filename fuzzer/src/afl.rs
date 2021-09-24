@@ -18,6 +18,7 @@ pub fn mutate(buf: Vec<u8>, sol: &HashMap<u32,u8>, field_index: usize, field_siz
   if buf.len() == new_size {
     ret = buf.clone();
   } else {
+    error!("mutate length"); 
     ret = vec![0; new_size];
 
     //copy bytes before field
