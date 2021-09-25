@@ -8,8 +8,38 @@ use rand::{self, thread_rng, distributions::Uniform, Rng, RngCore};
 use fastgen_common::{config};
 use crate::executor::Executor;
 use crate::interesting_val::*;
+use std::collections::HashMap;
 
 static IDX_TO_SIZE: [usize; 4] = [1, 2, 4, 8];
+
+pub fn mutate(buf: Vec<u8>, sol: &HashMap<u32,u8>, field_index: usize, field_size: usize) -> Vec<u8> {
+  let new_size = buf.len() + sol.len() - field_size;
+  let mut ret;
+  if buf.len() == new_size {
+    ret = buf.clone();
+  } else {
+    ret = vec![0; new_size];
+
+    //copy bytes before field
+    for i in 0..field_index {
+      ret[i] = buf[i];
+    }
+    //copy bytes after field
+    let mut i = 0;
+    while i < new_size - sol.len() - field_index && 
+      i < buf.len() - field_size - field_index {
+        ret[i + field_index + sol.len()] = buf[i + field_index + field_size];
+        i += 1;
+      }
+  }
+  //mutation
+  for (&k,&v) in sol {
+    if ( k as usize )< ret.len() {
+      ret[k as usize] = v;
+    }
+  }
+  ret
+}
 
 pub fn set_val_in_buf(buf: &mut Vec<u8>, off: usize, size: usize, val: u64) {
     match size {

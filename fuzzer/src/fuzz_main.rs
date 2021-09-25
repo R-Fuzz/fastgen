@@ -18,6 +18,9 @@ use crate::fuzz_loop;
 use crate::cpp_interface::*;
 use fastgen_common::config;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use blockingqueue::BlockingQueue;
+use crate::solution::*;
 
 pub fn fuzz_main(
     in_dir: &str,
@@ -51,9 +54,10 @@ pub fn fuzz_main(
 
   let global_branches = Arc::new(branches::GlobalBranches::new());
   let branch_gencount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
-  let branch_solcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
+  let branch_fliplist = Arc::new(RwLock::new(HashSet::<(u64,u64,u32,u64)>::new()));
   let running = Arc::new(AtomicBool::new(true));
   let forklock = Arc::new(Mutex::new(0));
+  let bq = BlockingQueue::new();
   set_sigint_handler(running.clone());
 
   let mut executor = executor::Executor::new(
@@ -80,25 +84,26 @@ pub fn fuzz_main(
     let b = global_branches.clone();
     let cmd = command_option.specify(3+g);
     let bg = branch_gencount.clone();
-    let bs = branch_solcount.clone();
+    let blist = branch_fliplist.clone();
     let fk = forklock.clone();
+    let bqc = bq.clone();
     let handle = thread::spawn(move || {
         //fuzz_loop::branch_checking(r, cmd, d, b, bg, bs);
-        fuzz_loop::grading_loop(r, cmd, d, b, bg, bs, fk);
+        fuzz_loop::grading_loop(r, cmd, d, b, bg, blist, fk, bqc);
         });
     handlers.push(handle);
   }
   { 
-
     let r = running.clone();
     let d = depot.clone();
     let b = global_branches.clone();
     let cmd = command_option.specify(2);
     let bg = branch_gencount.clone();
-    let bs = branch_solcount.clone();
+    let blist = branch_fliplist.clone();
     let fk = forklock.clone();
+    let bqc = bq.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs, fk);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, blist, fk, bqc);
         });
     handlers.push(handle);
   }
@@ -109,10 +114,11 @@ pub fn fuzz_main(
     let b = global_branches.clone();
     let cmd = command_option.specify(3);
     let bg = branch_gencount.clone();
-    let bs = branch_solcount.clone();
+    let blist = branch_fliplist.clone();
     let fk = forklock.clone();
+    let bqc = bq.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, bs, fk);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, blist, fk, bqc);
         });
     handlers.push(handle);
   } 
