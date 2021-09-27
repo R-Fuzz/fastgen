@@ -402,9 +402,9 @@ pub fn generate_solution(ctx: &Context, m: &Model, inputs: &HashSet<u32>) -> Has
   sol
 }
 
-pub fn add_cons(label: u32, table: &UnionTable, 
-    ctx: &Context, solver: &Solver, 
-    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep>>) {
+pub fn add_cons<'a>(label: u32, table: &UnionTable, 
+    ctx: &'a Context, solver: &Solver, 
+    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep<'a>>>) {
 
 
   if label == 0 {
@@ -433,7 +433,7 @@ pub fn add_cons(label: u32, table: &UnionTable,
     }
     //preserve dependencies
     //preserve
-    preserve(&cond.as_bool().unwrap(), v0, branch_deps);
+    preserve(cond.as_bool().unwrap(), v0, branch_deps);
   }
   return;
 }
@@ -466,14 +466,12 @@ pub fn solve_fmemcmp(label: u32, data: &Vec<u8>, size: u64, try_solve: bool, tab
         error!("condition must be a bv for gep");
         return ret;
       }
-      info!("solve fmemcmp and len is {}", data.len());
       let mut op_concrete  = ast::BV::from_u64(ctx, data[0] as u64, 8);
       for i in 1..data.len() {
         op_concrete = ast::BV::from_u64(ctx, data[i] as u64, 8).concat(&op_concrete);
       }
       solver.reset();
       solver.assert(&cond._eq(&z3::ast::Dynamic::from_ast(&op_concrete)));
-      debug!("{:}", solver);
       let mut res = solver.check();
       if res == z3::SatResult::Sat  {
         debug!("sat opt");
@@ -489,9 +487,9 @@ pub fn solve_fmemcmp(label: u32, data: &Vec<u8>, size: u64, try_solve: bool, tab
   ret
 }
 
-pub fn solve_gep(label: u32, result: u64, try_solve: bool, table: &UnionTable, 
-    ctx: &Context, solver: &Solver, 
-    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep>>) -> (Option<HashMap<u32,u8>>, Option<HashMap<u32,u8>>) {
+pub fn solve_gep<'a>(label: u32, result: u64, try_solve: bool, table: &UnionTable, 
+    ctx: &'a Context, solver: &Solver, 
+    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep<'a>>>) -> (Option<HashMap<u32,u8>>, Option<HashMap<u32,u8>>) {
 
 
   let mut ret = (None, None);
@@ -546,15 +544,15 @@ pub fn solve_gep(label: u32, result: u64, try_solve: bool, table: &UnionTable,
     //preserve dependencies
     //preserve
     let path_cond = z3::ast::Ast::distinct(ctx, &[&cond, &z3::ast::Dynamic::from_ast(&result)]); 
-    preserve(&path_cond, v0, branch_deps);
+    preserve(path_cond, v0, branch_deps);
   }
 
   ret
 }
 
-pub fn solve_cond(label: u32, direction: u64, try_solve: bool, table: &UnionTable, 
-    ctx: &Context, solver: &Solver, 
-    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep>>) -> (Option<HashMap<u32,u8>>, Option<HashMap<u32,u8>>) {
+pub fn solve_cond<'a>(label: u32, direction: u64, try_solve: bool, table: &UnionTable, 
+    ctx: &'a Context, solver: &Solver, 
+    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep<'a>>>) -> (Option<HashMap<u32,u8>>, Option<HashMap<u32,u8>>) {
   let result = z3::ast::Bool::from_bool(ctx, direction == 1);
 
   let mut ret = (None, None);
@@ -566,8 +564,6 @@ pub fn solve_cond(label: u32, direction: u64, try_solve: bool, table: &UnionTabl
   let mut expr_cache = HashMap::new();
 
   let rawcond = serialize(label, ctx, table, &mut cache, &mut expr_cache);
-
-
 
 
   if let Some(cond) = rawcond {
@@ -586,7 +582,6 @@ pub fn solve_cond(label: u32, direction: u64, try_solve: bool, table: &UnionTabl
       }
       solver.reset();
       solver.assert(&z3::ast::Ast::distinct(ctx, &[&cond, &z3::ast::Dynamic::from_ast(&result)])); 
-      debug!("{:}", solver);
       let mut res = solver.check();
       if res == z3::SatResult::Sat  {
         debug!("sat opt");
@@ -607,13 +602,13 @@ pub fn solve_cond(label: u32, direction: u64, try_solve: bool, table: &UnionTabl
     //preserve dependencies
     //preserve
     let path_cond = cond._eq(&z3::ast::Dynamic::from_ast(&result));
-    preserve(&path_cond, v0, branch_deps);
+    preserve(path_cond, v0, branch_deps);
   }
 
   ret
 }
 
-fn preserve(cond: &z3::ast::Bool, v0: usize, branch_deps: &mut Vec<Option<BranchDep>>) {
+fn preserve<'a>(cond: z3::ast::Bool<'a>, v0: usize, branch_deps: &mut Vec<Option<BranchDep<'a>>>) {
   //add to nested dependency tree
   let mut is_empty = false;
   {
@@ -627,7 +622,7 @@ fn preserve(cond: &z3::ast::Bool, v0: usize, branch_deps: &mut Vec<Option<Branch
   }
   let deps_opt = &mut branch_deps[v0 as usize];
   let deps = deps_opt.as_mut().unwrap();
-  //deps.cons_set.push(onecons);
+  deps.cons_set.push(z3::ast::Dynamic::from(cond));
 }
 
 fn add_dependencies(solver: &Solver, v0: usize, uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep>>) {
@@ -687,13 +682,13 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
-              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx);
+              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, true, msg.predicate, msg.target_cond);
           solution_queue.push(rgd_sol);
         }
         if let Some(sol) = rawsol.1 {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
-              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx);
+              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, true, msg.predicate, msg.target_cond);
           solution_queue.push(rgd_sol);
         }
       } else if msg.msgtype == 1 {
@@ -703,13 +698,13 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
-              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx);
+              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
           solution_queue.push(rgd_sol);
         }
         if let Some(sol) = rawsol.1 {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
-              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx);
+              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
           solution_queue.push(rgd_sol);
         }
       } else if msg.msgtype == 2 {
@@ -730,7 +725,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
         if let Some(sol) = rawsol {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
-              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx);
+              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
           solution_queue.push(rgd_sol);
         }
       } else if msg.msgtype == 3 {
