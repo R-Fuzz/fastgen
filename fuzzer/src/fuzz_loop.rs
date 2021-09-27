@@ -341,9 +341,9 @@ pub fn fuzz_loop(
         let gbranch_fliplist = branch_fliplist.clone();
         let gbranch_gencount = branch_gencount.clone();
         let solution_queue = bq.clone();
-        let handle = thread::spawn(move || {
+        let handle = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
             constraint_solver(shmid, read_end, solution_queue, buf.len(), gbranch_gencount, gbranch_fliplist, gbranch_hitcount);
-            });
+            }).unwrap();
 
         if handle.join().is_err() {
           error!("Error happened in listening thread!");

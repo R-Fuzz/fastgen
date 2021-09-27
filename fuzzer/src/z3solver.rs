@@ -42,11 +42,17 @@ fn union(uf: &mut UnionFind, inputs: &HashSet<u32>) -> u32 {
 pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
     cache: &mut HashMap<u32, HashSet<u32>>, 
     expr_cache: &mut HashMap<u32, z3::ast::Dynamic<'a>>) -> Option<z3::ast::Dynamic<'a>> {
+
   if label < 1 || label == std::u32::MAX {
     return None;
   }
 
   let info = &table[label as usize];
+
+  if info.depth > 200 {
+    warn!("ast tree too deep, skip solving");
+    return None;
+  }
 
 
   debug!("{} = (l1:{}, l2:{}, op:{}, size:{}, op1:{}, op2:{})", label,info.l1,info.l2,info.op,info.size,info.op1,info.op2);
