@@ -47,6 +47,7 @@ pub fn fuzz_main(
       );
   info!("{:?}", command_option);
 
+  let restart = in_dir == "-";
   check_dep::check_dep(in_dir, out_dir, &command_option);
 
   let depot = Arc::new(depot::Depot::new(seeds_dir, &angora_out_dir));
@@ -103,7 +104,7 @@ pub fn fuzz_main(
     let fk = forklock.clone();
     let bqc = bq.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, blist, fk, bqc);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, blist, restart, fk, bqc);
         });
     handlers.push(handle);
   }
@@ -118,7 +119,7 @@ pub fn fuzz_main(
     let fk = forklock.clone();
     let bqc = bq.clone();
     let handle = thread::spawn(move || {
-        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, blist, fk, bqc);
+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, blist, restart, fk, bqc);
         });
     handlers.push(handle);
   } 
@@ -145,14 +146,20 @@ fn initialize_directories(in_dir: &str, out_dir: &str, sync_afl: bool) -> (PathB
     PathBuf::from(out_dir)
   };
 
+
   let restart = in_dir == "-";
   if !restart {
     fs::create_dir(&angora_out_dir).expect("Output directory has existed!");
   }
 
+
+
+  let workdir = PathBuf::from("angora");
+
   let out_dir = &angora_out_dir;
   let seeds_dir = if restart {
-    let orig_out_dir = out_dir.with_extension(Local::now().to_rfc3339());
+    let orig_out_dir = workdir.with_extension(Local::now().to_rfc3339());
+    println!("orig out dir is {:?}",orig_out_dir);
     fs::rename(&out_dir, orig_out_dir.clone()).unwrap();
     fs::create_dir(&out_dir).unwrap();
     PathBuf::from(orig_out_dir).join(defs::INPUTS_DIR)

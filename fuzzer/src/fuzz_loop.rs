@@ -29,6 +29,7 @@ use nix::unistd::close;
 use crate::z3solver::solve;
 use blockingqueue::BlockingQueue;
 use crate::solution::*;
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 pub static mut FLIPPED: u32 = 0;
 pub static mut ALL: u32 = 0;
@@ -297,12 +298,19 @@ pub fn fuzz_loop(
     global_branches: Arc<GlobalBranches>,
     branch_gencount: Arc<RwLock<HashMap<(u64,u64,u32,u64),u32>>>,
     branch_fliplist: Arc<RwLock<HashSet<(u64,u64,u32,u64)>>>,
+    restart: bool,
     forklock: Arc<Mutex<u32>>,
     bq: BlockingQueue<Solution>,
     ) {
 
-  let mut id: usize = 0;
+  let mut id: u32 = 0;
   let executor_id = cmd_opt.id;
+
+  if restart {
+    let progress_data = std::fs::read("ce_progress").unwrap();
+    id = (&progress_data[..]).read_u32::<LittleEndian>().unwrap();
+    println!("restarting scan from id {}",id);
+  }
 
   let shmid =  
     unsafe {
@@ -329,13 +337,13 @@ pub fn fuzz_loop(
   let branch_hitcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
 
   while running.load(Ordering::Relaxed) {
-    if id < depot.get_num_inputs() {
+    if (id as usize) < depot.get_num_inputs() {
 
 
       let t_start = time::Instant::now();
 
-      if let Some(buf) = depot.get_input_buf(id) {
-        let (mut child, read_end) = executor.track(id, &buf);
+      if let Some(buf) = depot.get_input_buf(id as usize) {
+        let (mut child, read_end) = executor.track(id as usize, &buf);
 
         let gbranch_hitcount = branch_hitcount.clone();
         let gbranch_fliplist = branch_fliplist.clone();
@@ -372,6 +380,9 @@ pub fn fuzz_loop(
         let used_us1 = (used_t1.as_secs() as u32 * 1000_000) + used_t1.subsec_nanos() / 1_000;
         trace!("track time {}", used_us1);
         id = id + 1;
+        let mut progress = Vec::new();
+        progress.write_u32::<LittleEndian>(id).unwrap();
+        std::fs::write("ce_progress", &progress).map_err(|err| println!("{:?}", err)).ok();
       }
     } else {
       if config::RUNAFL {
