@@ -180,6 +180,7 @@ pub fn grading_loop(
         is_cmp = sol.is_cmp;
         target_cond = sol.target_cond;
         predicate = sol.predicate;
+        fid = sol.fid;
         let mut_buf = mutate(buf, &sol.sol, sol.field_index, sol.field_size);
         let new_path = executor.run_sync_with_cond(&mut_buf, bid, sctx, order);
 

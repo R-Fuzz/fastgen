@@ -368,7 +368,7 @@ impl Executor {
     let (read_end, write_end) = pipe().unwrap();
     let mut cmd = Command::new("timeout");
     let mut child = cmd
-      .arg("90")
+      .arg("102")
       .arg(&target.0)
       .args(&target.1)
       //  .stdin(Stdio::null())

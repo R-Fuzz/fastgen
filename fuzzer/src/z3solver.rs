@@ -17,6 +17,7 @@ use std::sync::{
   atomic::{AtomicBool, Ordering},
     Arc, RwLock, Mutex
 };
+use std::time;
 
 #[derive(Clone)]
 pub struct BranchDep<'a> {
@@ -658,6 +659,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
   let mut branch_deps : Vec<Option<BranchDep>> = vec![None;tainted_size];
   let mut uf = UnionFind::<usize>::new(tainted_size);
   let mut reader = BufReader::new(f);
+  let t_start = time::Instant::now();
   loop {
     let rawmsg = PipeMsg::from_reader(&mut reader);
     if let Ok(msg) = rawmsg {
@@ -740,6 +742,8 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
       } else {
         //size
       }
+      info!("solving eplased {}", t_start.elapsed().as_secs());
+      if t_start.elapsed().as_secs() > 90 { break; }
     } else {
       break;
     }
