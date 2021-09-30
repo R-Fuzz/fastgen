@@ -714,8 +714,8 @@ bool Taint::doInitialization(Module &M) {
       Type::getVoidTy(*Ctx), None, /*isVarArg=*/false);
   TaintVarargWrapperFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), Type::getInt8PtrTy(*Ctx), /*isVarArg=*/false);
-  Type *TaintTraceCmpArgs[6] = { ShadowTy, ShadowTy, ShadowTy, ShadowTy,
-      Int64Ty, Int64Ty };
+  Type *TaintTraceCmpArgs[7] = { ShadowTy, ShadowTy, ShadowTy, ShadowTy,
+      Int64Ty, Int64Ty, Int32Ty };
   TaintTraceCmpFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), TaintTraceCmpArgs, false);
   Type *TaintTraceCondArgs[3] = { ShadowTy, Int8Ty, Int32Ty };
@@ -1670,8 +1670,9 @@ void TaintFunction::visitCmpInst(CmpInst *I) {
   int predicate = I->getPredicate();
   ConstantInt *Predicate = ConstantInt::get(TT.ShadowTy, predicate);
 
+  ConstantInt *Cid = ConstantInt::get(TT.Int32Ty, 0);
   IRB.CreateCall(TT.TaintTraceCmpFn, {Op1Shadow, Op2Shadow, Size, Predicate,
-                 Op1, Op2});
+                 Op1, Op2, Cid});
 }
 
 void TaintVisitor::visitCmpInst(CmpInst &CI) {
