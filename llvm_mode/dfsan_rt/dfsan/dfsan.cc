@@ -812,6 +812,7 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
   void *addr = __builtin_return_address(0);
   uint64_t acc = (uint64_t)addr;
   u8 r = get_const_result(c1,c2,predicate);
+  /*
   auto itr = __branches.find({__taint_trace_callstack, addr});
   if (itr == __branches.end()) {
     itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
@@ -822,6 +823,7 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
   } else {
     return;
   }
+  */
 
   AOUT("solving cmp: %u %u %u %d %llu %llu @%p, %u, %u\n", op1, op2, size, predicate, c1, c2, addr, bid, __angora_context);
 
@@ -845,6 +847,7 @@ __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
   void *addr = __builtin_return_address(0);
   uint64_t acc = (uint64_t)addr;
   r = r & 1;
+  /*
   auto itr = __branches.find({__taint_trace_callstack, addr});
   if (itr == __branches.end()) {
     itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
@@ -855,8 +858,9 @@ __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
   } else {
     return;
   }
+  */
 
-  AOUT("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __angora_context);
+  AOUT("solving cond: %u %u %u %p %u %u\n", label, r, __taint_trace_callstack, addr,  bid, __angora_context);
 
   __solve_cond(label, addr, __taint_trace_callstack, order, r,0,bid,__angora_context, 0);
 }

@@ -660,59 +660,68 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
   let mut uf = UnionFind::<usize>::new(tainted_size);
   let mut reader = BufReader::new(f);
   let t_start = time::Instant::now();
+  let branch_local = HashMap::<(u64,u64,u64),u32>::new();
   loop {
     let rawmsg = PipeMsg::from_reader(&mut reader);
     if let Ok(msg) = rawmsg {
-      debug!("tid: {} label: {} result: {} addr: {} ctx: {} localcnt: {} type: {}",
-          msg.tid, msg.label, msg.result, msg.addr, msg.ctx, msg.localcnt, msg.msgtype);
 
       let mut hitcount = 1;
       let mut gencount = 0;
       let mut flipped = false;
-      if branch_hitcount.read().unwrap().contains_key(&(msg.addr,msg.ctx,msg.localcnt,msg.result)) {
-        hitcount = *branch_hitcount.read().unwrap().get(&(msg.addr,msg.ctx,msg.localcnt,msg.result)).unwrap();
+      let mut localcnt = 0;
+
+      if branch_local.contains_key(&(msg.addr,msg.ctx,msg.result)) {
+        localcnt = *branch_local.get(&(msg.addr,msg.ctx,msg.result)).unwrap();
+        localcnt += 1;
+      }
+
+      debug!("tid: {} label: {} result: {} addr: {} ctx: {} localcnt: {} type: {}",
+          msg.tid, msg.label, msg.result, msg.addr, msg.ctx, localcnt, msg.msgtype);
+
+      if branch_hitcount.read().unwrap().contains_key(&(msg.addr,msg.ctx,localcnt,msg.result)) {
+        hitcount = *branch_hitcount.read().unwrap().get(&(msg.addr,msg.ctx,localcnt,msg.result)).unwrap();
         hitcount += 1;
       }
-      branch_hitcount.write().unwrap().insert((msg.addr,msg.ctx,msg.localcnt,msg.result), hitcount);
+      branch_hitcount.write().unwrap().insert((msg.addr,msg.ctx,localcnt,msg.result), hitcount);
 
-      if branch_fliplist.read().unwrap().contains(&(msg.addr,msg.ctx,msg.localcnt,msg.result)) {
+      if branch_fliplist.read().unwrap().contains(&(msg.addr,msg.ctx,localcnt,msg.result)) {
         //info!("the branch is flipped");
         flipped = true;
       }
 
-      if branch_gencount.read().unwrap().contains_key(&(msg.addr,msg.ctx,msg.localcnt,msg.result)) {
-        gencount = *branch_gencount.read().unwrap().get(&(msg.addr,msg.ctx,msg.localcnt,msg.result)).unwrap();
+      if branch_gencount.read().unwrap().contains_key(&(msg.addr,msg.ctx,localcnt,msg.result)) {
+        gencount = *branch_gencount.read().unwrap().get(&(msg.addr,msg.ctx,localcnt,msg.result)).unwrap();
       }
 
       if msg.msgtype == 0 {
-        let try_solve = hitcount <= 5 && (!flipped) && gencount == 0;
+        let try_solve = hitcount <= 5 && (!flipped) && gencount == 0 && localcnt <= 16;
         let rawsol = solve_cond(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps);
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
-              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, true, msg.predicate, msg.target_cond);
+              localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, true, msg.predicate, msg.target_cond);
           solution_queue.push(rgd_sol);
         }
         if let Some(sol) = rawsol.1 {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
-              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, true, msg.predicate, msg.target_cond);
+              localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, true, msg.predicate, msg.target_cond);
           solution_queue.push(rgd_sol);
         }
       } else if msg.msgtype == 1 {
         //gep
-        let try_solve = hitcount <= 5;
+        let try_solve = hitcount <= 5 && localcnt <=16;
         let rawsol = solve_gep(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps);
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
-              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
+                localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
           solution_queue.push(rgd_sol);
         }
         if let Some(sol) = rawsol.1 {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
-              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
+              localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
           solution_queue.push(rgd_sol);
         }
       } else if msg.msgtype == 2 {
@@ -733,7 +742,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
         if let Some(sol) = rawsol {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
-              msg.localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
+              localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
           solution_queue.push(rgd_sol);
         }
       } else if msg.msgtype == 3 {
