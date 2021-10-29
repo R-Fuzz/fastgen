@@ -660,7 +660,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
   let mut uf = UnionFind::<usize>::new(tainted_size);
   let mut reader = BufReader::new(f);
   let t_start = time::Instant::now();
-  let branch_local = HashMap::<(u64,u64,u64),u32>::new();
+  let mut branch_local = HashMap::<(u64,u64,u64),u32>::new();
   loop {
     let rawmsg = PipeMsg::from_reader(&mut reader);
     if let Ok(msg) = rawmsg {
