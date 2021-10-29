@@ -32,7 +32,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
     let mut hitcount = 1;
     let mut gencount = 0;
     let mut flipped = false;
-    let mut localcnt = 0;
+    let mut localcnt = 1;
     if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
       hitcount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
       hitcount += 1;
@@ -108,11 +108,11 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
       if label.2 == 1 {
         task = SearchTask::new((reverse_cons_breakdown,true), 
                               (cons_breakdown,false), 
-                              label.0, label.3, label.4, label.5, label.2, label.7, label.8);
+                              label.0, label.3, label.4, localcnt, label.2, label.7, label.8);
       } else {
         task = SearchTask::new((cons_breakdown, false), 
                             (reverse_cons_breakdown, true), 
-                            label.0, label.3, label.4, label.5, label.2, label.7, label.8);
+                            label.0, label.3, label.4, localcnt, label.2, label.7, label.8);
       }
 
       //tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
