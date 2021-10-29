@@ -668,7 +668,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
       let mut hitcount = 1;
       let mut gencount = 0;
       let mut flipped = false;
-      let mut localcnt = 0;
+      let mut localcnt = 1;
 
       if branch_local.contains_key(&(msg.addr,msg.ctx,msg.result)) {
         localcnt = *branch_local.get(&(msg.addr,msg.ctx,msg.result)).unwrap();
