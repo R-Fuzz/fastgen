@@ -810,6 +810,7 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
   void *addr = __builtin_return_address(0);
   uint64_t acc = (uint64_t)addr;
   u8 r = get_const_result(c1,c2,predicate);
+/*
   auto itr = __branches.find({__taint_trace_callstack, addr});
   if (itr == __branches.end()) {
     itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
@@ -820,7 +821,7 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
   } else {
     return;
   }
-
+**/
   AOUT("solving cmp: %u %u %u %d %llu %llu @%p\n", op1, op2, size, predicate, c1, c2, addr);
 
   dfsan_label temp = 0;
@@ -841,6 +842,7 @@ __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
   void *addr = __builtin_return_address(0);
   uint64_t acc = (uint64_t)addr;
   r = r & 1;
+/*
   auto itr = __branches.find({__taint_trace_callstack, addr});
   if (itr == __branches.end()) {
     itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
@@ -851,9 +853,10 @@ __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
   } else {
     return;
   }
+*/
 
   //AOUT("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
-  printf("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
+  //printf("solving cond: %u %u %u %p %u %u %u\n", label, r, __taint_trace_callstack, addr, itr->second, bid, __taint_trace_angcallstack);
 
   __solve_cond(label, addr, __taint_trace_callstack, order, r,0,bid,__taint_trace_angcallstack);
 }
@@ -895,6 +898,7 @@ __taint_trace_gep(dfsan_label label, u64 r) {
 
   u32 order = 0;
   void *addr = __builtin_return_address(0);
+/*
   auto itr = __branches.find({__taint_trace_callstack, addr});
   if (itr == __branches.end()) {
     itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
@@ -905,7 +909,7 @@ __taint_trace_gep(dfsan_label label, u64 r) {
   } else {
     //return;
   }
-
+*/
   uint64_t callstack = __taint_trace_callstack;
   static int count = 0;
   if (__solver_select != 1) {
