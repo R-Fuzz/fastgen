@@ -674,6 +674,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
         localcnt = *branch_local.get(&(msg.addr,msg.ctx,msg.result)).unwrap();
         localcnt += 1;
       }
+      branch_local.insert((msg.addr,msg.ctx,msg.result),localcnt);
 
       debug!("tid: {} label: {} result: {} addr: {} ctx: {} localcnt: {} type: {}",
           msg.tid, msg.label, msg.result, msg.addr, msg.ctx, localcnt, msg.msgtype);
