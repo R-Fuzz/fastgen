@@ -695,7 +695,8 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
       }
 
       if msg.msgtype == 0 {
-        let try_solve = hitcount <= 5 && (!flipped) && gencount == 0 && localcnt <= 16;
+        if localcnt > 64 { continue; }
+        let try_solve = hitcount <= 5 && (!flipped) && gencount == 0;
         let rawsol = solve_cond(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps);
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
@@ -711,7 +712,8 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
         }
       } else if msg.msgtype == 1 {
         //gep
-        let try_solve = hitcount <= 5 && localcnt <=16;
+        if localcnt > 64 { continue; }
+        let try_solve = hitcount <= 5;
         let rawsol = solve_gep(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps);
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
@@ -738,6 +740,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
         if data.len() < msg.result as usize {
           break;
         }
+        if localcnt > 64 { continue; }
         let try_solve = hitcount <=5;
         let rawsol = solve_fmemcmp(msg.label, &data, msg.result, try_solve, &table, &ctx, &solver);
         if let Some(sol) = rawsol {
@@ -752,7 +755,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
       } else {
         //size
       }
-      info!("solving eplased {}", t_start.elapsed().as_secs());
+      debug!("solving eplased {}", t_start.elapsed().as_secs());
       if t_start.elapsed().as_secs() > 90 { break; }
     } else {
       break;
