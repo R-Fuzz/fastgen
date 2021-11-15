@@ -214,7 +214,7 @@ impl SearchTaskBuilder {
               
               let fun_extract = fun.unwrap();
               unsafe { JTIME += jtime as u32; }
-              unsafe { info!("miss/hit {}/{}, jitime {} totoal {}", MISS, HIT, jtime, JTIME); }
+              unsafe { debug!("miss/hit {}/{}, jitime {} totoal {}", MISS, HIT, jtime, JTIME); }
               unsafe { MISS += 1; }
               func_cache.insert(AstNodeWrapper(constraint.get_node().write_to_bytes().unwrap()), fun_extract);
         //      cpp_interface::add(node_ser.as_ptr(), node_ser.len(), idx);

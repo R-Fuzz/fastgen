@@ -33,11 +33,6 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
     let mut gencount = 0;
     let mut flipped = false;
     let mut localcnt = 1;
-    if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
-      hitcount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
-      hitcount += 1;
-    }
-    branch_hitcount.write().unwrap().insert((label.3,label.4,label.5,label.2), hitcount);
 
     if branch_local.contains_key(&(label.3,label.4,label.2)) {
       localcnt = *branch_local.get(&(label.3,label.4,label.2)).unwrap();
@@ -45,22 +40,29 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
     }
     branch_local.insert((label.3,label.4,label.2), localcnt);
 
-    if branch_fliplist.read().unwrap().contains(&(label.3,label.4,label.5,label.2)) {
+
+    if localcnt > 64 {
+      //pop data for fmemecmp 
+      if label.6 == 2 {
+        memcmp_data.pop_front().unwrap();
+      }
+      continue;
+    }
+
+    if branch_hitcount.read().unwrap().contains_key(&(label.3,label.4,localcnt,label.2)) {
+      hitcount = *branch_hitcount.read().unwrap().get(&(label.3,label.4,localcnt,label.2)).unwrap();
+      hitcount += 1;
+    }
+    branch_hitcount.write().unwrap().insert((label.3,label.4,localcnt,label.2), hitcount);
+
+    if branch_fliplist.read().unwrap().contains(&(label.3,label.4,localcnt,label.2)) {
       //info!("the branch is flipped");
       flipped = true;
     }
 
-    if branch_gencount.read().unwrap().contains_key(&(label.3,label.4,label.5,label.2)) {
-      gencount = *branch_gencount.read().unwrap().get(&(label.3,label.4,label.5,label.2)).unwrap();
+    if branch_gencount.read().unwrap().contains_key(&(label.3,label.4,localcnt,label.2)) {
+      gencount = *branch_gencount.read().unwrap().get(&(label.3,label.4,localcnt,label.2)).unwrap();
     }
-
-    if hitcount > 1 {
-      if label.6 == 2 {
-        memcmp_data.pop_front().unwrap();
-        continue;
-      }
-    }
-
 
     let mut node_opt: Option<AstNode> = None;
     //let mut cons_reverse = Constraint::new();
