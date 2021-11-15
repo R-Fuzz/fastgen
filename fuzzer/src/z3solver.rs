@@ -696,7 +696,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
 
       if msg.msgtype == 0 {
         if localcnt > 64 { continue; }
-        let try_solve = hitcount <= 5 && (!flipped) && gencount == 0;
+        let try_solve = hitcount <= 5 && (!flipped) && gencount == 0 && localcnt <= 16;
         let rawsol = solve_cond(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps);
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
@@ -713,7 +713,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
       } else if msg.msgtype == 1 {
         //gep
         if localcnt > 64 { continue; }
-        let try_solve = hitcount <= 5;
+        let try_solve = hitcount <= 5 && localcnt <= 16;
         let rawsol = solve_gep(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps);
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();

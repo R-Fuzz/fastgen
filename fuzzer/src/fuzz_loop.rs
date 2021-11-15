@@ -39,6 +39,7 @@ pub static mut NOT_REACHED: u32 = 0;
 
 
 //check the status
+/*
 pub fn branch_verifier(addr: u64, ctx: u64, 
     order: u32, direction: u64, fid: u32, id: RawFd) {
   let mut status = 4; // not reached
@@ -75,6 +76,7 @@ pub fn branch_verifier(addr: u64, ctx: u64,
     // }
   }
 }
+*/
 
 
 
@@ -190,7 +192,7 @@ pub fn grading_loop(
           branch_fliplist.write().unwrap().insert((sol.addr,sol.ctx,sol.order,sol.direction));
           sol_conds += 1;
           flipped_hashes.insert(cons_hash);
-          unsafe { insert_flip(addr, ctx, direction, order); }
+         // unsafe { insert_flip(addr, ctx, direction, order); }
         } else if predicate == 0 && is_cmp  {
           if (direction_out != std::u64::MAX) {
             reached += 1;
@@ -211,7 +213,7 @@ pub fn grading_loop(
               flipped += 1;
               branch_fliplist.write().unwrap().insert((sol.addr,sol.ctx,sol.order,sol.direction));
               flipped_hashes.insert(cons_hash);
-              unsafe { insert_flip(addr, ctx, direction, order); }
+             // unsafe { insert_flip(addr, ctx, direction, order); }
             } else if direction_out != std::u64::MAX {
               reached += 1;
               notflipped_hashes.insert(cons_hash);
@@ -222,7 +224,7 @@ pub fn grading_loop(
               flipped += 1;
               branch_fliplist.write().unwrap().insert((sol.addr,sol.ctx,sol.order,sol.direction));
               flipped_hashes.insert(cons_hash);
-              unsafe { insert_flip(addr, ctx, direction, order); }
+             // unsafe { insert_flip(addr, ctx, direction, order); }
             }
           } else if direction_out != std::u64::MAX {
             reached += 1;
