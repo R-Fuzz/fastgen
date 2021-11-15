@@ -1,4 +1,4 @@
-#[link(name = "gd")]
+//#[link(name = "gd")]
 //#[link(name = "protobuf")]
 //#[link(name = "LLVM")]
 #[link(name = "stdc++")]
