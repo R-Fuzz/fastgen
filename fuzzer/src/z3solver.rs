@@ -660,7 +660,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
   let mut uf = UnionFind::<usize>::new(tainted_size);
   let mut reader = BufReader::new(f);
   let t_start = time::Instant::now();
-  let mut branch_local = HashMap::<(u64,u64,u64),u32>::new();
+  let mut branch_local = HashMap::<(u64,u64),u32>::new();
   loop {
     let rawmsg = PipeMsg::from_reader(&mut reader);
     if let Ok(msg) = rawmsg {
@@ -670,11 +670,11 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
       let mut flipped = false;
       let mut localcnt = 1;
 
-      if branch_local.contains_key(&(msg.addr,msg.ctx,msg.result)) {
-        localcnt = *branch_local.get(&(msg.addr,msg.ctx,msg.result)).unwrap();
+      if branch_local.contains_key(&(msg.addr,msg.ctx)) {
+        localcnt = *branch_local.get(&(msg.addr,msg.ctx)).unwrap();
         localcnt += 1;
       }
-      branch_local.insert((msg.addr,msg.ctx,msg.result),localcnt);
+      branch_local.insert((msg.addr,msg.ctx),localcnt);
 
       debug!("tid: {} label: {} result: {} addr: {} ctx: {} localcnt: {} type: {}",
           msg.tid, msg.label, msg.result, msg.addr, msg.ctx, localcnt, msg.msgtype);
@@ -696,7 +696,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
 
       if msg.msgtype == 0 {
         if localcnt > 64 { continue; }
-        let try_solve = hitcount <= 5 && (!flipped) && gencount == 0 && localcnt <= 16;
+        let try_solve = hitcount <= 5 && (!flipped) && localcnt <= 16;
         let rawsol = solve_cond(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps);
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
@@ -713,7 +713,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
       } else if msg.msgtype == 1 {
         //gep
         if localcnt > 64 { continue; }
-        let try_solve = hitcount <= 5 && gencount == 0 && localcnt <= 16;
+        let try_solve = hitcount <= 5 && localcnt <= 16;
         let rawsol = solve_gep(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps);
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
