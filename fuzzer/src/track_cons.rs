@@ -27,18 +27,18 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
 
   let t_start = time::Instant::now();
   let mut count = 0;
-  let mut branch_local = HashMap::<(u64,u64,u64),u32>::new();
+  let mut branch_local = HashMap::<(u64,u64),u32>::new();
   for &label in labels {
     let mut hitcount = 1;
     let mut gencount = 0;
     let mut flipped = false;
     let mut localcnt = 1;
 
-    if branch_local.contains_key(&(label.3,label.4,label.2)) {
-      localcnt = *branch_local.get(&(label.3,label.4,label.2)).unwrap();
+    if branch_local.contains_key(&(label.3,label.4)) {
+      localcnt = *branch_local.get(&(label.3,label.4)).unwrap();
       localcnt += 1;
     }
-    branch_local.insert((label.3,label.4,label.2), localcnt);
+    branch_local.insert((label.3,label.4), localcnt);
 
 
     if localcnt > 64 {
@@ -119,7 +119,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
 
       //tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
      
-         if hitcount <= 5 && (!flipped) && gencount == 0 && label.6 != 3 && localcnt <= 16 {
+         if hitcount <= 5 && (!flipped) && label.6 != 3 && localcnt <= 16 {
          tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
          } else {
          tb.submit_task_rust(&task, solution_queue.clone(), false, &inputs);
