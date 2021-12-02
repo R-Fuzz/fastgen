@@ -25,6 +25,7 @@ memmap = "0.7.0"
 rand = "0.7"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "llvm10-0" }
 blockingqueue = "0.1.1"
+z3 = "0.11.2"
 
 [build-dependencies]
 protoc-rust = "2.0"

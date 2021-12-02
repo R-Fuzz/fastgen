@@ -373,7 +373,7 @@ impl SearchTaskBuilder {
   //submit a sinlge branch
   pub fn submit_task_rust(&mut self, task: &SearchTask, 
       solution_queue: BlockingQueue<Solution>,
-      solve: bool, inputs: &HashSet<u32>) {
+      solve: bool, inputs: &HashSet<u32>)  -> bool {
     /*
        let r = save_request(task, &Path::new("saved_test"));
        if r.is_err() {
@@ -446,6 +446,7 @@ impl SearchTaskBuilder {
     }
 
     self.add_dependency(task, inputs, v0);
+    opt_solved
   }
 }
 

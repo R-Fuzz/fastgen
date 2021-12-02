@@ -13,20 +13,20 @@ use std::io::BufRead;
 use std::time;
 
 
-struct PipeMsg {
-  msgtype: u32, //gep, cond, add_constraints, strcmp 
-  tid: u32, 
-  label: u32,
-  result: u64, //direction for conditional branch, index for GEP
-  addr: u64,
-  ctx: u64,
-  localcnt: u32,
-  bid: u32,
-  sctx: u32,
+pub struct PipeMsg {
+  pub msgtype: u32, //gep, cond, add_constraints, strcmp 
+  pub tid: u32, 
+  pub label: u32,
+  pub result: u64, //direction for conditional branch, index for GEP
+  pub addr: u64,
+  pub ctx: u64,
+  pub localcnt: u32,
+  pub bid: u32,
+  pub sctx: u32,
 }
 
 impl PipeMsg {
-  fn from_reader(mut rdr: impl Read) -> io::Result<Self> {
+  pub fn from_reader(mut rdr: impl Read) -> io::Result<Self> {
     let msgtype = rdr.read_u32::<LittleEndian>()?;
     let tid = rdr.read_u32::<LittleEndian>()?;
     let label = rdr.read_u32::<LittleEndian>()?;

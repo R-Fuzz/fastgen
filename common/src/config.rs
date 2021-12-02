@@ -16,6 +16,7 @@ pub const SAVING_WHOLE: bool = false;
 pub const USE_CODECACHE: bool = true;
 pub const SAMPLING: bool = true;
 pub const RUNAFL: bool = true;
+pub const HYBRID_SOLVER: bool = true;
 
 
 //AFL

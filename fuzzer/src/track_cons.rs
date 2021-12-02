@@ -16,7 +16,10 @@ use blockingqueue::BlockingQueue;
 use crate::solution::Solution;
 use crate::search_task::SearchTask;
 use crate::op_def::*;
-
+use z3::{Solver, Config, Context, ast, Model};
+use z3::ast::Ast;
+use crate::z3solver::*;
+use fastgen_common::config;
 
 pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, memcmp_data: &mut VecDeque<Vec<u8>>,
     table: &UnionTable, tainted_size: usize, 
@@ -24,6 +27,12 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
     branch_fliplist: &Arc<RwLock<HashSet<(u64,u64,u32,u64)>>>,
     branch_hitcount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>, buf: &Vec<u8>,
     tb: &mut SearchTaskBuilder, solution_queue: BlockingQueue<Solution>) {
+
+
+  let mut cfg = Config::new();
+  cfg.set_timeout_msec(10000);
+  let ctx = Context::new(&cfg);
+  let solver = Solver::new(&ctx);
 
   let t_start = time::Instant::now();
   let mut count = 0;
@@ -119,11 +128,20 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
 
       //tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
      
-         if hitcount <= 5 && (!flipped) && label.6 != 3 && localcnt <= 16 {
-         tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
-         } else {
-         tb.submit_task_rust(&task, solution_queue.clone(), false, &inputs);
-         }
+      if hitcount <= 5 && (!flipped) && label.6 != 3 && localcnt <= 16 {
+        if !tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs) {
+          if label.6 == 0 && config::HYBRID_SOLVER {
+            if let Some(sol) =  solve_cond(label.1, label.2, table, &ctx, &solver) {
+              let sol_size = sol.len();
+              let z3_sol = Solution::new(sol, task.fid, task.addr, 
+                  task.ctx, task.order, task.direction, 0, sol_size, task.bid, task.sctx);
+              solution_queue.push(z3_sol);
+            }
+          }
+        }
+      } else {
+        tb.submit_task_rust(&task, solution_queue.clone(), false, &inputs);
+      }
 
        
       let used_t1 = t_start.elapsed().as_secs() as u32;
