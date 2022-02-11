@@ -256,10 +256,15 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                 }
               },
               DFSAN_XOR => {
-                let node =  z3::ast::Dynamic::from(left.as_bv().unwrap() ^ right.as_bv().unwrap());
-                expr_cache.insert(label,node.clone());
-                ops_cache.insert(0);
-                return Some(node);
+                if size1 != 1 {
+                  let node = z3::ast::Dynamic::from(left.as_bv().unwrap() ^ right.as_bv().unwrap());
+                  expr_cache.insert(label,node.clone());
+                  return Some(node);
+                } else {
+                  let node = z3::ast::Dynamic::from(left.as_bool().unwrap() ^ right.as_bool().unwrap());
+                  expr_cache.insert(label,node.clone());
+                  return Some(node);
+                }
               },
 
               DFSAN_SHL => {
