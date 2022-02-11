@@ -741,7 +741,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
           break;
         }
         if localcnt > 64 { continue; }
-        let try_solve = hitcount <=256;
+        let try_solve = hitcount <=5;
         let rawsol = solve_fmemcmp(msg.label, &data, msg.result, try_solve, &table, &ctx, &solver);
         if let Some(sol) = rawsol {
           let sol_size = sol.len();
