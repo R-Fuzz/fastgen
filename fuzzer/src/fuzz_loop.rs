@@ -236,7 +236,7 @@ pub fn grading_loop(
           info!("flipped/reached/not_reached/sol_cons {}/{}/{}/{} {}", flipped, reached, not_reached, sol_conds, sol.addr);
         } else if (sol.direction ==0 || sol.direction == 1) {
           info!("not flipped {}, direction {}, direction_out {}, bid {} sctx {}", sol.addr, sol.direction, direction_out, sol.bid, sol.sctx);
-          if (direction_out != std::u32::MAX) {
+          if (direction_out != std::u64::MAX) {
             reached += 1;
           } else {
             not_reached += 1;

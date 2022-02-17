@@ -86,6 +86,7 @@ using namespace llvm;
 // the runtime will set the external mask based on the VMA range.
 static const char *const kTaintExternShadowPtrMask = "__dfsan_shadow_ptr_mask";
 
+static cl::opt<bool> TrackMode("TrackMode", cl::desc("track mode"), cl::Hidden);
 // The -taint-preserve-alignment flag controls whether this pass assumes that
 // alignment requirements provided by the input IR are correct.  For example,
 // if the input IR contains a load with alignment 8, this flag will cause
@@ -335,6 +336,8 @@ class Taint : public ModulePass {
   FunctionType *TaintVarargWrapperFnTy;
   FunctionType *TaintTraceCmpFnTy;
   FunctionType *TaintTraceCondFnTy;
+  FunctionType *GradeTraceCondFnTy;
+  FunctionType *GradeTraceSwitchFnTy;
   FunctionType *TaintTraceIndirectCallFnTy;
   FunctionType *TaintTraceGEPFnTy;
   FunctionType *TaintDebugFnTy;
@@ -348,11 +351,15 @@ class Taint : public ModulePass {
   Constant *TaintVarargWrapperFn;
   Constant *TaintTraceCmpFn;
   Constant *TaintTraceCondFn;
+  Constant *GradeTraceCondFn;
+  Constant *GradeTraceSwitchFn;
   Constant *TaintTraceIndirectCallFn;
   Constant *TaintTraceGEPFn;
   Constant *TaintDebugFn;
   Constant *CallStack;
   Constant *AngoraContext;
+  Constant *AngoraPrevLoc;
+  Constant *AngoraMapPtr;
   MDNode *ColdCallWeights;
   TaintABIList ABIList;
   DenseMap<Value *, Function *> UnwrappedFnMap;
@@ -389,6 +396,8 @@ public:
   void setInsNonSan(Instruction *v);
   bool doInitialization(Module &M) override;
   bool runOnModule(Module &M) override;
+  void countEdge(BasicBlock &BB);
+  uint32_t getRandomBasicBlockId();
 };
 
 struct TaintFunction {
@@ -705,13 +714,19 @@ bool Taint::doInitialization(Module &M) {
       Type::getVoidTy(*Ctx), None, /*isVarArg=*/false);
   TaintVarargWrapperFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), Type::getInt8PtrTy(*Ctx), /*isVarArg=*/false);
-  Type *TaintTraceCmpArgs[6] = { ShadowTy, ShadowTy, ShadowTy, ShadowTy,
-      Int64Ty, Int64Ty };
+  Type *TaintTraceCmpArgs[7] = { ShadowTy, ShadowTy, ShadowTy, ShadowTy,
+      Int64Ty, Int64Ty, Int32Ty };
   TaintTraceCmpFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), TaintTraceCmpArgs, false);
   Type *TaintTraceCondArgs[3] = { ShadowTy, Int8Ty, Int32Ty };
+  Type *GradeTraceCondArgs[3] = { Int32Ty, Int32Ty, Int32Ty };
+  Type *GradeTraceSwitchArgs[3] = { Int32Ty, Int32Ty, Int64Ty };
   TaintTraceCondFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), TaintTraceCondArgs, false);
+  GradeTraceCondFnTy = FunctionType::get(
+      Type::getVoidTy(*Ctx), GradeTraceCondArgs, false);
+  GradeTraceSwitchFnTy = FunctionType::get(
+      Type::getVoidTy(*Ctx), GradeTraceSwitchArgs, false);
   TaintTraceIndirectCallFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), { ShadowTy }, false);
   TaintTraceGEPFnTy = FunctionType::get(
@@ -742,11 +757,17 @@ bool Taint::doInitialization(Module &M) {
 }
 
 bool Taint::isInstrumented(const Function *F) {
-  return !ABIList.isIn(*F, "uninstrumented");
+  if (!TrackMode)
+    return false;
+  else
+    return !ABIList.isIn(*F, "uninstrumented");
 }
 
 bool Taint::isInstrumented(const GlobalAlias *GA) {
-  return !ABIList.isIn(*GA, "uninstrumented");
+  if (!TrackMode)
+    return false;
+  else
+    return !ABIList.isIn(*GA, "uninstrumented");
 }
 
 Taint::InstrumentedABI Taint::getInstrumentedABI() {
@@ -755,12 +776,16 @@ Taint::InstrumentedABI Taint::getInstrumentedABI() {
 
 Taint::WrapperKind Taint::getWrapperKind(Function *F) {
   // priority custom
-  if (ABIList.isIn(*F, "custom"))
-    return WK_Custom;
-  if (ABIList.isIn(*F, "functional"))
-    return WK_Functional;
-  if (ABIList.isIn(*F, "discard"))
-    return WK_Discard;
+  if (TrackMode) {
+    if (ABIList.isIn(*F, "custom"))
+      return WK_Custom;
+    if (ABIList.isIn(*F, "functional"))
+      return WK_Functional;
+    if (ABIList.isIn(*F, "discard"))
+      return WK_Discard;
+  } else {
+      return WK_Custom;
+  }
 
   return WK_Warning;
 }
@@ -851,14 +876,84 @@ Constant *Taint::getOrBuildTrampolineFunction(FunctionType *FT,
   return C;
 }
 
+uint32_t Taint::getRandomBasicBlockId() { return random() % 1048576; }
+
+void Taint::countEdge(BasicBlock &BB) {
+  //if (TrackMode || skipBasicBlock()) {
+  if (TrackMode) {
+    return;
+  }
+
+  unsigned int cur_loc = getRandomBasicBlockId();
+  ConstantInt *CurLoc = ConstantInt::get(Int32Ty, cur_loc);
+  
+  BasicBlock::iterator IP = BB.getFirstInsertionPt();
+  IRBuilder<> IRB(&(*IP));
+
+  LoadInst *PrevLoc = IRB.CreateLoad(AngoraPrevLoc);
+  setInsNonSan(PrevLoc);
+
+  Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, Int32Ty);
+  setValueNonSan(PrevLocCasted);
+
+  // Get Map[idx]
+  LoadInst *MapPtr = IRB.CreateLoad(AngoraMapPtr);
+  setInsNonSan(MapPtr);
+
+  Value *BrId = IRB.CreateXor(PrevLocCasted, CurLoc);
+  setValueNonSan(BrId);
+  Value *MapPtrIdx = IRB.CreateGEP(MapPtr, BrId);
+  setValueNonSan(MapPtrIdx);
+
+  // Increase 1 : IncRet <- Map[idx] + 1
+  LoadInst *Counter = IRB.CreateLoad(MapPtrIdx);
+  setInsNonSan(Counter);
+
+
+  Value *IncRet = IRB.CreateAdd(Counter, ConstantInt::get(Int8Ty, 1));
+  setValueNonSan(IncRet);
+  Value *IsZero = IRB.CreateICmpEQ(IncRet, ConstantInt::get(Int8Ty, 0));
+  setValueNonSan(IsZero);
+  Value *IncVal = IRB.CreateZExt(IsZero, Int8Ty);
+  setValueNonSan(IncVal);
+  IncRet = IRB.CreateAdd(IncRet, IncVal);
+  setValueNonSan(IncRet);
+
+  // Store Back Map[idx]
+  StoreInst *incret = IRB.CreateStore(IncRet, MapPtrIdx);
+  setInsNonSan(incret);
+
+  Value *NewPrevLoc = NULL;
+    // Load ctx
+  LoadInst *CtxVal = IRB.CreateLoad(AngoraContext);
+  setInsNonSan(CtxVal);
+
+  Value *CtxValCasted = IRB.CreateZExt(CtxVal, Int32Ty);
+  setValueNonSan(CtxValCasted);
+    // Udate PrevLoc
+  NewPrevLoc =
+      IRB.CreateXor(CtxValCasted, ConstantInt::get(Int32Ty, cur_loc >> 1));
+  setValueNonSan(NewPrevLoc);
+
+  StoreInst *Store = IRB.CreateStore(NewPrevLoc, AngoraPrevLoc);
+  setInsNonSan(Store);
+}
+
 bool Taint::runOnModule(Module &M) {
   if (ABIList.isIn(M, "skip"))
     return false;
+
+  if (TrackMode) {
+    printf("Track Mode.\n");
+  } else {
+    printf("Fast Mode.\n");
+  }
 
   ModName = M.getModuleIdentifier();
 
   ModId = hashName(ModName);
 
+  if (TrackMode) {
   if (!GetArgTLSPtr) {
     Type *ArgTLSTy = ArrayType::get(ShadowTy, 64);
     ArgTLS = Mod->getOrInsertGlobal("__dfsan_arg_tls", ArgTLSTy);
@@ -870,9 +965,12 @@ bool Taint::runOnModule(Module &M) {
     if (GlobalVariable *G = dyn_cast<GlobalVariable>(RetvalTLS))
       G->setThreadLocalMode(GlobalVariable::InitialExecTLSModel);
   }
+  }
 
   ExternalShadowMask =
       Mod->getOrInsertGlobal(kTaintExternShadowPtrMask, IntptrTy);
+
+  if (TrackMode) {
 
   TaintUnionFn = Mod->getOrInsertFunction("__taint_union", TaintUnionFnTy);
   if (Function *F = dyn_cast<Function>(TaintUnionFn)) {
@@ -890,6 +988,7 @@ bool Taint::runOnModule(Module &M) {
     F->addAttribute(AttributeList::ReturnIndex, Attribute::ZExt);
     F->addParamAttr(0, Attribute::ZExt);
     F->addParamAttr(1, Attribute::ZExt);
+  }
   }
 
   TaintUnionLoadFn =
@@ -923,6 +1022,12 @@ bool Taint::runOnModule(Module &M) {
     Mod->getOrInsertFunction("__taint_trace_cmp", TaintTraceCmpFnTy);
   TaintTraceCondFn =
     Mod->getOrInsertFunction("__taint_trace_cond", TaintTraceCondFnTy);
+  if (!TrackMode)  {
+    GradeTraceCondFn =
+      Mod->getOrInsertFunction("__grade_trace_cond", GradeTraceCondFnTy);
+    GradeTraceSwitchFn =
+      Mod->getOrInsertFunction("__grade_trace_switch", GradeTraceSwitchFnTy);
+  }
   TaintTraceIndirectCallFn =
     Mod->getOrInsertFunction("__taint_trace_indcall", TaintTraceIndirectCallFnTy);
   TaintTraceGEPFn =
@@ -931,13 +1036,32 @@ bool Taint::runOnModule(Module &M) {
   TaintDebugFn =
     Mod->getOrInsertFunction("__taint_debug", TaintDebugFnTy);
 
-  CallStack = Mod->getOrInsertGlobal("__taint_trace_callstack", Int32Ty);
-  if (GlobalVariable *G = dyn_cast<GlobalVariable>(CallStack))
-    G->setThreadLocalMode(GlobalVariable::InitialExecTLSModel);
+  //CallStack = Mod->getOrInsertGlobal("__taint_trace_callstack", Int32Ty);
+  //if (GlobalVariable *G = dyn_cast<GlobalVariable>(CallStack))
+   // G->setThreadLocalMode(GlobalVariable::InitialExecTLSModel);
 
-  AngoraContext = Mod->getOrInsertGlobal("__taint_trace_angcallstack", Int32Ty);
-  if (GlobalVariable *G = dyn_cast<GlobalVariable>(AngoraContext))
-    G->setThreadLocalMode(GlobalVariable::InitialExecTLSModel);
+  CallStack =
+      new GlobalVariable(M, Int32Ty, false, GlobalValue::CommonLinkage,
+                         ConstantInt::get(Int32Ty, 0), "__taint_trace_callstack", 0,
+                         GlobalVariable::GeneralDynamicTLSModel, 0, false);
+
+  //AngoraContext = Mod->getOrInsertGlobal("__taint_trace_angcallstack", Int32Ty);
+  //if (GlobalVariable *G = dyn_cast<GlobalVariable>(AngoraContext))
+   // G->setThreadLocalMode(GlobalVariable::InitialExecTLSModel);
+  AngoraContext =
+      new GlobalVariable(M, Int32Ty, false, GlobalValue::CommonLinkage,
+                         ConstantInt::get(Int32Ty, 0), "__angora_context", 0,
+                         GlobalVariable::GeneralDynamicTLSModel, 0, false);
+  if (!TrackMode) {
+    AngoraPrevLoc =
+      new GlobalVariable(M, Int32Ty, false, GlobalValue::CommonLinkage,
+          ConstantInt::get(Int32Ty, 0), "__angora_prev_loc", 0,
+          GlobalVariable::GeneralDynamicTLSModel, 0, false);
+    
+    AngoraMapPtr = new GlobalVariable(M, PointerType::get(Int8Ty, 0), false,
+                                      GlobalValue::ExternalLinkage, 0,
+                                      "__angora_area_ptr");
+  }
 
   std::vector<Function *> FnsToInstrument;
   std::vector<bool> addContext;
@@ -957,13 +1081,15 @@ bool Taint::runOnModule(Module &M) {
         &i != TaintTraceIndirectCallFn &&
         &i != TaintTraceGEPFn &&
         &i != TaintDebugFn &&
+        &i != GradeTraceCondFn &&
+        &i != GradeTraceSwitchFn &&
         &i != TaintUnionStoreFn) {
-      errs() << "add to fns to instrument " <<  i.getName() << "\n";
+      //errs() << "add to fns to instrument " <<  i.getName() << "\n";
       FnsToInstrument.push_back(&i);
       addContext.push_back(true);
     }
   }
-
+  if (TrackMode) {
   // Give function aliases prefixes when necessary, and build wrappers where the
   // instrumentedness is inconsistent.
   for (Module::alias_iterator i = M.alias_begin(), e = M.alias_end(); i != e;) {
@@ -1000,7 +1126,6 @@ bool Taint::runOnModule(Module &M) {
        i != e; ++i) {
     Function &F = **i;
     FunctionType *FT = F.getFunctionType();
-
     bool IsZeroArgsVoidRet = (FT->getNumParams() == 0 && !FT->isVarArg() &&
                               FT->getReturnType()->isVoidTy());
     if (isInstrumented(&F)) {
@@ -1088,6 +1213,8 @@ bool Taint::runOnModule(Module &M) {
       UnwrappedFnMap[&F] = &F;
       *i = nullptr;
     }
+
+  }
   }
 
   //for (Function *i : FnsToInstrument) {
@@ -1098,9 +1225,6 @@ bool Taint::runOnModule(Module &M) {
       continue;
 
     addContextRecording(*i);
-    //else {
-     // errs() << "skipped adding\n";
-    //}
     removeUnreachableBlocks(*i);
 
     TaintFunction TF(*this, i, FnsWithNativeABI.count(i));
@@ -1115,6 +1239,9 @@ bool Taint::runOnModule(Module &M) {
         // TaintVisitor may split the current basic block, changing the current
         // instruction's next pointer and moving the next instruction to the
         // tail block from which we should continue.
+        if (Inst == &(*i->getFirstInsertionPt())) {
+          countEdge(*i);
+        }
         Instruction *Next = Inst->getNextNode();
         // TaintVisitor may delete Inst, so keep track of whether it was a
         // terminator.
@@ -1194,6 +1321,7 @@ Value *TaintFunction::getArgTLS(unsigned Idx, Instruction *Pos) {
 }
 
 Value *TaintFunction::getShadow(Value *V) {
+  if (!TrackMode) return TT.ZeroShadow;
   if (!isa<Argument>(V) && !isa<Instruction>(V))
     return TT.ZeroShadow;
   Value *&Shadow = ValShadowMap[V];
@@ -1230,6 +1358,7 @@ Value *TaintFunction::getShadow(Value *V) {
 }
 
 void TaintFunction::setShadow(Instruction *I, Value *Shadow) {
+  if (!TrackMode) return;
   assert(!ValShadowMap.count(I));
   assert(Shadow->getType() == TT.ShadowTy);
   ValShadowMap[I] = Shadow;
@@ -1276,6 +1405,7 @@ Value *TaintFunction::combineBinaryOperatorShadows(BinaryOperator *BO,
 Value *TaintFunction::combineShadows(Value *V1, Value *V2,
                                      uint16_t op,
                                      Instruction *Pos) {
+  if (!TrackMode) return TT.ZeroShadow;
   if (V1 == TT.ZeroShadow && V2 == TT.ZeroShadow) return V1;
 
   // filter types
@@ -1361,6 +1491,7 @@ Value *TaintFunction::combineCmpInstShadows(CmpInst *CI,
 // Addr has alignment Align, and take the union of each of those shadows.
 Value *TaintFunction::loadShadow(Value *Addr, uint64_t Size, uint64_t Align,
                                  Instruction *Pos) {
+  if (!TrackMode) return TT.ZeroShadow;
   if (AllocaInst *AI = dyn_cast<AllocaInst>(Addr)) {
     const auto i = AllocaShadowMap.find(AI);
     if (i != AllocaShadowMap.end()) {
@@ -1397,6 +1528,7 @@ Value *TaintFunction::loadShadow(Value *Addr, uint64_t Size, uint64_t Align,
 
 void TaintVisitor::visitLoadInst(LoadInst &LI) {
   if (LI.getMetadata("nosanitize")) return;
+  if (!TrackMode)  return;
   auto &DL = LI.getModule()->getDataLayout();
   uint64_t Size = DL.getTypeStoreSize(LI.getType());
   if (Size == 0) {
@@ -1429,6 +1561,7 @@ void TaintVisitor::visitLoadInst(LoadInst &LI) {
 
 void TaintFunction::storeShadow(Value *Addr, uint64_t Size, uint64_t Align,
                                 Value *Shadow, Instruction *Pos) {
+  if (!TrackMode) return;
   if (AllocaInst *AI = dyn_cast<AllocaInst>(Addr)) {
     const auto i = AllocaShadowMap.find(AI);
     if (i != AllocaShadowMap.end()) {
@@ -1456,6 +1589,7 @@ void TaintFunction::storeShadow(Value *Addr, uint64_t Size, uint64_t Align,
 
 void TaintVisitor::visitStoreInst(StoreInst &SI) {
   if (SI.getMetadata("nosanitize")) return;
+  if (!TrackMode) return;
   if (TF.StoreInsts.count(&SI)) return;
   auto &DL = SI.getModule()->getDataLayout();
   uint64_t Size = DL.getTypeStoreSize(SI.getValueOperand()->getType());
@@ -1483,6 +1617,7 @@ void TaintVisitor::visitStoreInst(StoreInst &SI) {
 }
 
 void TaintVisitor::visitBinaryOperator(BinaryOperator &BO) {
+  if (!TrackMode) return;
   if (BO.getMetadata("nosanitize")) return;
   if (BO.getType()->isFloatingPointTy()) return;
   Value *CombinedShadow =
@@ -1491,6 +1626,7 @@ void TaintVisitor::visitBinaryOperator(BinaryOperator &BO) {
 }
 
 void TaintVisitor::visitCastInst(CastInst &CI) {
+  if (!TrackMode) return;
   if (CI.getMetadata("nosanitize")) return;
   Value *CombinedShadow =
     TF.combineCastInstShadows(&CI, CI.getOpcode());
@@ -1509,12 +1645,15 @@ uint32_t Taint::getInstructionId(Instruction *Inst) {
   while (UniqCidSet.count(h) > 0) {
     h = h * 3 + 1;
   }
+
+  
   UniqCidSet.insert(h);
 
   return h;
 }
 
 void TaintFunction::visitCmpInst(CmpInst *I) {
+  if (!TrackMode) return;
   Module *M = F->getParent();
   auto &DL = M->getDataLayout();
   IRBuilder<> IRB(I);
@@ -1531,11 +1670,13 @@ void TaintFunction::visitCmpInst(CmpInst *I) {
   int predicate = I->getPredicate();
   ConstantInt *Predicate = ConstantInt::get(TT.ShadowTy, predicate);
 
+  ConstantInt *Cid = ConstantInt::get(TT.Int32Ty, 0);
   IRB.CreateCall(TT.TaintTraceCmpFn, {Op1Shadow, Op2Shadow, Size, Predicate,
-                 Op1, Op2});
+                 Op1, Op2, Cid});
 }
 
 void TaintVisitor::visitCmpInst(CmpInst &CI) {
+  if (!TrackMode) return;
   if (CI.getMetadata("nosanitize")) return;
   // FIXME: integer only now
   if (!ClTraceFP && !isa<ICmpInst>(CI)) return;
@@ -1553,20 +1694,31 @@ void TaintFunction::visitSwitchInst(SwitchInst *I) {
   // get operand
   Value *Cond = I->getCondition();
   Value *CondShadow = getShadow(Cond);
-  if (CondShadow == TT.ZeroShadow)
-    return;
-  unsigned size = DL.getTypeSizeInBits(Cond->getType());
-  ConstantInt *Size = ConstantInt::get(TT.ShadowTy, size);
-  ConstantInt *Predicate = ConstantInt::get(TT.ShadowTy, 32); // EQ, ==
+  ConstantInt *Cid = ConstantInt::get(TT.Int32Ty, TT.getInstructionId(I));
+  if (TrackMode) {
+    if (CondShadow == TT.ZeroShadow)
+      return;
+    unsigned size = DL.getTypeSizeInBits(Cond->getType());
+    ConstantInt *Size = ConstantInt::get(TT.ShadowTy, size);
+    ConstantInt *Predicate = ConstantInt::get(TT.ShadowTy, 32); // EQ, ==
 
-  for (auto C : I->cases()) {
-    Value *CV = C.getCaseValue();
 
+    for (auto C : I->cases()) {
+      Value *CV = C.getCaseValue();
+
+      IRBuilder<> IRB(I);
+      Cond = IRB.CreateZExtOrTrunc(Cond, TT.Int64Ty);
+      CV = IRB.CreateZExtOrTrunc(CV, TT.Int64Ty);
+      IRB.CreateCall(TT.TaintTraceCmpFn, {CondShadow, TT.ZeroShadow, Size, Predicate,
+          Cond, CV, Cid});
+    }
+  } else {
     IRBuilder<> IRB(I);
+    LoadInst *CurCtx = IRB.CreateLoad(TT.AngoraContext);
     Cond = IRB.CreateZExtOrTrunc(Cond, TT.Int64Ty);
-    CV = IRB.CreateZExtOrTrunc(CV, TT.Int64Ty);
-    IRB.CreateCall(TT.TaintTraceCmpFn, {CondShadow, TT.ZeroShadow, Size, Predicate,
-                   Cond, CV});
+    IRB.CreateCall(TT.GradeTraceSwitchFn, {Cid,
+        CurCtx, Cond});
+
   }
 }
 
@@ -1629,6 +1781,7 @@ void TaintVisitor::visitInsertValueInst(InsertValueInst &I) {
 }
 
 void TaintVisitor::visitAllocaInst(AllocaInst &I) {
+  if(!TrackMode) return;
   bool AllLoadsStores = true;
   for (User *U : I.users()) {
     if (isa<LoadInst>(U)) {
@@ -1673,6 +1826,7 @@ void TaintVisitor::visitSelectInst(SelectInst &I) {
 }
 
 void TaintVisitor::visitMemSetInst(MemSetInst &I) {
+  if(!TrackMode) return; 
   IRBuilder<> IRB(&I);
   Value *ValShadow = TF.getShadow(I.getValue());
   IRB.CreateCall(TF.TT.TaintSetLabelFn,
@@ -1682,6 +1836,7 @@ void TaintVisitor::visitMemSetInst(MemSetInst &I) {
 }
 
 void TaintVisitor::visitMemTransferInst(MemTransferInst &I) {
+  if(!TrackMode) return; 
   IRBuilder<> IRB(&I);
   Value *DestShadow = TF.TT.getShadowAddress(I.getDest(), &I);
   Value *SrcShadow = TF.TT.getShadowAddress(I.getSource(), &I);
@@ -1722,6 +1877,7 @@ void TaintVisitor::visitMemTransferInst(MemTransferInst &I) {
 }
 
 void TaintVisitor::visitReturnInst(ReturnInst &RI) {
+  if (!TrackMode) return;
   if (!TF.IsNativeABI && RI.getReturnValue()) {
     switch (TF.IA) {
     case Taint::IA_TLS: {
@@ -1745,6 +1901,7 @@ void TaintVisitor::visitReturnInst(ReturnInst &RI) {
 }
 
 void TaintVisitor::visitCallSite(CallSite CS) {
+  if (!TrackMode) return;
   Function *F = CS.getCalledFunction();
   if ((F && F->isIntrinsic()) || isa<InlineAsm>(CS.getCalledValue())) {
     //visitOperandShadowInst(*CS.getInstruction());
@@ -1990,6 +2147,7 @@ void TaintVisitor::visitCallSite(CallSite CS) {
 }
 
 void TaintVisitor::visitPHINode(PHINode &PN) {
+  if (!TrackMode) return;
   PHINode *ShadowPN =
       PHINode::Create(TF.TT.ShadowTy, PN.getNumIncomingValues(), "", &PN);
 
@@ -2007,11 +2165,17 @@ void TaintVisitor::visitPHINode(PHINode &PN) {
 void TaintFunction::visitCondition(Value *Condition, Instruction *I) {
   IRBuilder<> IRB(I);
   // get operand
-  Value *Shadow = getShadow(Condition);
-  if (Shadow == TT.ZeroShadow)
-    return;
-  ConstantInt *Cid = ConstantInt::get(TT.Int32Ty, TT.getInstructionId(I));
-  IRB.CreateCall(TT.TaintTraceCondFn, {Shadow, Condition, Cid});
+  if (TrackMode) {
+    Value *Shadow = getShadow(Condition);
+    if (Shadow == TT.ZeroShadow)
+      return;
+    ConstantInt *Cid = ConstantInt::get(TT.Int32Ty, TT.getInstructionId(I));
+    IRB.CreateCall(TT.TaintTraceCondFn, {Shadow, Condition, Cid});
+  } else {
+    LoadInst *CurCtx = IRB.CreateLoad(TT.AngoraContext);
+    ConstantInt *Cid = ConstantInt::get(TT.Int32Ty, TT.getInstructionId(I));
+    IRB.CreateCall(TT.GradeTraceCondFn, {Cid, CurCtx, Condition});
+  }
 }
 
 void TaintVisitor::visitBranchInst(BranchInst &BR) {

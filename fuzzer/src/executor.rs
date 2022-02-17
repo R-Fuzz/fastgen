@@ -172,7 +172,7 @@ impl Executor {
   pub fn track(&mut self, id: usize, buf: &Vec<u8>) -> (std::process::Child, RawFd) {
     //FIXME
     let e = format!("taint_file={} tid={} shmid={} pipeid=200", &self.cmd.out_file, &id, &self.shmid);
-    info!("Track {}, e is {}", &id, e);
+    debug!("Track {}, e is {}", &id, e);
     self.envs.insert(
         defs::TAINT_OPTIONS.to_string(),
         e,
@@ -239,7 +239,7 @@ impl Executor {
     ret
   }
 
-  pub fn get_cond(&mut self) -> u32 {
+  pub fn get_cond(&mut self) -> u64 {
     return self.t_conds.cond.condition;
   }
 
@@ -368,7 +368,7 @@ impl Executor {
     let (read_end, write_end) = pipe().unwrap();
     let mut cmd = Command::new("timeout");
     let mut child = cmd
-      .arg("5")
+      .arg("102")
       .arg(&target.0)
       .args(&target.1)
       //  .stdin(Stdio::null())

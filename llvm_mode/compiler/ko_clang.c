@@ -68,9 +68,10 @@ static void find_obj(const char *argv0) {
 
 static void check_type(char *name) {
   char *use_pin = getenv("USE_PIN");
+  char *use_track = getenv("USE_TRACK");
   if (use_pin) {
     clang_type = CLANG_PIN_TYPE;
-  } else {
+  } else if (use_track) {
     clang_type = CLANG_DFSAN_TYPE;
   }
   if (!strcmp(name, "ko-clang++")) {
@@ -104,9 +105,11 @@ static void add_runtime() {
     cc_params[cc_par_cnt++] = alloc_printf("-Wl,-T%s/lib/taint.ld", obj_path);
   } else if (clang_type == CLANG_PIN_TYPE) {
     cc_params[cc_par_cnt++] = alloc_printf("%s/lib/pin_stub.o", obj_path);
+  } else if (clang_type == CLANG_FAST_TYPE) {
+    cc_params[cc_par_cnt++] = alloc_printf("%s/lib/libruntime_fast.a", obj_path);
   }
 
-  if (is_cxx && !getenv("KO_USE_NATIVE_LIBCXX")) {
+  if (is_cxx && !getenv("KO_USE_NATIVE_LIBCXX") && clang_type == CLANG_DFSAN_TYPE) {
     cc_params[cc_par_cnt++] = "-Wl,--whole-archive";
     cc_params[cc_par_cnt++] = alloc_printf("%s/lib/libc++.a", obj_path);
     cc_params[cc_par_cnt++] = alloc_printf("%s/lib/libc++abi.a", obj_path);
@@ -133,6 +136,12 @@ static void add_dfsan_pass() {
   cc_params[cc_par_cnt++] = "-load";
   cc_params[cc_par_cnt++] = "-Xclang";
   cc_params[cc_par_cnt++] = alloc_printf("%s/pass/libTaintPass.so", obj_path);
+
+  if (clang_type == CLANG_DFSAN_TYPE) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-TrackMode";
+  }
+
   cc_params[cc_par_cnt++] = "-mllvm";
   cc_params[cc_par_cnt++] =
       alloc_printf("-taint-abilist=%s/rules/dfsan_abilist.txt", obj_path);

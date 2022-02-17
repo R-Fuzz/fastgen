@@ -10,12 +10,12 @@ PREFIX2=${PREFIX:-${ROOT_DIR}/bin_ang/}
 
 unset CXXFLAGS
 unset CFLAGS
-cd fuzzer/cpp_core
-rm -rf build
-mkdir -p build
-cd build
-cmake .. && make -j
-cd ../../..
+#cd fuzzer/cpp_core
+#rm -rf build
+#mkdir -p build
+#cd build
+#cmake .. && make -j
+#cd ../../..
 
 cargo build
 cargo build --release

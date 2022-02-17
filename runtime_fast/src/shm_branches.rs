@@ -6,7 +6,6 @@ use fastgen_common::shm;
 use std::env;
 use std::process;
 
-
 pub type BranchBuf = [u8; BRANCHES_SIZE];
 static mut __ANGORA_AREA_INITIAL: BranchBuf = [255; BRANCHES_SIZE];
 

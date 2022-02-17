@@ -23,6 +23,8 @@ pub struct PipeMsg {
   pub localcnt: u32,
   pub bid: u32,
   pub sctx: u32,
+  pub predicate: u32,
+  pub target_cond: u64,
 }
 
 impl PipeMsg {
@@ -36,6 +38,8 @@ impl PipeMsg {
     let localcnt = rdr.read_u32::<LittleEndian>()?;
     let bid = rdr.read_u32::<LittleEndian>()?;
     let sctx = rdr.read_u32::<LittleEndian>()?;
+    let predicate = rdr.read_u32::<LittleEndian>()?;
+    let target_cond = rdr.read_u64::<LittleEndian>()?;
 
     Ok(PipeMsg{
         msgtype,
@@ -47,6 +51,8 @@ impl PipeMsg {
         localcnt,
         bid,
         sctx,
+        predicate,
+        target_cond,
         })
   }
 }
