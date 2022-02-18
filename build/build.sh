@@ -10,21 +10,21 @@ PREFIX2=${PREFIX:-${ROOT_DIR}/bin_ang/}
 
 unset CXXFLAGS
 unset CFLAGS
-#cd fuzzer/cpp_core
-#rm -rf build
-#mkdir -p build
-#cd build
-#cmake .. && make -j
-#cd ../../..
+cd fuzzer/cpp_core
+rm -rf build
+mkdir -p build
+cd build
+cmake .. && make -j
+cd ../../..
 
 cargo build
 cargo build --release
 
-rm -rf ${PREFIX2}
-mkdir -p ${PREFIX2}
-mkdir -p ${PREFIX2}/lib
+rm -rf ${PREFIX1}
+mkdir -p ${PREFIX1}
+mkdir -p ${PREFIX1}/lib
 #cp target/release/fuzzer ${PREFIX2}
-cp target/release/*.a ${PREFIX2}/lib
+cp target/release/*.a ${PREFIX1}/lib
 
 
 pushd llvm_mode

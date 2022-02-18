@@ -21,6 +21,15 @@ use z3::ast::Ast;
 use crate::z3solver::*;
 use fastgen_common::config;
 
+fn bcount_filter(hitcount: u32, flipped: bool, msg_type: u32, localcnt: u32 ) -> bool {
+  hitcount <= 5 && (!flipped) && msg_type != 3 && localcnt <= 16
+}
+
+fn qsym(pc: u64, direction:bool, msg_type: u32) -> bool {
+  let qsym_result = unsafe { qsym_filter(pc, direction) };
+  qsym_result && msg_type != 3
+}
+
 pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, memcmp_data: &mut VecDeque<Vec<u8>>,
     table: &UnionTable, tainted_size: usize, 
     branch_gencount: &Arc<RwLock<HashMap<(u64,u64,u32,u64), u32>>>,
@@ -34,6 +43,8 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
   let ctx = Context::new(&cfg);
   let solver = Solver::new(&ctx);
 
+
+  unsafe { start_session(); }
   let t_start = time::Instant::now();
   let mut count = 0;
   let mut branch_local = HashMap::<(u64,u64),u32>::new();
@@ -127,8 +138,12 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
       }
 
       //tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs);
-     
-      if hitcount <= 5 && (!flipped) && label.6 != 3 && localcnt <= 16 {
+      let is_flip = if config::QSYM_FILTER { qsym(label.3, label.2 == 1, label.6) } 
+                else { bcount_filter(hitcount, flipped, label.6, localcnt) };
+  
+      
+      //if hitcount <= 5 && (!flipped) && label.6 != 3 && localcnt <= 16 {
+      if is_flip {
         if !tb.submit_task_rust(&task, solution_queue.clone(), true, &inputs) {
           if label.6 == 0 && config::HYBRID_SOLVER {
             if let Some(sol) =  solve_cond(label.1, label.2, table, &ctx, &solver) {

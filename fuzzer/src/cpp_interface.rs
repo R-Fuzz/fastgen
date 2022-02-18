@@ -1,4 +1,4 @@
-//#[link(name = "gd")]
+#[link(name = "gd")]
 //#[link(name = "protobuf")]
 //#[link(name = "LLVM")]
 //#[link(name = "stdc++")]
@@ -16,5 +16,8 @@ extern {
 //        order: *mut u32, fid: *mut u32, direction: *mut u64, size: usize);
 //  pub fn get_next_input_info(id: *mut u32, field_size: *mut usize, 
 //                          new_field_size: *mut usize);
+  pub fn init_core();
+  pub fn qsym_filter(addr: u64, direction: bool) -> bool;
+  pub fn start_session();
 }
 
