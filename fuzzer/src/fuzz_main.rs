@@ -77,6 +77,7 @@ pub fn fuzz_main(
   }
 
 //  unsafe { init_core(config::SAVING_WHOLE, config::USE_CODECACHE); }
+  unsafe { init_core(); }
   let mut handlers = vec![];
   for g in 0.._num_graders
   {

@@ -18,6 +18,8 @@ use std::sync::{
     Arc, RwLock, Mutex
 };
 use std::time;
+use crate::cpp_interface::*;
+use fastgen_common::config;
 
 #[derive(Clone)]
 pub struct BranchDep<'a> {
@@ -658,6 +660,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
   let ptr = unsafe { rawptr as *mut UnionTable};
   let table = unsafe { & *ptr };
   let mut cfg = Config::new();  
+  unsafe { start_session() };
   cfg.set_timeout_msec(10000);
   let ctx = Context::new(&cfg);
   let solver = Solver::new(&ctx);
@@ -702,7 +705,8 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
 
       if msg.msgtype == 0 {
         if localcnt > 64 { continue; }
-        let try_solve = hitcount <= 5 && (!flipped) && localcnt <= 16;
+        let try_solve = if config::QSYM_FILTER { unsafe { qsym_filter(msg.addr, msg.result == 1) } }
+                         else { hitcount <= 5 && (!flipped) && localcnt <= 16 };
         let rawsol = solve_cond(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps);
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
