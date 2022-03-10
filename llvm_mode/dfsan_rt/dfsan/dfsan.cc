@@ -59,6 +59,7 @@ using namespace __dfsan;
 typedef atomic_uint32_t atomic_dfsan_label;
 static const dfsan_label kInitializingLabel = -1;
 
+std::unordered_map<uint32_t,bool> g_expr_cache;
 static atomic_dfsan_label __dfsan_last_label;
 dfsan_label_info *__dfsan_label_info;
 
@@ -680,11 +681,10 @@ static void printLabel(dfsan_label label) {
 }
 */
 
-static dfsan_label do_reject(dfsan_label label,
-    std::unordered_map<uint32_t,bool> &expr_cache) {
+static dfsan_label do_reject(dfsan_label label) {
   if (label<1) return 0;
-  auto itr = expr_cache.find(label);
-  if (label != 0 && itr != expr_cache.end()) {
+  auto itr = g_expr_cache.find(label);
+  if (label != 0 && itr != g_expr_cache.end()) {
     return itr->second;
   }
 
@@ -692,38 +692,37 @@ static dfsan_label do_reject(dfsan_label label,
   int ret = 0;
   dfsan_label_info* info  = &__dfsan_label_info[label];
   if (info==NULL || info->op == 0)  {//if invalid or read
-    expr_cache[label]=false;
+    g_expr_cache[label]=false;
     return 0;
   } if (info->op == __dfsan::fmemcmp) {
     //printf("reject branch fmemcmp %d\n",++count);
-    expr_cache[label]=true;
+    g_expr_cache[label]=true;
     return label;
   } if (info->op == __dfsan::fcrc32) {
     //printf("reject branch crc32 %d\n",++count);
-    expr_cache[label]=true;
+    g_expr_cache[label]=true;
     return 1;
   } if (info->op == __dfsan::fsize) {
     //printf("reject branch fsize %d\n",++count);
-    expr_cache[label]=true;
+    g_expr_cache[label]=true;
     return 2;
   } if (((info->l1 == 0 && info->op1 > 1) || (info->l2 == 0 && info->op2 > 1)) && info->size == 0) { // FIXME
     //std::cout << "do_reject for abnormal size" << std::endl;
-    expr_cache[label]=4;
+    g_expr_cache[label]=4;
     return true;
-  } if (ret = do_reject(info->l1,expr_cache)) {
-    expr_cache[label]=true;
+  } if (ret = do_reject(info->l1)) {
+    g_expr_cache[label]=true;
     return ret;
-  } if (ret = do_reject(info->l2,expr_cache)) {
-    expr_cache[label]=true;
+  } if (ret = do_reject(info->l2)) {
+    g_expr_cache[label]=true;
     return ret;
   }
-  expr_cache[label]=0;
+  g_expr_cache[label]=0;
   return 0;
 }
 
 static dfsan_label rejectBranch(dfsan_label label) {
-  std::unordered_map<uint32_t,bool> expr_cache;
-  return do_reject(label,expr_cache);
+  return do_reject(label);
 }
 
 
@@ -849,6 +848,7 @@ __taint_trace_cond(dfsan_label label, u8 r, u32 bid) {
   r = r & 1;
   /*
   auto itr = __branches.find({__taint_trace_callstack, addr});
+
   if (itr == __branches.end()) {
     itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
     order = 1;
