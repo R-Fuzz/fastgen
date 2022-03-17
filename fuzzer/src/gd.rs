@@ -90,6 +90,27 @@ pub fn distance(min_input: &MutInput, constraints: &Vec<Rc<RefCell<Cons>>>,
   res
 }
 
+pub fn single_distance(min_input: &MutInput, constraints: &Vec<Rc<RefCell<Cons>>>,
+    scratch_args: &mut Vec<u64>, distances: &mut Vec<u64>, dimension_index: usize, cmap: &HashMap<usize, Vec<usize>>) {
+  let cons_indexes = cmap.get(&dimension_index).unwrap();
+  for idx in cons_indexes {
+    let cons = &constraints[*idx];
+    let mut arg_idx = 0;
+    for arg in &cons.borrow().input_args {
+      if arg.0 {
+        scratch_args[2+arg_idx] = min_input.get(arg.1 as usize);
+      } else {
+        scratch_args[2+arg_idx] = arg.1
+      }
+      arg_idx += 1;
+    }
+    cons.borrow().call_func(scratch_args);
+    let comp = cons.borrow().comparison;
+    let dis = get_distance(comp, scratch_args[0], scratch_args[1]);
+    distances[*idx] = dis;
+  }
+}
+
 pub fn partial_derivative(orig_input: &mut MutInput, 
     scratch_args: &mut Vec<u64>,
     distances: &mut Vec<u64>,
@@ -99,12 +120,17 @@ pub fn partial_derivative(orig_input: &mut MutInput,
     constraints: &Vec<Rc<RefCell<Cons>>>,
     rgd_solutions: &mut Vec<HashMap<u32,u8>>,
     inputs: &Vec<(u32,u8)>, 
-    shape: &HashMap<u32,u32>) -> (bool, bool, u64, bool) {
+    shape: &HashMap<u32,u32>,
+    cmap: &HashMap<usize, Vec<usize>>) -> (bool, bool, u64, bool) {
   let mut found = false;
   let orig_val = orig_input.get(index);
 
   orig_input.update(index, true, 1);
-  let f_plus = distance(orig_input, constraints, scratch_args, distances);
+  single_distance(orig_input, constraints, scratch_args, distances, index, cmap);
+  let mut f_plus: u64 = 0;
+  for dis in distances.iter() {
+    f_plus = f_plus.saturating_add(*dis);
+  } 
   let plus_distances = distances.clone();
   if f_plus == 0 {
     add_results(orig_input, rgd_solutions, inputs, shape);
@@ -113,7 +139,11 @@ pub fn partial_derivative(orig_input: &mut MutInput,
 
   orig_input.set(index, orig_val);
   orig_input.update(index,false,1);
-  let f_minus = distance(orig_input, constraints, scratch_args, distances);
+  single_distance(orig_input, constraints, scratch_args, distances, index, cmap);
+  let mut f_minus: u64 = 0;
+  for dis in distances.iter() {
+    f_minus = f_minus.saturating_add(*dis);
+  } 
   let minus_distances = distances.clone();
   if f_minus == 0 {
     add_results(orig_input, rgd_solutions, inputs, shape);
@@ -227,7 +257,11 @@ pub fn onedimension_descend(fut: &mut Fut) {
     loop {
       let movement = grad[dimension_idx].pct * ctx.step as f64;
       scratch_input.update(dimension_idx, grad[dimension_idx].sign, movement as u64);
-      let f_new = distance(&scratch_input, &fut.constraints, scratch_args, distances);
+      single_distance(&scratch_input, &fut.constraints, scratch_args, distances, dimension_idx, &fut.cmap);
+      let mut f_new: u64 = 0;
+      for dis in distances.iter() {
+        f_new = f_new.saturating_add(*dis);
+      } 
       ctx.att += 1;
       if f_new >= f_last && f_new !=0 {
         ctx.step = 1;
@@ -314,7 +348,7 @@ pub fn cal_gradient(fut: &mut Fut) {
     let (sign, _islinear, val, solved) = partial_derivative(orig_input,scratch_args,
         distances, orig_distances, f0, i, 
         &fut.constraints, 
-        rgd_solutions, inputs, shape);
+        rgd_solutions, inputs, shape, &fut.cmap);
     if solved {
       ctx.solved = true;
     }

@@ -95,6 +95,7 @@ pub struct Fut {
   pub max_const_num: u32,
   pub rgd_solutions: Vec<HashMap<u32,u8>>,
   pub opti_solutions: Vec<HashMap<u32,u8>>,
+  pub cmap: HashMap<usize, Vec<usize>>,
 }
 
 impl Fut {
@@ -109,12 +110,14 @@ impl Fut {
       max_const_num: 0,
       rgd_solutions: Vec::new(),
       opti_solutions: Vec::new(),
+      cmap: HashMap::new(),
     }
   }
   
   pub fn finalize(&mut self) {
     let mut sym_map = HashMap::new();
     let mut gidx = 0;
+    let mut cons_count = 0;
     for cons in &self.constraints {
       let mut pairs = Vec::new();
       for (k, v) in &cons.borrow().local_map {
@@ -126,11 +129,26 @@ impl Fut {
           sym_map.insert(k, gidx);
           self.shape.insert(k, cons.borrow().shape[&k]);
           self.inputs.push((k, cons.borrow().inputs[&k]));
+          if self.cmap.contains_key(&gidx) {
+            let mut v = &mut *self.cmap.get_mut(&gidx).unwrap();
+            v.push(cons_count);
+          } else {
+            let v = vec![cons_count];
+            self.cmap.insert(gidx,v);
+          }
         } else {
           gidx = sym_map[&k];
+          if self.cmap.contains_key(&gidx) {
+            let mut v = &mut *self.cmap.get_mut(&gidx).unwrap();
+            v.push(cons_count);
+          } else {
+            let v = vec![cons_count];
+            self.cmap.insert(gidx,v);
+          }
         }
         cons.borrow_mut().input_args[v as usize].1 = gidx as u64;
       }
+      cons_count += 1;
       if self.max_const_num < cons.borrow().const_num {
         self.max_const_num = cons.borrow().const_num;
       }
