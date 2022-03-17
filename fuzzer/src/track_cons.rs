@@ -98,7 +98,7 @@ pub fn scan_nested_tasks(labels: &Vec<(u32,u32,u64,u64,u64,u32,u32,u32,u32)>, me
       if data.len() >= size {
         //unsafe { submit_fmemcmp(data.as_ptr(), index, size as u32, label.0, label.3); }
         let mut sol = HashMap::new(); 
-        for i in 0..data.len() - 1 {  //minus 1
+        for i in 0..data.len() {  //minus 1
           sol.insert(index + i as u32, data[i]);
         }
         let rsol = Solution::new(sol, label.0, label.3, 0, 0, 0, index as usize, size, 0, 0);
