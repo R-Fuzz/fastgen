@@ -266,7 +266,7 @@ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
 
   //update depth
   u32 left_depth = l1 ? __dfsan_label_info[l1].depth : 0;
-  u32 right_depth = l1 ? __dfsan_label_info[l2].depth : 0;
+  u32 right_depth = l2 ? __dfsan_label_info[l2].depth : 0;
 
   label_info.depth = left_depth > right_depth ? left_depth+1 : right_depth+1;
 
