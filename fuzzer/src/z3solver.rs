@@ -678,10 +678,12 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
       let mut gencount = 0;
       let mut flipped = false;
       let mut localcnt = 1;
-
-      if branch_local.contains_key(&(msg.addr,msg.ctx)) {
-        localcnt = *branch_local.get(&(msg.addr,msg.ctx)).unwrap();
-        localcnt += 1;
+      
+      if msg.addr != 0 {
+        if branch_local.contains_key(&(msg.addr,msg.ctx)) {
+          localcnt = *branch_local.get(&(msg.addr,msg.ctx)).unwrap();
+          localcnt += 1;
+        }
       }
       branch_local.insert((msg.addr,msg.ctx),localcnt);
 
@@ -750,8 +752,9 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
         if data.len() < msg.result as usize {
           break;
         }
-        if localcnt > 64 { continue; }
-        let try_solve = hitcount <=5;
+        //if localcnt > 64 { continue; }
+        //let try_solve = hitcount <=5;
+        let try_solve = true;
         let rawsol = solve_fmemcmp(msg.label, &data, msg.result, try_solve, &table, &ctx, &solver);
         if let Some(sol) = rawsol {
           let sol_size = sol.len();

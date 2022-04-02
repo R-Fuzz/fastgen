@@ -264,6 +264,26 @@ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
   h3 = (h3 << 16) | size;
   label_info.hash = xxhash(h1, h2, h3);
 
+  //update depth
+  u32 left_depth = l1 ? __dfsan_label_info[l1].depth : 0;
+  u32 right_depth = l1 ? __dfsan_label_info[l2].depth : 0;
+
+  label_info.depth = left_depth > right_depth ? left_depth+1 : right_depth+1;
+
+  //fmemcmp l2 must be a non-create
+  //l1 could be a concrete data
+  //send the concrete data if present, set label of right label
+  if (l1 == 0 && l2 !=0) {
+    struct pipe_msg msg = {.type = 2, .tid = __tid, .label = l2, 
+      .result = size, .addr = 0, .ctx = 0, .localcnt = 0, .bid=0, .sctx=0 };
+    //write(mypipe,content,strlen(content));
+    write(mypipe,&msg,sizeof(msg));
+    fsync(mypipe);
+    write(mypipe,(u8*)op1,size);
+    fsync(mypipe);
+  }
+
+
   internal_memcpy(&__dfsan_label_info[label], &label_info, sizeof(dfsan_label_info));
   __union_table.insert(&__dfsan_label_info[label], label);
   return label;
@@ -551,56 +571,6 @@ dfsan_dump_labels(int fd) {
   }
 }
 
-
-
-void serialize(dfsan_label label) {
-  if (label < CONST_OFFSET || label == kInitializingLabel) {
-    return;
-  }
-
-  dfsan_label_info *info = get_label_info(label);
-  //AOUT("%u = (l1:%u, l2:%u, op:%u, size:%u, op1:%llu, op2:%llu)\n",
-     //  label, info->l1, info->l2, info->op, info->size, info->op1, info->op2);
-  if (info->tree_size) {
-    return;
-  }
-
-  // special ops
-  if (info->op == 0 || info->op == Load || info->op == fsize || info->op == fmemcmp) {
-    // input
-    info->tree_size = 1; // lazy init
-    info->depth = 1; // lazy init
-    return;
-  } else if (info->op == ZExt || info->op == SExt || info->op == Trunc || info->op == Extract) {
-    serialize(info->l1);
-    info->tree_size = get_label_info(info->l1)->tree_size; // lazy init
-    info->depth = get_label_info(info->l1)->depth + 1; // lazy init
-    return;
-  } else if (info->op == Neg || info->op == Not) {
-    serialize(info->l2);
-    info->tree_size = get_label_info(info->l2)->tree_size; // lazy init
-    info->depth = get_label_info(info->l2)->depth + 1; // lazy init
-    return;
-  }
-  
-  if (info->l1 >= CONST_OFFSET) {
-    serialize(info->l1);
-  }
-  if (info->l2 >= CONST_OFFSET) {
-    serialize(info->l2);
-  }
-  info->tree_size = get_label_info(info->l1)->tree_size + get_label_info(info->l2)->tree_size;
-  u32 left_depth = get_label_info(info->l1)->depth;
-  u32 right_depth = get_label_info(info->l2)->depth;
-  info->depth = left_depth > right_depth ? left_depth+1 : right_depth+1;
-  return;
-}
-
-static void read_data(u8 *data, u8 size, u64 addr) {
-  u8 *ptr = reinterpret_cast<u8*>(addr);
-  if (ptr == nullptr) return;
-  memcpy(data, ptr, size);
-}
 /*
 static void do_print(dfsan_label label) {
   dfsan_label_info* info  = &__dfsan_label_info[label];
@@ -681,64 +651,6 @@ static void printLabel(dfsan_label label) {
 }
 */
 
-static dfsan_label do_reject(dfsan_label label) {
-  if (label<1) return 0;
-  auto itr = g_expr_cache.find(label);
-  if (label != 0 && itr != g_expr_cache.end()) {
-    return itr->second;
-  }
-
-  static int count =0;
-  int ret = 0;
-  dfsan_label_info* info  = &__dfsan_label_info[label];
-  if (info==NULL || info->op == 0)  {//if invalid or read
-    g_expr_cache[label]=false;
-    return 0;
-  } if (info->op == __dfsan::fmemcmp) {
-    //printf("reject branch fmemcmp %d\n",++count);
-    g_expr_cache[label]=true;
-    return label;
-  } if (info->op == __dfsan::fcrc32) {
-    //printf("reject branch crc32 %d\n",++count);
-    g_expr_cache[label]=true;
-    return 1;
-  } if (info->op == __dfsan::fsize) {
-    //printf("reject branch fsize %d\n",++count);
-    g_expr_cache[label]=true;
-    return 2;
-  } if (((info->l1 == 0 && info->op1 > 1) || (info->l2 == 0 && info->op2 > 1)) && info->size == 0) { // FIXME
-    //std::cout << "do_reject for abnormal size" << std::endl;
-    g_expr_cache[label]=4;
-    return true;
-  } if (ret = do_reject(info->l1)) {
-    g_expr_cache[label]=true;
-    return ret;
-  } if (ret = do_reject(info->l2)) {
-    g_expr_cache[label]=true;
-    return ret;
-  }
-  g_expr_cache[label]=0;
-  return 0;
-}
-
-static dfsan_label rejectBranch(dfsan_label label) {
-  return do_reject(label);
-}
-
-
-static bool get_fmemcmp(dfsan_label label, dfsan_label *ret_label, u64* size, u8** data) {
-  dfsan_label_info *info = get_label_info(label); 
-  //we only support const == Load
-  if (info->l1 >= CONST_OFFSET || info->l2 < CONST_OFFSET)
-    return false; 
-  *ret_label = info->l2;
-  //if (info2->op != Load)
-   // return false;
-  *size = info->size;
-  *data = (u8*)info->op1;
-  return true;
-}
-
 static void __solve_cond(dfsan_label label,
     void *addr, uint64_t ctx, u32 order, 
     u8 r, u32 predicate, u32 bid, u32 sctx, u32 target_cond) {
@@ -751,39 +663,13 @@ static void __solve_cond(dfsan_label label,
 
   printf("%u, %u, %lu, %lu, %lu, %u, 0, %u, %u\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order, bid, sctx);
 
-  if (__solver_select != 1) {
-    u32 reason  = rejectBranch(label);
-    //printf("reject branch reason is %d\n", reason);
-    if (reason) { 
-        //printLabel(label);
-        //sending fmemcmp special 
-        if (reason > 2) { //fmemcmp 
-          dfsan_label ret_label = 0;
-          u64 size = 0;
-          u8* data;
-          if (!get_fmemcmp(reason, &ret_label, &size, &data)) return;
-          //printf("get_fmemp index: %lu, size: %lu, data: %lu\n",index,size,data);
-           // sprintf(content, "%u, %u, %lu, %lu, %lu, %u, 2\n", __tid, size, ret_label, (uint64_t)addr, ctx, (uint32_t)order);
-            struct pipe_msg msg = {.type = 2, .tid = __tid, .label = ret_label, 
-              .result = size, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx };
-            //write(mypipe,content,strlen(content));
-            write(mypipe,&msg,sizeof(msg));
-            fsync(mypipe);
-            write(mypipe,data,size);
-            fsync(mypipe);
-            get_label_info(label)->flags |= B_FLIPPED;
-        }
-        return; 
-    }
-    //printLabel(label);
-    serialize(label);
-    struct pipe_msg msg = {.type = 0, .tid = __tid, .label = label, 
-                .result = r, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx, .predicate = predicate, .target_cond = target_cond};
-    write(mypipe,&msg, sizeof(msg));
-    fsync(mypipe);
-    get_label_info(label)->flags |= B_FLIPPED;
-    return;
-  }
+
+  struct pipe_msg msg = {.type = 0, .tid = __tid, .label = label, 
+    .result = r, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx, .predicate = predicate, .target_cond = target_cond};
+  write(mypipe,&msg, sizeof(msg));
+  fsync(mypipe);
+  get_label_info(label)->flags |= B_FLIPPED;
+  return;
 }
 
 uint8_t get_const_result(uint64_t c1, uint64_t c2, uint32_t predicate) {
@@ -881,8 +767,6 @@ __add_constraints(dfsan_label label, bool is_offset) {
   void *addr = __builtin_return_address(0);
   uint64_t callstack = __taint_trace_callstack;
   if (__solver_select != 1) {
-    if (rejectBranch(label)) {  return; }
-    serialize(label);
     struct pipe_msg msg;
     if (is_offset)
       msg = {.type = 3, .tid = __tid, .label = label, .result = 0, .addr = addr, .ctx = callstack, .localcnt = 0 };
@@ -932,11 +816,7 @@ __taint_trace_gep(dfsan_label label, u64 r) {
   uint64_t callstack = __taint_trace_callstack;
   static int count = 0;
   if (__solver_select != 1) {
-    if (rejectBranch(label)) { 
-        //printLabel(label); 
-      return; }
     //printLabel(label);
-    serialize(label);
     struct pipe_msg msg = {.type = 1, .tid = __tid, .label = label, .result = r, .addr = addr, .ctx = callstack, .localcnt = order };
     write(mypipe,&msg,sizeof(msg));
     fsync(mypipe);
