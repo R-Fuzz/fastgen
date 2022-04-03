@@ -273,7 +273,7 @@ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
   //fmemcmp l2 must be a non-create
   //l1 could be a concrete data
   //send the concrete data if present, set label of right label
-  if (l1 == 0 && l2 !=0) {
+  if (op == fmemcmp && l1 == 0 && l2 !=0) {
     struct pipe_msg msg = {.type = 2, .tid = __tid, .label = l2, 
       .result = size, .addr = 0, .ctx = 0, .localcnt = 0, .bid=0, .sctx=0 };
     //write(mypipe,content,strlen(content));
