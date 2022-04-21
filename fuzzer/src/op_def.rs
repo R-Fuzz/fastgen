@@ -88,4 +88,5 @@ pub const DFSAN_BVSGT: u32 = 38;
 pub const DFSAN_BVSGE: u32 = 39;
 pub const DFSAN_BVSLT: u32 = 40;
 pub const DFSAN_BVSLE: u32 = 41;
+pub const DFSAN_FMEMCMP: u32 = 70; 
 

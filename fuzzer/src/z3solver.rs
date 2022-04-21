@@ -41,10 +41,18 @@ fn union(uf: &mut UnionFind, inputs: &HashSet<u32>) -> u32 {
   v0
 }
 
+pub fn read_concrete<'a>(ctx: &'a Context, data: &Vec<u8>) -> Option<z3::ast::Dynamic<'a>> {
+  let mut op_concrete  = ast::BV::from_u64(ctx, data[0] as u64, 8);
+  for i in 1..data.len() {
+    op_concrete = ast::BV::from_u64(ctx, data[i] as u64, 8).concat(&op_concrete);
+  }
+  Some(z3::ast::Dynamic::from_ast(&op_concrete))
+}
+
 
 pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
     cache: &mut HashMap<u32, HashSet<u32>>, 
-    expr_cache: &mut HashMap<u32, z3::ast::Dynamic<'a>>) -> Option<z3::ast::Dynamic<'a>> {
+    expr_cache: &mut HashMap<u32, z3::ast::Dynamic<'a>>, fmemcmp_data: &HashMap<u32, Vec<u8>>) -> Option<z3::ast::Dynamic<'a>> {
 
   if label < 1 || label == std::u32::MAX {
     return None;
@@ -87,7 +95,7 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                  return Some(z3::ast::Dynamic::from(node));
                },
                DFSAN_ZEXT => {
-                 let rawnode = serialize(info.l1, ctx, table, cache, expr_cache);
+                 let rawnode = serialize(info.l1, ctx, table, cache, expr_cache, fmemcmp_data);
                  if let Some(node) = rawnode {
                    match node.sort_kind() {
                      z3::SortKind::Bool => {
@@ -112,8 +120,46 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                    return None;
                  }
                },
+
+               DFSAN_FMEMCMP => {
+                 //invalid memory operation  
+                 if  info.l2 == 0 {
+                   return None;
+                 }
+                 let raw_left = if info.l1 != 0 { serialize(info.l1, ctx, table, cache, expr_cache, fmemcmp_data) 
+                 } else {
+                   if !fmemcmp_data.contains_key(&info.l2) { None } else {
+                     info!("in fmemcmp data is {:?}", &fmemcmp_data[&info.l2]);
+                     read_concrete(ctx,&fmemcmp_data[&info.l2])
+                   }
+                 };
+                 let raw_right = serialize(info.l2, ctx, table, cache, expr_cache, fmemcmp_data);
+                 if raw_left.is_some() && raw_right.is_some() {
+                   let equal = raw_left.unwrap()._eq(&raw_right.unwrap());
+                   let base = equal.ite(&ast::BV::from_i64(ctx,1,32), 
+                       &ast::BV::from_i64(ctx,0,32));
+                   let ret = z3::ast::Dynamic::from(base);
+                   let mut merged = HashSet::new();
+                   if info.l1 >= CONST_OFFSET {
+                     for &v in &cache[&info.l1] {
+                       merged.insert(v);
+                     }
+                   }
+                   if info.l2 >= CONST_OFFSET {
+                     for &v in &cache[&info.l2] {
+                       merged.insert(v);
+                     }
+                   }
+                   cache.insert(label, merged);
+
+                   return Some(ret);
+                 } else {
+                   return None;
+                 }
+               },
+
                DFSAN_SEXT => {
-                 let rawnode = serialize(info.l1, ctx, table, cache, expr_cache);
+                 let rawnode = serialize(info.l1, ctx, table, cache, expr_cache, fmemcmp_data);
                  if let Some(node) = rawnode {
                    match node.sort_kind() {
                      z3::SortKind::Bool => {
@@ -138,7 +184,7 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                  }
                },
                DFSAN_TRUNC => {
-                 let rawnode = serialize(info.l1, ctx, table, cache, expr_cache);
+                 let rawnode = serialize(info.l1, ctx, table, cache, expr_cache, fmemcmp_data);
                  if let Some(node) = rawnode {
                    let base = node.as_bv().unwrap();
                    let ret = z3::ast::Dynamic::from(base.extract(info.size as u32 - 1, 0));
@@ -150,7 +196,7 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                  }
                },
                DFSAN_EXTRACT => {
-                 let rawnode = serialize(info.l1, ctx, table, cache, expr_cache);
+                 let rawnode = serialize(info.l1, ctx, table, cache, expr_cache, fmemcmp_data);
                  if let Some(node) = rawnode {
                    let base = node.as_bv().unwrap();
                    let ret = z3::ast::Dynamic::from(base.extract(info.op2 as u32 + info.size as u32 - 1, info.op2 as u32));
@@ -165,7 +211,7 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                  if info.l2 == 0 || info.size != 1 {
                    return None;
                  } else {
-                   let rawnode = serialize(info.l2, ctx, table, cache, expr_cache);
+                   let rawnode = serialize(info.l2, ctx, table, cache, expr_cache, fmemcmp_data);
                    if let Some(node) = rawnode {
                      // Only handle LNot
                      if node.sort_kind() == z3::SortKind::Bool {
@@ -185,7 +231,7 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                  if info.l2 == 0  {
                    return None;
                  } else {
-                   let rawnode = serialize(info.l2, ctx, table, cache, expr_cache);
+                   let rawnode = serialize(info.l2, ctx, table, cache, expr_cache, fmemcmp_data);
                    if let Some(node) = rawnode {
                      let ret = z3::ast::Dynamic::from(-node.as_bv().unwrap());
                      cache.insert(label, cache[&info.l2].clone());
@@ -204,7 +250,7 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
   let mut right;
   let mut size1: u32 = info.size as u32;
   if info.l1 >= 1 {
-    let opt_left = serialize(info.l1, ctx, table, cache, expr_cache);
+    let opt_left = serialize(info.l1, ctx, table, cache, expr_cache, fmemcmp_data);
     if opt_left.is_none() {
       return None;
     } else {
@@ -221,7 +267,7 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
     }
   }
   if info.l2 >= 1 {
-    let opt_right = serialize(info.l2, ctx, table, cache, expr_cache);
+    let opt_right = serialize(info.l2, ctx, table, cache, expr_cache, fmemcmp_data);
     if opt_right.is_none() {
       return None;
     } else {
@@ -419,7 +465,7 @@ pub fn generate_solution(ctx: &Context, m: &Model, inputs: &HashSet<u32>) -> Has
 
 pub fn add_cons<'a>(label: u32, table: &UnionTable, 
     ctx: &'a Context, solver: &Solver, 
-    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep<'a>>>) {
+    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep<'a>>>, fmemcmp_data: &HashMap<u32, Vec<u8>>) {
 
 
   if label == 0 {
@@ -430,7 +476,7 @@ pub fn add_cons<'a>(label: u32, table: &UnionTable,
   let mut cache = HashMap::new();
   let mut expr_cache = HashMap::new();
 
-  let rawcond = serialize(label, ctx, table, &mut cache, &mut expr_cache);
+  let rawcond = serialize(label, ctx, table, &mut cache, &mut expr_cache, fmemcmp_data);
 
 
   if let Some(cond) = rawcond {
@@ -455,7 +501,7 @@ pub fn add_cons<'a>(label: u32, table: &UnionTable,
 
 
 pub fn solve_fmemcmp(label: u32, data: &Vec<u8>, size: u64, try_solve: bool, table: &UnionTable, 
-    ctx: &Context, solver: &Solver) -> Option<HashMap<u32,u8>> {
+    ctx: &Context, solver: &Solver, fmemcmp_data: &HashMap<u32, Vec<u8>>) -> Option<HashMap<u32,u8>> {
 
 
   let mut ret = None;
@@ -466,7 +512,7 @@ pub fn solve_fmemcmp(label: u32, data: &Vec<u8>, size: u64, try_solve: bool, tab
   let mut cache = HashMap::new();
   let mut expr_cache = HashMap::new();
 
-  let rawcond = serialize(label, ctx, table, &mut cache, &mut expr_cache);
+  let rawcond = serialize(label, ctx, table, &mut cache, &mut expr_cache, fmemcmp_data);
 
 
   if let Some(cond) = rawcond {
@@ -502,9 +548,10 @@ pub fn solve_fmemcmp(label: u32, data: &Vec<u8>, size: u64, try_solve: bool, tab
   ret
 }
 
+
 pub fn solve_gep<'a>(label: u32, result: u64, try_solve: bool, table: &UnionTable, 
     ctx: &'a Context, solver: &Solver, 
-    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep<'a>>>) -> (Option<HashMap<u32,u8>>, Option<HashMap<u32,u8>>) {
+    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep<'a>>>, fmemcmp_data: &HashMap<u32, Vec<u8>>) -> (Option<HashMap<u32,u8>>, Option<HashMap<u32,u8>>) {
 
 
   let mut ret = (None, None);
@@ -519,7 +566,7 @@ pub fn solve_gep<'a>(label: u32, result: u64, try_solve: bool, table: &UnionTabl
   let mut cache = HashMap::new();
   let mut expr_cache = HashMap::new();
 
-  let rawcond = serialize(label, ctx, table, &mut cache, &mut expr_cache);
+  let rawcond = serialize(label, ctx, table, &mut cache, &mut expr_cache, fmemcmp_data);
 
 
   if let Some(cond) = rawcond {
@@ -567,7 +614,7 @@ pub fn solve_gep<'a>(label: u32, result: u64, try_solve: bool, table: &UnionTabl
 
 pub fn solve_cond<'a>(label: u32, direction: u64, try_solve: bool, table: &UnionTable, 
     ctx: &'a Context, solver: &Solver, 
-    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep<'a>>>) -> (Option<HashMap<u32,u8>>, Option<HashMap<u32,u8>>) {
+    uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep<'a>>>, fmemcmp_data: &HashMap<u32, Vec<u8>>) -> (Option<HashMap<u32,u8>>, Option<HashMap<u32,u8>>) {
   let result = z3::ast::Bool::from_bool(ctx, direction == 1);
 
   let mut ret = (None, None);
@@ -578,7 +625,7 @@ pub fn solve_cond<'a>(label: u32, direction: u64, try_solve: bool, table: &Union
   let mut cache = HashMap::new();
   let mut expr_cache = HashMap::new();
 
-  let rawcond = serialize(label, ctx, table, &mut cache, &mut expr_cache);
+  let rawcond = serialize(label, ctx, table, &mut cache, &mut expr_cache, fmemcmp_data);
 
 
   if let Some(cond) = rawcond {
@@ -662,6 +709,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
   let mut cfg = Config::new();  
   unsafe { start_session() };
   cfg.set_timeout_msec(10000);
+  let mut fmemcmp_data = HashMap::new();
   let ctx = Context::new(&cfg);
   let solver = Solver::new(&ctx);
   let f = unsafe { File::from_raw_fd(pipefd) }; 
@@ -678,7 +726,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
       let mut gencount = 0;
       let mut flipped = false;
       let mut localcnt = 1;
-      
+
       if msg.addr != 0 {
         if branch_local.contains_key(&(msg.addr,msg.ctx)) {
           localcnt = *branch_local.get(&(msg.addr,msg.ctx)).unwrap();
@@ -708,8 +756,8 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
       if msg.msgtype == 0 {
         if localcnt > 64 { continue; }
         let try_solve = if config::QSYM_FILTER { unsafe { qsym_filter(msg.addr, msg.result == 1) } }
-                         else { hitcount <= 5 && (!flipped) && localcnt <= 16 };
-        let rawsol = solve_cond(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps);
+        else { hitcount <= 5 && (!flipped) && localcnt <= 16 };
+        let rawsol = solve_cond(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps, &fmemcmp_data);
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
@@ -726,11 +774,11 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
         //gep
         if localcnt > 64 { continue; }
         let try_solve = hitcount <= 5 && localcnt <= 16;
-        let rawsol = solve_gep(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps);
+        let rawsol = solve_gep(msg.label, msg.result, try_solve, &table, &ctx, &solver, &mut uf, &mut branch_deps, &fmemcmp_data);
         if let Some(sol) = rawsol.0 {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
-                localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
+              localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
           solution_queue.push(rgd_sol);
         }
         if let Some(sol) = rawsol.1 {
@@ -754,17 +802,20 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
         }
         //if localcnt > 64 { continue; }
         //let try_solve = hitcount <=5;
+
         let try_solve = true;
-        let rawsol = solve_fmemcmp(msg.label, &data, msg.result, try_solve, &table, &ctx, &solver);
+        let rawsol = solve_fmemcmp(msg.label, &data, msg.result, try_solve, &table, &ctx, &solver, &fmemcmp_data);
         if let Some(sol) = rawsol {
           let sol_size = sol.len();
           let rgd_sol = Solution::new(sol, msg.tid, msg.addr, msg.ctx,
               localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
           solution_queue.push(rgd_sol);
         }
+        fmemcmp_data.insert(msg.label, data);
+
       } else if msg.msgtype == 3 {
         //offset
-        add_cons(msg.label, &table, &ctx, &solver, &mut uf, &mut branch_deps);
+        add_cons(msg.label, &table, &ctx, &solver, &mut uf, &mut branch_deps, &fmemcmp_data);
       } else {
         //size
       }
