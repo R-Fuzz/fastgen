@@ -129,15 +129,14 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                  let raw_left = if info.l1 != 0 { serialize(info.l1, ctx, table, cache, expr_cache, fmemcmp_data) 
                  } else {
                    if !fmemcmp_data.contains_key(&info.l2) { None } else {
-                     info!("in fmemcmp data is {:?}", &fmemcmp_data[&info.l2]);
                      read_concrete(ctx,&fmemcmp_data[&info.l2])
                    }
                  };
                  let raw_right = serialize(info.l2, ctx, table, cache, expr_cache, fmemcmp_data);
                  if raw_left.is_some() && raw_right.is_some() {
                    let equal = raw_left.unwrap()._eq(&raw_right.unwrap());
-                   let base = equal.ite(&ast::BV::from_i64(ctx,1,32), 
-                       &ast::BV::from_i64(ctx,0,32));
+                   let base = equal.ite(&ast::BV::from_i64(ctx,0,32), 
+                       &ast::BV::from_i64(ctx,1,32));
                    let ret = z3::ast::Dynamic::from(base);
                    let mut merged = HashSet::new();
                    if info.l1 >= CONST_OFFSET {
@@ -499,7 +498,7 @@ pub fn add_cons<'a>(label: u32, table: &UnionTable,
   return;
 }
 
-
+/*
 pub fn solve_fmemcmp(label: u32, data: &Vec<u8>, size: u64, try_solve: bool, table: &UnionTable, 
     ctx: &Context, solver: &Solver, fmemcmp_data: &HashMap<u32, Vec<u8>>) -> Option<HashMap<u32,u8>> {
 
@@ -547,6 +546,7 @@ pub fn solve_fmemcmp(label: u32, data: &Vec<u8>, size: u64, try_solve: bool, tab
 
   ret
 }
+*/
 
 
 pub fn solve_gep<'a>(label: u32, result: u64, try_solve: bool, table: &UnionTable, 
@@ -802,7 +802,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
         }
         //if localcnt > 64 { continue; }
         //let try_solve = hitcount <=5;
-
+/*
         let try_solve = true;
         let rawsol = solve_fmemcmp(msg.label, &data, msg.result, try_solve, &table, &ctx, &solver, &fmemcmp_data);
         if let Some(sol) = rawsol {
@@ -811,6 +811,7 @@ pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>,
               localcnt,  msg.result, 0, sol_size, msg.bid, msg.sctx, false, 0, 0);
           solution_queue.push(rgd_sol);
         }
+*/
         fmemcmp_data.insert(msg.label, data);
 
       } else if msg.msgtype == 3 {
