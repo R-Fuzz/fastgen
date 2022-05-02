@@ -335,6 +335,7 @@ class Taint : public ModulePass {
   FunctionType *TaintNonzeroLabelFnTy;
   FunctionType *TaintVarargWrapperFnTy;
   FunctionType *TaintTraceCmpFnTy;
+  FunctionType *BSwapFnTy;
   FunctionType *TaintTraceCondFnTy;
   FunctionType *GradeTraceCondFnTy;
   FunctionType *GradeTraceSwitchFnTy;
@@ -731,6 +732,8 @@ bool Taint::doInitialization(Module &M) {
       Type::getVoidTy(*Ctx), { ShadowTy }, false);
   TaintTraceGEPFnTy = FunctionType::get(
       Type::getVoidTy(*Ctx), { ShadowTy, Int64Ty }, false);
+  BSwapFnTy = FunctionType::get(
+      ShadowTy, { Int64Ty, ShadowTy, IntegerType::get(*Ctx, 8)}, false);
 
   TaintDebugFnTy = FunctionType::get(Type::getVoidTy(*Ctx),
       {ShadowTy, ShadowTy, ShadowTy, ShadowTy, ShadowTy}, false);
@@ -1903,11 +1906,34 @@ void TaintVisitor::visitReturnInst(ReturnInst &RI) {
 void TaintVisitor::visitCallSite(CallSite CS) {
   if (!TrackMode) return;
   Function *F = CS.getCalledFunction();
-  if ((F && F->isIntrinsic()) || isa<InlineAsm>(CS.getCalledValue())) {
+  if ((F && F->isIntrinsic())) {
     //visitOperandShadowInst(*CS.getInstruction());
     //llvm::errs() << *(CS.getCalledValue()) << "\n";
     return;
   }
+
+  if (isa<InlineAsm>(CS.getCalledValue())) {
+    AttributeList AL;
+    AL = AL.addAttribute(TF.TT.Mod->getContext(), AttributeList::FunctionIndex,
+        Attribute::NoUnwind);
+    AL = AL.addParamAttribute(TF.TT.Mod->getContext(), 0, Attribute::ZExt);
+    Constant* BSwapFn = TF.TT.Mod->getOrInsertFunction("__dfsw_bswap", TF.TT.BSwapFnTy, AL);
+    const InlineAsm* asmt = cast<InlineAsm>(CS.getCalledValue());
+    const std::string& asm_tr = asmt->getAsmString();
+    if (asm_tr.find("bswap") != llvm::StringLiteral::npos) {
+      //  // insert a call to the callback __dfsw_bswap
+      IRBuilder<> IRB(CS.getInstruction());
+      Value *Op = CS.getArgOperand(0);
+      Value *Shadow = TF.getShadow(Op);
+      auto &DL = TF.TT.Mod->getDataLayout();
+      Value *Bytes = ConstantInt::get(TF.TT.Int8Ty, DL.getTypeSizeInBits(Op->getType()) / 8);
+      Op = IRB.CreateZExt(Op, TF.TT.Int64Ty);
+      Value *RetShadow = IRB.CreateCall(BSwapFn, {Op, Shadow, Bytes});
+      TF.setShadow(CS.getInstruction(), RetShadow);
+    }
+    return;
+  }
+
 
   // Calls to this function are synthesized in wrappers, and we shouldn't
   // instrument them.
