@@ -593,12 +593,12 @@ pub fn solve_gep<'a>(label: u32, result: u64, try_solve: bool, table: &UnionTabl
         let sol_opt = generate_solution(ctx, &m, &deps);
         ret.0 = Some(sol_opt);
         solver.push(); 
-        add_dependencies(solver, v0, uf, branch_deps);
+        let alldeps = add_dependencies(solver, v0, uf, branch_deps);
         res = solver.check();
         if res == z3::SatResult::Sat  {
           debug!("sat opt");
           let m = solver.get_model().unwrap();
-          let sol_nest = generate_solution(ctx, &m, &deps);
+          let sol_nest = generate_solution(ctx, &m, &alldeps);
           ret.1 = Some(sol_nest);
         }
       }
@@ -651,12 +651,12 @@ pub fn solve_cond<'a>(label: u32, direction: u64, try_solve: bool, table: &Union
         let sol_opt = generate_solution(ctx, &m, &deps);
         ret.0 = Some(sol_opt);
         solver.push(); 
-        add_dependencies(solver, v0, uf, branch_deps);
+        let alldeps = add_dependencies(solver, v0, uf, branch_deps);
         res = solver.check();
         if res == z3::SatResult::Sat  {
           debug!("sat opt");
           let m = solver.get_model().unwrap();
-          let sol_nest = generate_solution(ctx, &m, &deps);
+          let sol_nest = generate_solution(ctx, &m, &alldeps);
           ret.1 = Some(sol_nest);
         }
       }
@@ -687,8 +687,15 @@ fn preserve<'a>(cond: z3::ast::Bool<'a>, v0: usize, branch_deps: &mut Vec<Option
   deps.cons_set.push(z3::ast::Dynamic::from(cond));
 }
 
-fn add_dependencies(solver: &Solver, v0: usize, uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep>>) {
+fn add_dependencies(
+    solver: &Solver,
+    v0: usize,
+    uf: &mut UnionFind,
+    branch_deps: &mut Vec<Option<BranchDep>>,
+    ) -> HashSet<u32> {
+  let mut res = HashSet::new();
   for off in uf.get_set(v0 as usize) {
+    res.insert(off as u32);
     let deps_opt = &branch_deps[off as usize];
     if let Some(deps) = deps_opt {
       for cons in &deps.cons_set {
@@ -696,6 +703,7 @@ fn add_dependencies(solver: &Solver, v0: usize, uf: &mut UnionFind, branch_deps:
       }
     }
   }
+  res
 }
 
 pub fn solve(shmid: i32, pipefd: RawFd, solution_queue: BlockingQueue<Solution>, tainted_size: usize,
