@@ -584,7 +584,7 @@ pub fn solve_gep<'a>(label: u32, result: u64, try_solve: bool, table: &UnionTabl
         return ret;
       }
       solver.reset();
-      solver.assert(&cond._eq(&z3::ast::Dynamic::from_ast(&result)));
+      solver.assert(&z3::ast::Ast::distinct(ctx, &[&cond, &z3::ast::Dynamic::from_ast(&result)]));
       debug!("{:}", solver);
       let mut res = solver.check();
       if res == z3::SatResult::Sat  {
@@ -605,7 +605,7 @@ pub fn solve_gep<'a>(label: u32, result: u64, try_solve: bool, table: &UnionTabl
     }
     //preserve dependencies
     //preserve
-    let path_cond = z3::ast::Ast::distinct(ctx, &[&cond, &z3::ast::Dynamic::from_ast(&result)]); 
+    let path_cond = cond._eq(&z3::ast::Dynamic::from_ast(&result));
     preserve(path_cond, v0, branch_deps);
   }
 
