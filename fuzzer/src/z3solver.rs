@@ -616,6 +616,7 @@ pub fn solve_cond<'a>(label: u32, direction: u64, try_solve: bool, table: &Union
     ctx: &'a Context, solver: &Solver, 
     uf: &mut UnionFind, branch_deps: &mut Vec<Option<BranchDep<'a>>>, fmemcmp_data: &HashMap<u32, Vec<u8>>) -> (Option<HashMap<u32,u8>>, Option<HashMap<u32,u8>>) {
   let result = z3::ast::Bool::from_bool(ctx, direction == 1);
+  let result_bv = z3::ast::BV::from_i64(ctx, direction as i64, 1);
 
   let mut ret = (None, None);
   if label == 0 {
@@ -638,12 +639,12 @@ pub fn solve_cond<'a>(label: u32, direction: u64, try_solve: bool, table: &Union
     let v0 = union(uf, &deps) as usize;
 
     if try_solve {
-      if cond.as_bool().is_none() {
-        error!("condition must be a bool");
-        return ret;
-      }
       solver.reset();
-      solver.assert(&z3::ast::Ast::distinct(ctx, &[&cond, &z3::ast::Dynamic::from_ast(&result)])); 
+      if cond.as_bool().is_none() {
+        solver.assert(&z3::ast::Ast::distinct(ctx, &[&cond, &z3::ast::Dynamic::from_ast(&result_bv)]));
+      } else {
+        solver.assert(&z3::ast::Ast::distinct(ctx, &[&cond, &z3::ast::Dynamic::from_ast(&result)])); 
+      }
       let mut res = solver.check();
       if res == z3::SatResult::Sat  {
         debug!("sat opt");
@@ -664,7 +665,13 @@ pub fn solve_cond<'a>(label: u32, direction: u64, try_solve: bool, table: &Union
     //preserve dependencies
     //preserve
     let path_cond = cond._eq(&z3::ast::Dynamic::from_ast(&result));
-    preserve(path_cond, v0, branch_deps);
+    if cond.as_bool().is_none() {
+      let path_cond = cond._eq(&z3::ast::Dynamic::from_ast(&result_bv));
+      preserve(path_cond, v0, branch_deps);
+    } else {
+      let path_cond = cond._eq(&z3::ast::Dynamic::from_ast(&result));
+      preserve(path_cond, v0, branch_deps);
+    }
   }
 
   ret
