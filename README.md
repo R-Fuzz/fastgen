@@ -44,9 +44,3 @@ loop: yes
 infer_type: yes
 if_eq: yes
 ```
-
-### TODOs
-
-* add AstNode caching
-* Test search from current input
-* Options switch between continuous/non-continuous solving

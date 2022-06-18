@@ -4,8 +4,7 @@ ROOT_DIR=$(dirname $(dirname $BIN_PATH))
 
 set -euxo pipefail
 
-PREFIX1=${PREFIX:-${ROOT_DIR}/bin/}
-PREFIX2=${PREFIX:-${ROOT_DIR}/bin_ang/}
+PREFIX=${PREFIX:-${ROOT_DIR}/bin/}
 
 unset CXXFLAGS
 unset CFLAGS
@@ -19,28 +18,17 @@ cd ../../..
 cargo build
 cargo build --release
 
-rm -rf ${PREFIX1}
-mkdir -p ${PREFIX1}
-mkdir -p ${PREFIX1}/lib
-#cp target/release/fuzzer ${PREFIX2}
-cp target/release/*.a ${PREFIX1}/lib
+rm -rf ${PREFIX}
+mkdir -p ${PREFIX}
+mkdir -p ${PREFIX}/lib
+cp target/release/*.a ${PREFIX}/lib
 
 
 pushd llvm_mode
 rm -rf build
 mkdir -p build
 pushd build
-CC=clang-6.0 CXX=clang++-6.0 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX1} -DCMAKE_BUILD_TYPE=Release ..
-make -j
-make install
-popd
-popd
-
-pushd llvm_mode_angora
-rm -rf build
-mkdir -p build
-pushd build
-CC=clang-6.0 CXX=clang++-6.0 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX2} -DCMAKE_BUILD_TYPE=Release ..
+CC=clang-6.0 CXX=clang++-6.0 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_BUILD_TYPE=Release ..
 make -j
 make install
 popd
