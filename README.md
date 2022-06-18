@@ -1,6 +1,8 @@
 ### Fastgen
 
-Build
+Fastgen (forked from Angora) is a continous concolic exection driver with a FIFO seed queue. In the front-end, it uses SymSan to collect the constraints. In the backend, it uses Z3 or JIGSAW as its solver.
+
+### Build
 
 ```
 ./build/build.sh
