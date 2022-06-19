@@ -1,0 +1,221 @@
+diff --git a/runtime/qsym_backend/Runtime.cpp b/runtime/qsym_backend/Runtime.cpp
+index 68b093b..9010197 100644
+--- a/runtime/qsym_backend/Runtime.cpp
++++ b/runtime/qsym_backend/Runtime.cpp
+@@ -76,6 +76,9 @@ namespace {
+ 
+ /// Indicate whether the runtime has been initialized.
+ std::atomic_flag g_initialized = ATOMIC_FLAG_INIT;
++std::atomic_uint64_t  simu_counter = 0;
++std::atomic_uint64_t  const_simu_counter = 0;
++std::atomic_uint64_t  input_simu_counter = 0;
+ 
+ /// The file that contains out input.
+ std::string inputFileName;
+@@ -182,6 +185,14 @@ SymExpr _sym_build_integer(uint64_t value, uint8_t bits) {
+   // Qsym's API takes uintptr_t, so we need to be careful when compiling for
+   // 32-bit systems: the compiler would helpfully truncate our uint64_t to fit
+   // into 32 bits.
++
++    const_simu_counter.fetch_add(1, std::memory_order_relaxed);
++   // simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t const_counter = const_simu_counter.load();
++    //uint64_t const_counter = const_simu_counter.load();
++    //printf("counter %lu const counter %lu\n",counter, const_counter);
++      //return (SymExpr)const_counter;    
++     //return registerExpression(g_expr_builder->createConstant(counter,8));
+   if constexpr (sizeof(uint64_t) == sizeof(uintptr_t)) {
+     // 64-bit case: all good.
+     return registerExpression(g_expr_builder->createConstant(value, bits));
+@@ -197,29 +208,64 @@ SymExpr _sym_build_integer(uint64_t value, uint8_t bits) {
+ }
+ 
+ SymExpr _sym_build_integer128(uint64_t high, uint64_t low) {
++
++    const_simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t const_counter = simu_counter.load();
++    //printf("counter %lu\n",counter);
++      //return (SymExpr)const_counter;    
++     //return registerExpression(g_expr_builder->createConstant(counter,8));
+   std::array<uint64_t, 2> words = {low, high};
+   return registerExpression(g_expr_builder->createConstant({128, words}, 128));
+ }
+ 
+ SymExpr _sym_build_null_pointer() {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++    printf("counter %lu\n",counter);
++    //return (SymExpr)counter;
++     //return registerExpression(g_expr_builder->createConstant(counter,8));
+   return registerExpression(
+       g_expr_builder->createConstant(0, sizeof(uintptr_t) * 8));
+ }
+ 
+ SymExpr _sym_build_true() {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++    printf("counter %lu\n",counter);
++    //return (SymExpr)counter;
++    // return registerExpression(g_expr_builder->createConstant(counter,8));
+   return registerExpression(g_expr_builder->createTrue());
+ }
+ 
+ SymExpr _sym_build_false() {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++    //printf("counter %lu\n",counter);
++    printf("counter %lu\n",counter);
++    //return (SymExpr)counter;
++    // return registerExpression(g_expr_builder->createConstant(counter,8));
+   return registerExpression(g_expr_builder->createFalse());
+ }
+ 
+ SymExpr _sym_build_bool(bool value) {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++    printf("counter %lu\n",counter);
++    //return (SymExpr)counter;
++     return registerExpression(g_expr_builder->createConstant(counter,8));
+   return registerExpression(g_expr_builder->createBool(value));
+ }
+ 
++   // return (SymExpr)counter; 
+ #define DEF_BINARY_EXPR_BUILDER(name, qsymName)                                \
+   SymExpr _sym_build_##name(SymExpr a, SymExpr b) {                            \
++    simu_counter.fetch_add(1, std::memory_order_relaxed); \
++    uint64_t counter = simu_counter.load(); \
++    printf("counter %lu\n",counter); \
+     return registerExpression(g_expr_builder->create##qsymName(                \
+         allocatedExpressions.at(a), allocatedExpressions.at(b)));              \
+   }
+@@ -257,32 +303,67 @@ DEF_BINARY_EXPR_BUILDER(xor, Xor)
+ #undef DEF_BINARY_EXPR_BUILDER
+ 
+ SymExpr _sym_build_neg(SymExpr expr) {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++    printf("counter %lu\n",counter);
++    //return (SymExpr)counter; 
++    // return registerExpression(g_expr_builder->createConstant(counter,8));
+   return registerExpression(
+       g_expr_builder->createNeg(allocatedExpressions.at(expr)));
+ }
+ 
++
+ SymExpr _sym_build_not(SymExpr expr) {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++    printf("counter %lu\n",counter);
++    //return (SymExpr)counter; 
++    // return registerExpression(g_expr_builder->createConstant(counter,8));
+   return registerExpression(
+       g_expr_builder->createNot(allocatedExpressions.at(expr)));
+ }
+ 
+ SymExpr _sym_build_sext(SymExpr expr, uint8_t bits) {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++    //printf("counter %lu\n",counter);
++    printf("counter %lu\n",counter);
++    //return (SymExpr)counter; 
++    // return registerExpression(g_expr_builder->createConstant(counter,8));
+   return registerExpression(g_expr_builder->createSExt(
+       allocatedExpressions.at(expr), bits + expr->bits()));
+ }
+ 
+ SymExpr _sym_build_zext(SymExpr expr, uint8_t bits) {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++    //printf("counter %lu\n",counter);
++    printf("counter %lu\n",counter);
++    //return (SymExpr)counter; 
++     //return registerExpression(g_expr_builder->createConstant(counter,8));
+   return registerExpression(g_expr_builder->createZExt(
+       allocatedExpressions.at(expr), bits + expr->bits()));
+ }
+ 
+ SymExpr _sym_build_trunc(SymExpr expr, uint8_t bits) {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++    //printf("counter %lu\n",counter);
++    printf("counter %lu\n",counter);
++    //return (SymExpr)counter; 
++    // return registerExpression(g_expr_builder->createConstant(counter,8));
+   return registerExpression(
+       g_expr_builder->createTrunc(allocatedExpressions.at(expr), bits));
+ }
+ 
+ void _sym_push_path_constraint(SymExpr constraint, int taken,
+                                uintptr_t site_id) {
++  return;
+   if (constraint == nullptr)
+     return;
+ 
+@@ -290,22 +371,52 @@ void _sym_push_path_constraint(SymExpr constraint, int taken,
+ }
+ 
+ SymExpr _sym_get_input_byte(size_t offset) {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++   // input_simu_counter.fetch_add(1, std::memory_order_relaxed);
++  // uint64_t input_counter = input_simu_counter.load();
++    uint64_t counter = simu_counter.load();
++    printf("counter %lu\n",counter);
++   // printf("counter %lu, input_counter %d\n",counter,input_counter);
++     //return registerExpression(g_expr_builder->createConstant(counter,8));
++      //return (SymExpr)counter;    
+   return registerExpression(g_expr_builder->createRead(offset));
+ }
+ 
+ SymExpr _sym_concat_helper(SymExpr a, SymExpr b) {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++    printf("counter %lu\n",counter);
++    //printf("counter %lu\n",counter);
++    // return registerExpression(g_expr_builder->createConstant(counter,8));
++    //return (SymExpr)counter; 
+   return registerExpression(g_expr_builder->createConcat(
+       allocatedExpressions.at(a), allocatedExpressions.at(b)));
+ }
+ 
+ SymExpr _sym_extract_helper(SymExpr expr, size_t first_bit, size_t last_bit) {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++   // printf("counter %lu\n",counter);
++    printf("counter %lu\n",counter);
++    //return (SymExpr)counter; 
++     //return registerExpression(g_expr_builder->createConstant(counter,8));
+   return registerExpression(g_expr_builder->createExtract(
+       allocatedExpressions.at(expr), last_bit, first_bit - last_bit + 1));
+ }
+ 
++//size_t _sym_bits_helper(SymExpr expr) { return 8; }//return expr->bits(); }
+ size_t _sym_bits_helper(SymExpr expr) { return expr->bits(); }
+ 
+ SymExpr _sym_build_bool_to_bits(SymExpr expr, uint8_t bits) {
++
++    simu_counter.fetch_add(1, std::memory_order_relaxed);
++    uint64_t counter = simu_counter.load();
++    //printf("counter %lu\n",counter);
++    //return (SymExpr)counter; 
++     return registerExpression(g_expr_builder->createConstant(counter,8));
+   return registerExpression(
+       g_expr_builder->boolToBit(allocatedExpressions.at(expr), bits));
+ }
+diff --git a/runtime/qsym_backend/qsym b/runtime/qsym_backend/qsym
+--- a/runtime/qsym_backend/qsym
++++ b/runtime/qsym_backend/qsym
+@@ -1 +1 @@
+-Subproject commit d17a39d40dc3ea1d17262dd52607f8a6527dde10
++Subproject commit d17a39d40dc3ea1d17262dd52607f8a6527dde10-dirty

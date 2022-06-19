@@ -1,0 +1,689 @@
+diff --git a/llvm_mode/compiler/ko_clang.c b/llvm_mode/compiler/ko_clang.c
+index e785181..3d3fa3d 100644
+--- a/llvm_mode/compiler/ko_clang.c
++++ b/llvm_mode/compiler/ko_clang.c
+@@ -120,6 +120,7 @@ static void add_runtime() {
+     // cc_params[cc_par_cnt++] = "-lstdc++";
+   }
+   cc_params[cc_par_cnt++] = "-lrt";
++  cc_params[cc_par_cnt++] = "-lz3";
+ 
+   cc_params[cc_par_cnt++] = "-Wl,--no-as-needed";
+   cc_params[cc_par_cnt++] = "-Wl,--gc-sections"; // if darwin -Wl, -dead_strip
+diff --git a/llvm_mode/dfsan_rt/dfsan/CMakeLists.txt b/llvm_mode/dfsan_rt/dfsan/CMakeLists.txt
+index 221be8e..b091021 100644
+--- a/llvm_mode/dfsan_rt/dfsan/CMakeLists.txt
++++ b/llvm_mode/dfsan_rt/dfsan/CMakeLists.txt
+@@ -7,6 +7,12 @@ set(DFSAN_RTL_SOURCES
+   dfsan_interceptors.cc
+   taint_allocator.cc
+   union_util.cc
++  logging.cpp
++  xxhash.cpp
++  expr_cache.cpp
++  expr_builder__gen.cpp
++  expr__gen.cpp
++  dependency.cpp
+   union_hashtable.cc)
+ 
+ set(DFSAN_RTL_HEADERS
+@@ -14,6 +20,8 @@ set(DFSAN_RTL_HEADERS
+   dfsan_flags.inc
+   dfsan_platform.h
+   taint_allocator.h
++  expr.h
++  expr_builder.h
+   union_util.h
+   union_hashtable.h)
+ 
+diff --git a/llvm_mode/dfsan_rt/dfsan/dfsan.cc b/llvm_mode/dfsan_rt/dfsan/dfsan.cc
+index 252cb85..8e06f9e 100644
+--- a/llvm_mode/dfsan_rt/dfsan/dfsan.cc
++++ b/llvm_mode/dfsan_rt/dfsan/dfsan.cc
+@@ -47,6 +47,8 @@
+ #include <unordered_set>
+ #include <utility>
+ #include <vector>
++#include "expr.h"
++#include "expr_builder.h"
+ 
+ struct shmseg {
+   int cnt;
+@@ -63,14 +65,23 @@ std::unordered_map<uint32_t,bool> g_expr_cache;
+ static atomic_dfsan_label __dfsan_last_label;
+ dfsan_label_info *__dfsan_label_info;
+ 
++
++RGDPROXY::ExprBuilder *g_expr_builder;
++//std::map<int, RGDPROXY::ExprRef> g_memory;
++RGDPROXY::ExprRef g_memory[10000000];
++
+ // taint source
+ static struct taint_file tainted;
+-
++static bool read_labels_init = false;
+ // Hash table
+ static const uptr hashtable_size = (1ULL << 32);
+ static const size_t union_table_size = (1ULL << 18);
+ static __taint::union_hashtable __union_table(union_table_size);
+ 
++namespace RGDPROXY {
++z3::context* g_z3_context = new z3::context{};
++static z3::solver __z3_solver(*g_z3_context, "QF_BV");
++}
+ // for output
+ static const char* __output_dir;
+ static u32 __instance_id;
+@@ -180,6 +191,58 @@ static void dfsan_check_label(dfsan_label label) {
+   }
+ }
+ 
++static void generate_input(z3::model &m) {
++  char path[PATH_MAX];
++  internal_snprintf(path, PATH_MAX, "%s/id-%d-%d-%d", __output_dir,
++                    __instance_id, __session_id, __current_index++);
++  fd_t fd = OpenFile(path, WrOnly);
++  if (fd == kInvalidFd) {
++    throw z3::exception("failed to open new input file for write");
++  }
++
++  if (!tainted.is_stdin) {
++    if (!WriteToFile(fd, tainted.buf, tainted.size)) {
++      throw z3::exception("failed to copy original input\n");
++    }
++  } else {
++    // FIXME: input is stdin
++    throw z3::exception("original input is stdin");
++  }
++  AOUT("generate #%d output\n", __current_index - 1);
++
++  // from qsym
++  unsigned num_constants = m.num_consts();
++  for (unsigned i = 0; i < num_constants; i++) {
++    z3::func_decl decl = m.get_const_decl(i);
++    z3::expr e = m.get_const_interp(decl);
++    z3::symbol name = decl.name();
++
++    if (name.kind() == Z3_INT_SYMBOL) {
++      int offset = name.to_int();
++      u8 value = (u8)e.get_numeral_int();
++      AOUT("offset %lld = %x\n", offset, value);
++      internal_lseek(fd, offset, SEEK_SET);
++      WriteToFile(fd, &value, sizeof(value));
++    } else { // string symbol
++      if (!name.str().compare("fsize")) {
++        off_t size = (off_t)e.get_numeral_int64();
++        if (size > tainted.size) { // grow
++          internal_lseek(fd, size, SEEK_SET);
++          u8 dummy = 0;
++          WriteToFile(fd, &dummy, sizeof(dummy));
++        } else {
++          AOUT("truncate file to %lld\n", size);
++          internal_ftruncate(fd, size);
++        }
++        // don't remember size constraints
++        throw z3::exception("skip fsize constraints");
++      }
++    }
++  }
++
++  CloseFile(fd);
++}
++
+ // based on https://github.com/Cyan4973/xxHash
+ // simplified since we only have 12 bytes info
+ static inline u32 xxhash(u32 h1, u32 h2, u32 h3) {
+@@ -222,9 +285,235 @@ static inline bool is_kind_of_label(dfsan_label label, u16 kind) {
+ 
+ static bool isZeroOrPowerOfTwo(uint16_t x) { return (x & (x - 1)) == 0; }
+ 
++
++RGDPROXY::ExprRef get_icmp(RGDPROXY::ExprRef op1, RGDPROXY::ExprRef op2, u32 predicate) {
++  switch (predicate) {
++    case bveq:  return g_expr_builder->createEqual(op1,op2);
++    case bvneq: return g_expr_builder->createDistinct(op1,op2);
++    case bvugt: return g_expr_builder->createUgt(op1,op2);
++    case bvuge: return g_expr_builder->createUge(op1,op2);
++    case bvult: return g_expr_builder->createUlt(op1,op2);
++    case bvule: return g_expr_builder->createUle(op1,op2);
++    case bvsgt: return g_expr_builder->createSgt(op1,op2);
++    case bvsge: return g_expr_builder->createSge(op1,op2);
++    case bvslt: return g_expr_builder->createSlt(op1,op2);
++    case bvsle: return g_expr_builder->createSle(op1,op2);
++    default:
++      break;
++  }
++  // should never reach here
++  Die();
++}
++
++
++RGDPROXY::ExprRef union_qsym_expr(dfsan_label_info* info, dfsan_label label) {
++
++  // special ops
++  if (info->op == 0) {
++    // input
++    RGDPROXY::ExprRef out = g_expr_builder->createRead(info->op1, 1);
++  } else if (info->op == Load) {
++    u64 offset = get_label_info(info->l1)->op1;
++    RGDPROXY::ExprRef out = g_expr_builder->createRead(offset,1);
++    for (u32 i = 1; i < info->l2; i++) {
++      out = g_expr_builder->createConcat(g_expr_builder->createRead(offset+i,1), out);
++    }
++    out->set_label(label);
++    return out;
++  } else if (info->op == ZExt) {
++    RGDPROXY::ExprRef base = g_memory[info->l1];
++    if (base==nullptr) { 
++        printf("empty in zext");
++        return nullptr;
++    }
++    if (base->isBool()) // dirty hack since llvm lacks bool
++      base = g_expr_builder->createIte(base, g_expr_builder->createConstant(1,1), g_expr_builder->createConstant(0,1));
++    u32 base_size = base->bits();
++    RGDPROXY::ExprRef out = g_expr_builder->createZExt(base, info->size);
++    out->set_label(label);
++    return out;
++  } else if (info->op == SExt) {
++    RGDPROXY::ExprRef base = g_memory[info->l1];
++    if (base==nullptr) { 
++        printf("empty in sext");
++return nullptr;}
++    u32 base_size = base->bits();
++    RGDPROXY::ExprRef out = g_expr_builder->createSExt(base, info->size);
++    out->set_label(label);
++    return out;
++  } else if (info->op == Trunc) {
++    RGDPROXY::ExprRef base = g_memory[info->l1];
++    if (base==nullptr) { 
++        printf("empty in trunc");
++return nullptr;}
++    RGDPROXY::ExprRef out = g_expr_builder->createTrunc(base,info->size);
++    out->set_label(label);
++    return out;
++  } else if (info->op == Extract) {
++    RGDPROXY::ExprRef base = g_memory[info->l1];
++    if (base==nullptr) { 
++        printf("empty in extract");
++return nullptr;}
++    RGDPROXY::ExprRef out = g_expr_builder->createExtract(base,info->op2, info->size);
++    out->set_label(label);
++    return out;
++  } else if (info->op == Not) {
++    if (info->l2 == 0 || info->size != 1) {
++        printf("empty in not");
++      return nullptr;
++    }
++    RGDPROXY::ExprRef e = g_memory[info->l2];
++    if (e==nullptr) { 
++        printf("empty in not");
++return nullptr;}
++    if (!e->isBool()) {
++      return nullptr;
++    }
++    RGDPROXY::ExprRef out = g_expr_builder->createLNot(e);
++    out->set_label(label);
++    return out;
++  } else if (info->op == Neg) {
++    if (info->l2 == 0) {
++      return nullptr;
++    }
++    RGDPROXY::ExprRef e = g_memory[info->l2];
++    if (e==nullptr) { 
++        printf("empty in neg");
++return nullptr;}
++    RGDPROXY::ExprRef out = g_expr_builder->createNeg(e);
++    out->set_label(label);
++    return out;
++  }
++  // higher-order
++  else if (info->op == fmemcmp) {
++    RGDPROXY::ExprRef out  = g_expr_builder->createConstant(1,32);
++    return out;
++  } else if (info->op == fsize) {
++    return nullptr;
++  }
++
++  // common ops
++  u8 size = info->size;
++  // size for concat is a bit complicated ...
++  if (info->op == Concat && info->l1 == 0) {
++    assert(info->l2 >= CONST_OFFSET);
++    size = info->size - get_label_info(info->l2)->size;
++  }
++  RGDPROXY::ExprRef op1 = g_expr_builder->createConstant(info->op1,size);
++  op1->set_label(0);
++  if (info->l1 >= CONST_OFFSET) {
++    op1 = g_memory[info->l1];
++  } else if (info->size == 1) {
++    op1 = g_expr_builder->createBool(info->op1==1);
++  }
++  if (info->op == Concat && info->l2 == 0) {
++    assert(info->l1 >= CONST_OFFSET);
++    size = info->size - get_label_info(info->l1)->size;
++  }
++  RGDPROXY::ExprRef op2 = g_expr_builder->createConstant(info->op2,size);
++  op2->set_label(0);
++  if (info->l2 >= CONST_OFFSET) {
++    op2 = g_memory[info->l2];
++  } else if (info->size == 1) {
++    op2 = g_expr_builder->createBool(info->op2==1);
++  }
++
++  if (op1==nullptr || op2==nullptr)  { 
++        printf("empty in binary label %d op %d\n", label,info->op);
++        if(op1==nullptr) printf("op1 emptu\n");
++        if(op2==nullptr) printf("op2 emptu\n");
++return nullptr; }
++
++  switch((info->op & 0xff)) {
++    // llvm doesn't distinguish between logical and bitwise and/or/xor
++    case And:  {    
++      RGDPROXY::ExprRef out  = info->size != 1 ? g_expr_builder->createAnd(op1,op2) : g_expr_builder->createLAnd(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case Or: {
++      RGDPROXY::ExprRef out = info->size != 1 ? g_expr_builder->createOr(op1,op2) : g_expr_builder->createLOr(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case Xor:  {    
++      RGDPROXY::ExprRef out =  g_expr_builder->createXor(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case Shl:   {   
++      RGDPROXY::ExprRef out =  g_expr_builder->createShl(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case LShr:  {
++      RGDPROXY::ExprRef out =  g_expr_builder->createLShr(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case AShr: {  
++      RGDPROXY::ExprRef out =  g_expr_builder->createAShr(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case Add:  {
++      RGDPROXY::ExprRef out  = g_expr_builder->createAdd(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case Sub:  {
++      RGDPROXY::ExprRef out =  g_expr_builder->createSub(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case Mul:  {
++      RGDPROXY::ExprRef out =  g_expr_builder->createMul(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case UDiv:  {
++      RGDPROXY::ExprRef out =  g_expr_builder->createUDiv(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case SDiv: {
++      RGDPROXY::ExprRef out =  g_expr_builder->createSDiv(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case URem:  {
++      RGDPROXY::ExprRef out =  g_expr_builder->createURem(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case SRem: {
++      RGDPROXY::ExprRef out =  g_expr_builder->createSRem(op1,op2); 
++      out->set_label(label);
++      return out;
++      }
++    case ICmp: {
++      RGDPROXY::ExprRef out =  get_icmp(op1,op2,info->op >> 8);
++      out->set_label(label);
++      return out;
++      }
++    // concat
++    case Concat:  { 
++      RGDPROXY::ExprRef out =  g_expr_builder->createConcat(op2,op1);
++      out->set_label(label);
++      return out;
++      }
++    default:
++      break;
++  }
++  // should never reach here
++  Die();
++}
++
++
+ extern "C" SANITIZER_INTERFACE_ATTRIBUTE
+ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
+     u64 op1, u64 op2) {
++
+   if (l1 > l2 && is_commutative(op)) {
+     // needs to swap both labels and concretes
+     Swap(l1, l2);
+@@ -246,6 +535,9 @@ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
+     AOUT("%u found\n", label);
+     return label;
+   }
++
++
++
+   // for debugging
+   dfsan_label l = atomic_load(&__dfsan_last_label, memory_order_relaxed);
+   assert(l1 <= l && l2 <= l);
+@@ -255,7 +547,6 @@ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
+   dfsan_check_label(label);
+   assert(label > l1 && label > l2);
+ 
+-  AOUT("%u = (%u, %u, %u, %u, %llu, %llu)\n", label, l1, l2, op, size, op1, op2);
+ 
+   // setup a hash tree for dedup
+   u32 h1 = l1 ? __dfsan_label_info[l1].hash : 0;
+@@ -264,10 +555,31 @@ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
+   h3 = (h3 << 16) | size;
+   label_info.hash = xxhash(h1, h2, h3);
+ 
++  //update RGDPROXY expr
++
++
++  if (l1 && g_memory[l1]==nullptr) {
++          RGDPROXY::ExprRef newnode = g_expr_builder->createConstant(l1-1, 8 );
++          newnode->set_label(l1);
++          g_memory[l1] =newnode;
++  }
++  if (l1 && g_memory[l2]==nullptr) {
++          RGDPROXY::ExprRef newnode = g_expr_builder->createConstant(l2-1, 8);
++          newnode->set_label(l2);
++          g_memory[l2] =newnode;
++  }
++  RGDPROXY::ExprRef newnode = union_qsym_expr(&label_info,label);
++  //g_memory.insert({label, newnode});
++  g_memory[label]= newnode;
++
+   //update depth
+   u32 left_depth = l1 ? __dfsan_label_info[l1].depth : 0;
+   u32 right_depth = l2 ? __dfsan_label_info[l2].depth : 0;
+ 
++  u32 left_size = l1 ? __dfsan_label_info[l1].tree_size : 0;
++  u32 right_size = l2 ? __dfsan_label_info[l2].tree_size : 0;
++
++  label_info.tree_size = left_size + right_size;
+   label_info.depth = left_depth > right_depth ? left_depth+1 : right_depth+1;
+ 
+   //fmemcmp l2 must be a non-create
+@@ -277,10 +589,10 @@ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
+     struct pipe_msg msg = {.type = 2, .tid = __tid, .label = l2, 
+       .result = size, .addr = 0, .ctx = 0, .localcnt = 0, .bid=0, .sctx=0 };
+     //write(mypipe,content,strlen(content));
+-    write(mypipe,&msg,sizeof(msg));
+-    fsync(mypipe);
+-    write(mypipe,(u8*)op1,size);
+-    fsync(mypipe);
++    //write(mypipe,&msg,sizeof(msg));
++    //fsync(mypipe);
++    //write(mypipe,(u8*)op1,size);
++    //fsync(mypipe);
+   }
+ 
+ 
+@@ -300,6 +612,7 @@ dfsan_label __taint_union_load(const dfsan_label *ls, uptr n) {
+   if (label0 >= CONST_OFFSET) assert(get_label_info(label0)->size != 0);
+ 
+   // fast path 1: constant
++
+   if (is_constant_label(label0)) {
+     bool constant = true;
+     for (uptr i = 1; i < n; i++) {
+@@ -312,6 +625,7 @@ dfsan_label __taint_union_load(const dfsan_label *ls, uptr n) {
+   }
+   AOUT("label0 = %d, n = %d, ls = %p\n", label0, n, ls);
+ 
++
+   // shape
+   bool shape = true;
+   if (__dfsan_label_info[label0].op != 0) {
+@@ -335,7 +649,9 @@ dfsan_label __taint_union_load(const dfsan_label *ls, uptr n) {
+     return __taint_union(label0, (dfsan_label)n, Load, n * 8, 0, 0);
+   }
+ 
++
+   // fast path 2: all labels are extracted from a n-size label, then return that label
++/*
+   if (is_kind_of_label(label0, Extract)) {
+     dfsan_label parent = get_label_info(label0)->l1;
+     uptr offset = 0;
+@@ -353,6 +669,7 @@ dfsan_label __taint_union_load(const dfsan_label *ls, uptr n) {
+       return parent;
+     }
+   }
++*/
+ 
+   // slowpath
+   AOUT("union load slowpath at %p\n", __builtin_return_address(0));
+@@ -472,8 +789,11 @@ dfsan_label dfsan_create_label(off_t offset) {
+   dfsan_check_label(label);
+   internal_memset(&__dfsan_label_info[label], 0, sizeof(dfsan_label_info));
+   __dfsan_label_info[label].size = 8;
++  __dfsan_label_info[label].tree_size = 1;
+   // label may not equal to offset when using stdin
+   __dfsan_label_info[label].op1 = offset;
++
++  
+   return label;
+ }
+ 
+@@ -660,14 +980,38 @@ static void __solve_cond(dfsan_label label,
+   if (label ==0 || (get_label_info(label)->flags & B_FLIPPED)) {
+       return;
+   }
++/*
++  count++;
++  printf("%d, %u, %u, %lu, %lu, %lu, %u, 0, %u, %u\n", count, __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order, bid, sctx);
++
++  z3::expr result = RGDPROXY::g_z3_context->bool_val(r);
++
++  if  (g_memory[label]!=nullptr)  {
++    if (get_label_info(label)->tree_size < 5000) {
++      //std::cout<< g_memory[label]->toString() << std::endl;
++      try {
++        RGDPROXY::__z3_solver.reset();
++        RGDPROXY::__z3_solver.add(g_memory[label]->toZ3Expr() != result);
++        z3::check_result res = RGDPROXY::__z3_solver.check();
++        if (res == z3::sat) {
++          z3::model mopt = RGDPROXY::__z3_solver.get_model();
++          generate_input(mopt);
++        }
++      } catch (z3::exception e) {
++        printf("to z3 expr err %s\n", e.msg());
++      }
++    }
++  } else {
++    printf("emoty expr\n");
++  }
+ 
+-  printf("%u, %u, %lu, %lu, %lu, %u, 0, %u, %u\n", __tid, label, (u64)r, (uint64_t)addr, ctx, (uint32_t)order, bid, sctx);
++*/
+ 
+ 
+   struct pipe_msg msg = {.type = 0, .tid = __tid, .label = label, 
+     .result = r, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx, .predicate = predicate, .target_cond = target_cond};
+-  write(mypipe,&msg, sizeof(msg));
+-  fsync(mypipe);
++  //write(mypipe,&msg, sizeof(msg));
++  //fsync(mypipe);
+   get_label_info(label)->flags |= B_FLIPPED;
+   return;
+ }
+@@ -772,8 +1116,8 @@ __add_constraints(dfsan_label label, bool is_offset) {
+       msg = {.type = 3, .tid = __tid, .label = label, .result = 0, .addr = addr, .ctx = callstack, .localcnt = 0 };
+     else  //size constraints
+       msg = {.type = 4, .tid = __tid, .label = label, .result = 0, .addr = addr, .ctx = callstack, .localcnt = 0 };
+-    write(mypipe,&msg,sizeof(msg));
+-    fsync(mypipe);
++    //write(mypipe,&msg,sizeof(msg));
++    //fsync(mypipe);
+     get_label_info(label)->flags |= B_FLIPPED;
+     return;
+   }
+@@ -818,8 +1162,8 @@ __taint_trace_gep(dfsan_label label, u64 r) {
+   if (__solver_select != 1) {
+     //printLabel(label);
+     struct pipe_msg msg = {.type = 1, .tid = __tid, .label = label, .result = r, .addr = addr, .ctx = callstack, .localcnt = order };
+-    write(mypipe,&msg,sizeof(msg));
+-    fsync(mypipe);
++    //write(mypipe,&msg,sizeof(msg));
++    //fsync(mypipe);
+     get_label_info(label)->flags |= B_FLIPPED;
+     return;
+   }
+@@ -838,6 +1182,15 @@ taint_set_file(const char *filename, int fd) {
+   if (internal_strcmp(tainted.filename, path) == 0) {
+     tainted.fd = fd;
+     AOUT("fd:%d created\n", fd);
++    //if (g_expr_builder!=nullptr) {
++    //  if (tainted.fd != -1 && !tainted.is_stdin) {
++    //    for (off_t i = 0; i < tainted.size; i++) {
++    //      RGDPROXY::ExprRef newnode = g_expr_builder->createRead(i, 1);
++    //      newnode->set_label(i+1);
++    //      g_memory.insert({i+1, newnode});
++    //    }
++    //  }
++    //}
+   }
+ }
+ 
+@@ -1042,8 +1395,13 @@ static void dfsan_init(int argc, char **argv, char **envp) {
+   InitializeSolver();
+ 
+   InitializePlatformEarly();
++  g_expr_builder = RGDPROXY::SymbolicExprBuilder::create();
+   MmapFixedNoReserve(ShadowAddr(), UnionTableAddr() - ShadowAddr());
++
++  MmapFixedNoReserve(UnionTableAddr(),0xc00000000);
++
+   __dfsan_label_info = (dfsan_label_info *)UnionTableAddr();
++/*
+   if (__shmid == 0)
+     __shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
+   shmp = shmat(__shmid, (void *)UnionTableAddr(), 0);
+@@ -1051,8 +1409,10 @@ static void dfsan_init(int argc, char **argv, char **envp) {
+     Printf("FATAL: error shared memory attach");
+     Die();
+   }
++*/
+   mypipe = __pipeid;
+ 
++
+   // init const size
+   internal_memset(&__dfsan_label_info[CONST_LABEL], 0, sizeof(dfsan_label_info));
+   __dfsan_label_info[CONST_LABEL].size = 8;
+diff --git a/llvm_mode/dfsan_rt/dfsan/dfsan.h b/llvm_mode/dfsan_rt/dfsan/dfsan.h
+index 8133348..9c153f1 100644
+--- a/llvm_mode/dfsan_rt/dfsan/dfsan.h
++++ b/llvm_mode/dfsan_rt/dfsan/dfsan.h
+@@ -15,6 +15,7 @@
+ #include "sanitizer_common/sanitizer_internal_defs.h"
+ #include "dfsan_platform.h"
+ #include <stdio.h>
++#include "expr.h"
+ 
+ using __sanitizer::uptr;
+ using __sanitizer::u64;
+diff --git a/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc b/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
+index 113f2e1..5da921d 100644
+--- a/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
++++ b/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
+@@ -74,11 +74,13 @@ SANITIZER_INTERFACE_ATTRIBUTE int
+ __dfsw_stat(const char *path, struct stat *buf, dfsan_label path_label,
+             dfsan_label buf_label, dfsan_label *ret_label) {
+   int ret = stat(path, buf);
++
+   if (ret == 0 && is_taint_file(path)) {
+-    dfsan_set_label(0, buf, sizeof(struct stat));
+-    dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
+-    dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
++ //   dfsan_set_label(0, buf, sizeof(struct stat));
++//    dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
++//    dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
+   }
++
+   *ret_label = 0;
+   return ret;
+ }
+@@ -88,11 +90,13 @@ __dfsw___xstat(int vers, const char *path, struct stat *buf,
+                dfsan_label vers_label, dfsan_label path_label,
+                dfsan_label buf_label, dfsan_label *ret_label) {
+   int ret = __xstat(vers, path, buf);
++
+   if (ret == 0 && is_taint_file(path)) {
+-    dfsan_set_label(0, buf, sizeof(struct stat));
+-    dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
+-    dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
++//    dfsan_set_label(0, buf, sizeof(struct stat));
++//    dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
++//    dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
+   }
++
+   *ret_label = 0;
+   return ret;
+ }
+@@ -103,9 +107,9 @@ SANITIZER_INTERFACE_ATTRIBUTE int __dfsw_fstat(int fd, struct stat *buf,
+                                                dfsan_label *ret_label) {
+   int ret = fstat(fd, buf);
+   if (ret == 0 && taint_get_file(fd)) {
+-    dfsan_set_label(0, buf, sizeof(struct stat));
+-    dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
+-    dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
++  //  dfsan_set_label(0, buf, sizeof(struct stat));
++  //  dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
++  //  dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
+   }
+   *ret_label = 0;
+   return ret;
+@@ -117,9 +121,9 @@ __dfsw___fxstat(int vers, const int fd, struct stat *buf,
+                 dfsan_label buf_label, dfsan_label *ret_label) {
+   int ret = __fxstat(vers, fd, buf);
+   if (ret == 0 && taint_get_file(fd)) {
+-    dfsan_set_label(0, buf, sizeof(struct stat));
+-    dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
+-    dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
++  //  dfsan_set_label(0, buf, sizeof(struct stat));
++  //  dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
++  //  dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
+   }
+   *ret_label = 0;
+   return ret;
+@@ -130,9 +134,9 @@ __dfsw_lstat(const char *path, struct stat *buf, dfsan_label path_label,
+              dfsan_label buf_label, dfsan_label *ret_label) {
+   int ret = lstat(path, buf);
+   if (ret == 0 && is_taint_file(path)) {
+-    dfsan_set_label(0, buf, sizeof(struct stat));
+-    dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
+-    dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
++   // dfsan_set_label(0, buf, sizeof(struct stat));
++  //  dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
++  //  dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
+   }
+   *ret_label = 0;
+   return ret;
+@@ -144,9 +148,9 @@ __dfsw___lxstat(int vers, const char *path, struct stat *buf,
+                 dfsan_label buf_label, dfsan_label *ret_label) {
+   int ret = __lxstat(vers, path, buf);
+   if (ret == 0 && is_taint_file(path)) {
+-    dfsan_set_label(0, buf, sizeof(struct stat));
+-    dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
+-    dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
++   // dfsan_set_label(0, buf, sizeof(struct stat));
++  //  dfsan_label size = dfsan_union(0, 0, fsize, sizeof(buf->st_size) * 8, 0, 0);
++  //  dfsan_set_label(size, &buf->st_size, sizeof(buf->st_size));
+   }
+   *ret_label = 0;
+   return ret;
