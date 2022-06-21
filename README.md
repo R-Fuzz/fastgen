@@ -1,89 +1,47 @@
-### Fastgen
+# Fastgen
 
 Fastgen (forked from Angora) is a continous concolic exection driver with a FIFO seed queue. In the front-end, it uses SymSan to collect the constraints. In the backend, it uses Z3 or JIGSAW as its solver.
 
-### Experiments Results Reproduction
+# Experiments Results Reproduction
 
 
-#### Excution time without solving 
+## Excution time without solving 
 
-##### nbench
+### nbench
 
-Run Native
+1. Run Native
 
 ```
 /src/nbench_native/nbench
 ```
 
-Run SymSan
+2. Run SymSan
 
 ```
 /src/nbench_symsan/nbench
 ```
 
-Run SymCC
+3. Run SymCC
 
 ```
 SYMCC_NO_SYMBOLIC_INPUT=1 /src/nbench_symcc/nbench
 ```
-##### CGC
-##### Real-world applications
 
-#### Memory consumption without solving
+### CGC
+### Real-world applications
 
-##### Real-world applications
+## Memory consumption without solving
 
-#### Code coverage
+### Real-world applications
 
-##### CGC
-##### Real-world applications
+## Code coverage
 
-#### End-to-end fuzzing
+### CGC
+### Real-world applications
 
-##### Magma
-##### Fuzzbench
+## End-to-end fuzzing
 
-### Build
-
-```
-./build/build.sh
-```
+### Magma
+### Fuzzbench
 
 
-### Dependencies
-
-* Have to point /usr/include/llvm to llvm-6.0
-* Have to point /usr/include/llvm-c to llvm-6.0
-
-
-### Tests result
-
-```
-switch2: yes
-switch: yes
-gep: yes
-gep2: yes
-alloca: no constraints
-bitflip: no. yes with o3
-asan: no constraints
-bool: no  (not solvable)
-call_fn:  yes
-call_fn2: yes
-call_fn3: yes 
-cf1: yes
-cf2: yes (with O3)
-cf3: no
-recursion: no
-mini: yes
-mini2: yes
-shift_and: yes
-fstream: yes
-stdin_in: getchar() not supported
-stat: stat not supported
-memcmp:  yes
-strcmp:  yes
-strcmp2:  yes
-loop: yes
-infer_type: yes
-if_eq: yes
-```
