@@ -45,7 +45,7 @@ RUN git clone https://github.com/protocolbuffers/protobuf.git /protobuf  && \
     ldconfig
 
 RUN git clone https://github.com/Z3Prover/z3.git /z3 && \
-		cd /z3 && git checkout z3-4.8.12 && mkdir -p build && cd build && \
+		cd /z3 && git checkout z3-4.8.7 && mkdir -p build && cd build && \
 		cmake .. && make -j && make install
 		#cmake .. && make -j && make install
 RUN ldconfig
@@ -89,9 +89,9 @@ RUN cd /symsan && \
 
 
 RUN git clone https://github.com/chenju2k6/build-programs.git /src/build-programs
-RUN cd /src/build-programs && ./run.sh
+RUN cd /src/build-programs && ./build_symsan.sh
 
-RUN apt-get install -y cargo clang-10 libpixman-1-dev cmake g++ git libz3-dev llvm-10-dev llvm-10-tools ninja-build python3-pip zlib1g-dev
+RUN apt-get install -y cargo clang-10 libpixman-1-dev cmake g++ git llvm-10-dev llvm-10-tools ninja-build python3-pip zlib1g-dev
 RUN pip3 install lit
 RUN pip3 install jinja2
 RUN git clone https://github.com/eurecom-s3/symcc.git /symcc
@@ -139,3 +139,24 @@ RUN cd /src && wget http://www.math.utah.edu/~mayer/linux/nbench-byte-2.2.3.tar.
     cd /src/nbench_native && make && \
     cd /src/nbench_symsan && cp /src/symsan_nbench_makefile Makefile && KO_DONT_OPTMIZE=1 KO_CC=clang-6.0 make && \
     cd /src/nbench_symcc && cp /src/symcc_nbench_makefile Makefile && SYMCC_NO_SYMBOLIC_INPUT=1 make 
+
+RUN pip install xlsxwriter pycrypto
+RUN cd /src && git clone https://github.com/chenju2k6/cgc_programs && cd cgc_programs && ./build_symcc.sh
+
+RUN git clone https://github.com/chenju2k6/build-programs.git /src/build-programs-symcc
+RUN cd /src/build-programs-symcc && ./build_symcc.sh
+
+RUN git clone https://github.com/chenju2k6/build-programs.git /src/build-programs-native1
+RUN cd /src/build-programs-native1 && ./build_native.sh
+
+RUN cd /src && git clone https://github.com/chenju2k6/cgc_programs cgc_programs5 && cd cgc_programs5 && ./build.sh
+
+COPY kirenenko.patch /src
+RUN git clone https://github.com/ChengyuSong/Kirenenko.git /kirenenko && cd /kirenenko && patch -p1 < /src/kirenenko.patch  && unset CFLAGS && unset CXXFLAGS && ./build/build.sh
+RUN rm -rf /usr/lib/x86_64-linux-gnu/libz3*
+RUN cd /src && git clone https://github.com/chenju2k6/cgc_programs cgc_programs6 && cd cgc_programs6 && ./build_symsan.sh
+
+COPY nbench.patch /src
+RUN cd /symsan && patch -p1 < /src/nbench.patch && unset CFLAGS && unset CXXFLAGS && ./build/build.sh
+RUN git clone https://github.com/chenju2k6/build-programs.git /src/build-programs-symsannosolve
+RUN cd /src/build-programs-symsannosolve && ./build_symsan.sh
