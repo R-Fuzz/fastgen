@@ -4,11 +4,28 @@ Fastgen (forked from Angora) is a continous concolic exection driver with a FIFO
 
 ### Experiments Results Reproduction
 
-TODO
 
 #### Excution time without solving 
 
 ##### nbench
+
+Run Native
+
+```
+/src/nbench_native/nbench
+```
+
+Run SymSan
+
+```
+/src/nbench_symsan/nbench
+```
+
+Run SymCC
+
+```
+SYMCC_NO_SYMBOLIC_INPUT=1 /src/nbench_symcc/nbench
+```
 ##### CGC
 ##### Real-world applications
 
