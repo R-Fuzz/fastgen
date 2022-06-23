@@ -1,0 +1,61 @@
+diff --git a/llvm_mode/dfsan_rt/dfsan/dfsan.cc b/llvm_mode/dfsan_rt/dfsan/dfsan.cc
+index 252cb85..bdd5074 100644
+--- a/llvm_mode/dfsan_rt/dfsan/dfsan.cc
++++ b/llvm_mode/dfsan_rt/dfsan/dfsan.cc
+@@ -277,9 +277,9 @@ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
+     struct pipe_msg msg = {.type = 2, .tid = __tid, .label = l2, 
+       .result = size, .addr = 0, .ctx = 0, .localcnt = 0, .bid=0, .sctx=0 };
+     //write(mypipe,content,strlen(content));
+-    write(mypipe,&msg,sizeof(msg));
++    //write(mypipe,&msg,sizeof(msg));
+     fsync(mypipe);
+-    write(mypipe,(u8*)op1,size);
++    //write(mypipe,(u8*)op1,size);
+     fsync(mypipe);
+   }
+ 
+@@ -666,7 +666,7 @@ static void __solve_cond(dfsan_label label,
+ 
+   struct pipe_msg msg = {.type = 0, .tid = __tid, .label = label, 
+     .result = r, .addr = addr, .ctx = ctx, .localcnt = order, .bid=bid, .sctx=sctx, .predicate = predicate, .target_cond = target_cond};
+-  write(mypipe,&msg, sizeof(msg));
++  //write(mypipe,&msg, sizeof(msg));
+   fsync(mypipe);
+   get_label_info(label)->flags |= B_FLIPPED;
+   return;
+@@ -772,7 +772,7 @@ __add_constraints(dfsan_label label, bool is_offset) {
+       msg = {.type = 3, .tid = __tid, .label = label, .result = 0, .addr = addr, .ctx = callstack, .localcnt = 0 };
+     else  //size constraints
+       msg = {.type = 4, .tid = __tid, .label = label, .result = 0, .addr = addr, .ctx = callstack, .localcnt = 0 };
+-    write(mypipe,&msg,sizeof(msg));
++    //write(mypipe,&msg,sizeof(msg));
+     fsync(mypipe);
+     get_label_info(label)->flags |= B_FLIPPED;
+     return;
+@@ -818,7 +818,7 @@ __taint_trace_gep(dfsan_label label, u64 r) {
+   if (__solver_select != 1) {
+     //printLabel(label);
+     struct pipe_msg msg = {.type = 1, .tid = __tid, .label = label, .result = r, .addr = addr, .ctx = callstack, .localcnt = order };
+-    write(mypipe,&msg,sizeof(msg));
++    //write(mypipe,&msg,sizeof(msg));
+     fsync(mypipe);
+     get_label_info(label)->flags |= B_FLIPPED;
+     return;
+@@ -1043,7 +1043,9 @@ static void dfsan_init(int argc, char **argv, char **envp) {
+ 
+   InitializePlatformEarly();
+   MmapFixedNoReserve(ShadowAddr(), UnionTableAddr() - ShadowAddr());
++  MmapFixedNoReserve(UnionTableAddr(), 0xc00000000);
+   __dfsan_label_info = (dfsan_label_info *)UnionTableAddr();
++/*
+   if (__shmid == 0)
+     __shmid = shmget(0x1234, 0xc00000000, 0644|IPC_CREAT|SHM_NORESERVE);
+   shmp = shmat(__shmid, (void *)UnionTableAddr(), 0);
+@@ -1052,6 +1054,7 @@ static void dfsan_init(int argc, char **argv, char **envp) {
+     Die();
+   }
+   mypipe = __pipeid;
++*/
+ 
+   // init const size
+   internal_memset(&__dfsan_label_info[CONST_LABEL], 0, sizeof(dfsan_label_info));

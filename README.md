@@ -1,48 +1,54 @@
-### Fastgen
+# 1. Fastgen
 
 Fastgen (forked from Angora) is a continous concolic exection driver with a FIFO seed queue. In the front-end, it uses SymSan to collect the constraints. In the backend, it uses Z3 or JIGSAW as its solver.
 
-### Build
+# 2. Installation
 
 ```
-./build/build.sh
+cd usenix
+docker build -t usenix .
 ```
 
-
-### Dependencies
-
-* Have to point /usr/include/llvm to llvm-6.0
-* Have to point /usr/include/llvm-c to llvm-6.0
+# 3. Experiments Results Reproduction
 
 
-### Tests result
+## 3.1 Excution time without solving 
+
+### 3.1.1 nbench
+
+1. Run Native
 
 ```
-switch2: yes
-switch: yes
-gep: yes
-gep2: yes
-alloca: no constraints
-bitflip: no. yes with o3
-asan: no constraints
-bool: no  (not solvable)
-call_fn:  yes
-call_fn2: yes
-call_fn3: yes 
-cf1: yes
-cf2: yes (with O3)
-cf3: no
-recursion: no
-mini: yes
-mini2: yes
-shift_and: yes
-fstream: yes
-stdin_in: getchar() not supported
-stat: stat not supported
-memcmp:  yes
-strcmp:  yes
-strcmp2:  yes
-loop: yes
-infer_type: yes
-if_eq: yes
+/src/nbench_native/nbench
 ```
+
+2. Run SymSan
+
+```
+/src/nbench_symsan/nbench
+```
+
+3. Run SymCC
+
+```
+SYMCC_NO_SYMBOLIC_INPUT=1 /src/nbench_symcc/nbench
+```
+
+### 3.1.2 CGC
+### 3.1.3 Real-world applications
+
+## 3.2 Memory consumption without solving
+
+### 3.2.1 Real-world applications
+
+## 3.3 Code coverage
+
+### 3.3.1 CGC
+### 3.3.2 Real-world applications
+
+## 3.4 End-to-end fuzzing
+
+### 3.4.1 Magma
+### 3.4.2 Fuzzbench
+
+

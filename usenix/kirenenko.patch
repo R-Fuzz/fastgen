@@ -1,0 +1,80 @@
+diff --git a/build/build.sh b/build/build.sh
+index 8187138..d97d0eb 100755
+--- a/build/build.sh
++++ b/build/build.sh
+@@ -4,26 +4,9 @@ ROOT_DIR=$(dirname $(dirname $BIN_PATH))
+ 
+ set -euxo pipefail
+ 
+-git submodule init
+-git submodule update
+-
+-sudo apt-get update
+-sudo apt-get install -y libc6 libstdc++6 linux-libc-dev gcc-multilib \
+-    cmake clang llvm-dev g++ g++-multilib python python-pip zlib1g-dev \
+-    libc++-dev libc++abi-dev
+ 
+ PREFIX=${PREFIX:-${ROOT_DIR}/bin/}
+ 
+-# install Z3
+-pushd z3
+-rm -rf build
+-python scripts/mk_make.py
+-pushd build
+-make -j$(nproc)
+-sudo make install
+-popd
+-popd
+-
+ mkdir -p ${PREFIX}
+ mkdir -p ${PREFIX}/lib
+ # cp target/release/fuzzer ${PREFIX}
+@@ -33,9 +16,9 @@ pushd llvm_mode
+ rm -rf build
+ mkdir -p build
+ pushd build
+-CC=clang CXX=clang++ cmake -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_BUILD_TYPE=Release ..
++CC=clang-6.0 CXX=clang++-6.0 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_BUILD_TYPE=Release ..
+ make -j$(nproc)
+-sudo make install
++make install
+ popd
+ popd
+ 
+diff --git a/llvm_mode/dfsan_rt/dfsan/done_abilist.txt b/llvm_mode/dfsan_rt/dfsan/done_abilist.txt
+index 8ac1c2c..52c4b8d 100644
+--- a/llvm_mode/dfsan_rt/dfsan/done_abilist.txt
++++ b/llvm_mode/dfsan_rt/dfsan/done_abilist.txt
+@@ -490,3 +490,32 @@ fun:__taint_*=discard
+ #fun:LLVMFuzzerTestOneInput=uninstrumented
+ fun:__afl_manual_init=uninstrumented
+ fun:__afl_manual_init=discard
++
++fun:cgc_pow=uninstrumented
++fun:cgc_pow=discard
++fun:cgc_remainder=uninstrumented
++fun:cgc_remainder=discard
++fun:cgc_log10=uninstrumented
++fun:cgc_log10=discard
++fun:cgc_floor=uninstrumented
++fun:cgc_floor=discard
++fun:cgc_rint=uninstrumented
++fun:cgc_rint=discard
++fun:cgc_sin=uninstrumented
++fun:cgc_sin=discard
++fun:cgc_cos=uninstrumented
++fun:cgc_cos=discard
++fun:cgc_log2=uninstrumented
++fun:cgc_log2=discard
++fun:cgc_atan2=uninstrumented
++fun:cgc_atan2=discard
++fun:cgc_sqrt=uninstrumented
++fun:cgc_sqrt=discard
++fun:cgc_log=uninstrumented
++fun:cgc_log=discard
++fun:cgc_fabs=discard
++fun:cgc_fabs=uninstrumented
++fun:cgc_tan=uninstrumented
++fun:cgc_tan=discard
++fun:cgc_logf=uninstrumented
++fun:cgc_logf=discard
