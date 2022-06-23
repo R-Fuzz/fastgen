@@ -106,13 +106,15 @@ cd /src/build-programs-native
 2. Run SymSan
 
 ```
-/src/build-programs-symsannosolve/run_symsan_mem.sh /out/real_seeds/objdump_reduced objdump -D
+cd /src/build-programs-symsannosolve
+./run_symsan_mem.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 3. Run SymCC
 
 ```
-/src/build-programs-symcc/run_symcc_mem.sh /out/real_seeds/objdump_reduced objdump -D
+cd /src/build-programs-symcc
+./run_symcc_mem.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 ## 3.3 Code coverage
