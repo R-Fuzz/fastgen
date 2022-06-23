@@ -65,25 +65,25 @@ SYMCC_NO_SYMBOLIC_INPUT=1 /src/nbench_symcc/nbench
 1. Run Native
 
 ```
-/src/build-programs-native/run_native_time.sh
+/src/build-programs-native/run_native_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 2. Run SymSan
 
 ```
-/src/build-programs-symsannosolve/run_symsan_time.sh
+/src/build-programs-symsannosolve/run_symsan_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 3. Run SymCC
 
 ```
-/src/build-programs-symcc/run_symcc_time.sh
+/src/build-programs-symcc/run_symcc_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 4. Run SymQEMU
 
 ```
-/src/build-programs-native/run_symqemu_time.sh
+/src/build-programs-native/run_symqemu_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 ## 3.2 Memory consumption without solving
@@ -93,19 +93,19 @@ SYMCC_NO_SYMBOLIC_INPUT=1 /src/nbench_symcc/nbench
 1. Run Native
 
 ```
-/src/build-programs-native/run_native_mem.sh
+/src/build-programs-native/run_native_mem.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 2. Run SymSan
 
 ```
-/src/build-programs-symsannosolve/run_symsan_mem.sh
+/src/build-programs-symsannosolve/run_symsan_mem.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 3. Run SymCC
 
 ```
-/src/build-programs-symcc/run_symcc_mem.sh
+/src/build-programs-symcc/run_symcc_mem.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 ## 3.3 Code coverage
