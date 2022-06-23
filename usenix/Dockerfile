@@ -166,3 +166,8 @@ COPY run_symcc.sh /src/cgc_programs/build_symcc/
 COPY run_symqemu.sh /src/cgc_programs/build_symqemu/
 COPY cgc_list /src/
 COPY run_symsan_time.sh /src/build-programs-symsannosolve/
+COPY run_symcc_time.sh /src/build-programs-symcc/
+COPY run_symqemu_time.sh /src/build-programs-native/
+#mem
+COPY run_symcc_mem.sh /src/build-programs-symcc/
+COPY run_symsan_mem.sh /src/build-programs-symsannosolve/
