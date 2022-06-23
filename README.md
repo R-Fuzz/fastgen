@@ -46,7 +46,7 @@ cd /src/cgc_programs/build
 2. Run SymSan
 
 ```
-cd /src/cgc_programs/build_symsan
+cd /src/cgc_programs/build_symsannosolve
 ./run_symsan.sh
 ```
 
