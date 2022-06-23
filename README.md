@@ -53,13 +53,15 @@ cd /src/cgc_programs/build_symsannosolve
 3. Run SymCC
 
 ```
-/src/cgc_programs/build_symcc/run_symcc.sh
+cd /src/cgc_programs/build_symcc
+./run_symcc.sh
 ```
 
 4. Run SymQEMU
 
 ```
-/src/cgc_programs/build_native/run_symqemu.sh
+cd /src/cgc_programs/build
+/src/cgc_programs/build/run_symqemu.sh
 ```
 
 ### 3.1.3 Real-world applications
