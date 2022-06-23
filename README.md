@@ -75,7 +75,8 @@ cd /src/cgc_programs/build
 2. Run SymSan
 
 ```
-/src/build-programs-symsannosolve/run_symsan_time.sh /out/real_seeds/objdump_reduced objdump -D
+cd /src/build-programs-symsannosolve
+./run_symsan_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 3. Run SymCC
