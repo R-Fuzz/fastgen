@@ -163,3 +163,4 @@ RUN cd /src/build-programs-symsannosolve && ./build_symsan.sh
 COPY run_native.sh /src/cgc_programs/build/
 COPY run_symsan.sh /src/cgc_programs/build_symsannosolve/
 COPY run_symcc.sh /src/cgc_programs/build_symcc/
+COPY run_symqemu.sh /src/cgc_programs/build_symqemu/

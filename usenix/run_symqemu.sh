@@ -1,6 +1,3 @@
-dir=$1 
-pro=$2
-opt=$3
-find ${dir} -name "id*" | while read line; do
-  SYMCC_INPUT_FILE=$line SYMCC_ENABLE_LINEARIZATION=1 SYMCC_OUTPUT_DIR=xx  ./${pro}.symcc ${opt} $line 2>/dev/null 1>/dev/null
+cat /src/cgc_list | while read line; do
+{ time cat /out/cgc_seeds/$line/seed | SYMCC_INPUT_FILE=/out/cgc_seeds/$line/seed SYMCC_OUTPUT_DIR=xx SYMCC_ENABLE_LINEARIZATION=1 timeout -k 10 300 /symqemu/build/x86_64-linux-user/symqemu-x86_64 ./challenges/$line/$line  1>/dev/null 2>/dev/null; } 2>&1 | grep real
 done
