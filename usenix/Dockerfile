@@ -171,3 +171,4 @@ COPY run_symqemu_time.sh /src/build-programs-native/
 #mem
 COPY run_symcc_mem.sh /src/build-programs-symcc/
 COPY run_symsan_mem.sh /src/build-programs-symsannosolve/
+RUN apt-get install -y time
