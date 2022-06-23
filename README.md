@@ -72,23 +72,25 @@ cd /src/cgc_programs/build
 /src/build-programs-native/run_native_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
-2. Run SymSan
+2. Run SymSan (objdump)
 
 ```
 cd /src/build-programs-symsannosolve
 ./run_symsan_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
-3. Run SymCC
+3. Run SymCC (objdump)
 
 ```
-/src/build-programs-symcc/run_symcc_time.sh /out/real_seeds/objdump_reduced objdump -D
+cd /src/build-programs-symcc
+./run_symcc_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
-4. Run SymQEMU
+4. Run SymQEMU (objdump)
 
 ```
-/src/build-programs-native/run_symqemu_time.sh /out/real_seeds/objdump_reduced objdump -D
+cd /src/build-programs-native
+./run_symqemu_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 ## 3.2 Memory consumption without solving
