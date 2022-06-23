@@ -66,10 +66,11 @@ cd /src/cgc_programs/build
 
 ### 3.1.3 Real-world applications
 
-1. Run Native
+1. Run Native (objdump)
 
 ```
-/src/build-programs-native/run_native_time.sh /out/real_seeds/objdump_reduced objdump -D
+cd /src/build-programs-native
+./run_native_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 2. Run SymSan (objdump)
@@ -100,7 +101,8 @@ cd /src/build-programs-native
 1. Run Native
 
 ```
-/src/build-programs-native/run_native_mem.sh /out/real_seeds/objdump_reduced objdump -D
+cd /src/build-programs-native
+./run_native_mem.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 2. Run SymSan
