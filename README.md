@@ -39,13 +39,15 @@ SYMCC_NO_SYMBOLIC_INPUT=1 /src/nbench_symcc/nbench
 1. Run Native
 
 ```
-/src/cgc_programs/build/run_native.sh
+cd /src/cgc_programs/build
+./run_native.sh
 ```
 
 2. Run SymSan
 
 ```
-/src/cgc_programs/build_symsan/run_symsan.sh
+cd /src/cgc_programs/build_symsan
+./run_symsan.sh
 ```
 
 3. Run SymCC
