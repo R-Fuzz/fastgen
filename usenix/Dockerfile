@@ -141,7 +141,6 @@ RUN cd /src && wget http://www.math.utah.edu/~mayer/linux/nbench-byte-2.2.3.tar.
     cd /src/nbench_symcc && cp /src/symcc_nbench_makefile Makefile && SYMCC_NO_SYMBOLIC_INPUT=1 make 
 
 RUN pip install xlsxwriter pycrypto
-RUN cd /src && git clone https://github.com/chenju2k6/cgc_programs && cd cgc_programs && ./build_symcc.sh  && ./build.sh && ./build_symsan.sh
 
 RUN git clone https://github.com/chenju2k6/build-programs.git /src/build-programs-symcc
 RUN cd /src/build-programs-symcc && ./build_symcc.sh
@@ -154,6 +153,7 @@ RUN cd /src/build-programs-native && ./build_native.sh
 COPY kirenenko.patch /src
 RUN git clone https://github.com/ChengyuSong/Kirenenko.git /kirenenko && cd /kirenenko && patch -p1 < /src/kirenenko.patch  && unset CFLAGS && unset CXXFLAGS && ./build/build.sh
 RUN rm -rf /usr/lib/x86_64-linux-gnu/libz3*
+RUN cd /src && git clone https://github.com/chenju2k6/cgc_programs && cd cgc_programs && ./build_symcc.sh  && ./build.sh && ./build_symsan.sh
 #RUN cd /src && git clone https://github.com/chenju2k6/cgc_programs cgc_programs6 && cd cgc_programs6 && ./build_symsan.sh
 
 COPY nbench.patch /src
