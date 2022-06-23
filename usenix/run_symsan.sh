@@ -1,6 +1,3 @@
-dir=$1 
-pro=$2
-opt=$3
-find ${dir} -name "id*" | while read line; do
-  SYMCC_INPUT_FILE=$line SYMCC_ENABLE_LINEARIZATION=1 SYMCC_OUTPUT_DIR=xx  ./${pro}.symcc ${opt} $line 2>/dev/null 1>/dev/null
+cat /src/cgc_list | while read line; do
+{ time TAINT_OPTIONS=taint_file=/out/cgc_seeds/$line/seed timeout -k 10 300 ./challenges/$line/$line < /out/cgc_seeds/$line/seed 1>/dev/null 2>/dev/null; } 2>&1 | grep real
 done
