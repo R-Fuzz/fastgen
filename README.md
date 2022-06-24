@@ -136,4 +136,8 @@ https://github.com/chenju2k6/magma
 
 ### 3.4.2 Fuzzbench
 
+The below link contains the SymSan patch we sent to Google's Fuzzbench team
 
+```
+https://drive.google.com/file/d/1fQTCzWJJkzc6QK1q-m7aIfyQWGtp85bJ/view?usp=sharing
+```
