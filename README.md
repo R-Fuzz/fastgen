@@ -66,10 +66,11 @@ cd /src/cgc_programs/build
 
 ### 3.1.3 Real-world applications
 
-1. Run Native
+1. Run Native (objdump)
 
 ```
-/src/build-programs-native/run_native_time.sh /out/real_seeds/objdump_reduced objdump -D
+cd /src/build-programs-native
+./run_native_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 2. Run SymSan (objdump)
@@ -100,7 +101,8 @@ cd /src/build-programs-native
 1. Run Native
 
 ```
-/src/build-programs-native/run_native_mem.sh /out/real_seeds/objdump_reduced objdump -D
+cd /src/build-programs-native
+./run_native_mem.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
 2. Run SymSan
@@ -125,6 +127,17 @@ cd /src/build-programs-symcc
 ## 3.4 End-to-end fuzzing
 
 ### 3.4.1 Magma
+
+Run the forked magma with SymSan added
+
+```
+https://github.com/chenju2k6/magma
+```
+
 ### 3.4.2 Fuzzbench
 
+The below link contains the SymSan patch we sent to Google's Fuzzbench team
 
+```
+https://drive.google.com/file/d/1fQTCzWJJkzc6QK1q-m7aIfyQWGtp85bJ/view?usp=sharing
+```
