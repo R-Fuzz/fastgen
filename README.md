@@ -145,7 +145,14 @@ ninja
 
 ### 3.3.1 CGC
 
-1. Run SymCC
+1. Run SymSan
+
+```
+cd /src/cgc_programs/build_symsan
+./run_symsan.sh
+```
+
+2. Run SymCC
 
 ```
 cd /src/cgc_programs/build_symcc
