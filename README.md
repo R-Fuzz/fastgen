@@ -168,6 +168,25 @@ cd /src/build-programs-symcc
 ./run_symcc_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
+2. Run SymSan
+
+Patch SymSan with CE testing
+
+```
+cd /symsan && patch -p1 < /src/symsan_cov.patch
+./build/build.sh
+cp target/release/fastgen /src/build-programs
+```
+
+Run objdump (560 is the number of inputs, see paper's Table 3 for all other programs)
+
+```
+cd /src/build-programs
+./fuzzer.sh 560 objdump -D
+```
+
+
+
 ## 3.4 End-to-end fuzzing
 
 ### 3.4.1 Magma
