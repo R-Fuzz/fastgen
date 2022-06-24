@@ -127,6 +127,13 @@ cd /src/build-programs-symcc
 ## 3.4 End-to-end fuzzing
 
 ### 3.4.1 Magma
+
+Run the forked magma with SymSan added
+
+```
+https://github.com/chenju2k6/magma
+```
+
 ### 3.4.2 Fuzzbench
 
 
