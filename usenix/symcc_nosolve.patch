@@ -1,0 +1,12 @@
+diff --git a/runtime/qsym_backend/Runtime.cpp b/runtime/qsym_backend/Runtime.cpp
+index 68b093b..0e63bc9 100644
+--- a/runtime/qsym_backend/Runtime.cpp
++++ b/runtime/qsym_backend/Runtime.cpp
+@@ -283,6 +283,7 @@ SymExpr _sym_build_trunc(SymExpr expr, uint8_t bits) {
+ 
+ void _sym_push_path_constraint(SymExpr constraint, int taken,
+                                uintptr_t site_id) {
++  return;
+   if (constraint == nullptr)
+     return;
+ 
