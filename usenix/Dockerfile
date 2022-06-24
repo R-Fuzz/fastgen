@@ -162,8 +162,9 @@ RUN git clone https://github.com/chenju2k6/build-programs.git /src/build-program
 RUN cd /src/build-programs-symsannosolve && ./build_symsan.sh
 COPY run_native.sh /src/cgc_programs/build/
 COPY run_symsan.sh /src/cgc_programs/build_symsannosolve/
+COPY run_symsan.sh /src/cgc_programs/build_symsan/
 COPY run_symcc.sh /src/cgc_programs/build_symcc/
-COPY run_symqemu.sh /src/cgc_programs/build_symqemu/
+COPY run_symqemu.sh /src/cgc_programs/build/
 COPY cgc_list /src/
 COPY run_symsan_time.sh /src/build-programs-symsannosolve/
 COPY run_symcc_time.sh /src/build-programs-symcc/
