@@ -14,6 +14,18 @@ docker build -t usenix .
 
 ## 3.1 Excution time without solving 
 
+Run docker image interactively and disable SymCC solving
+
+```
+docker run -it usenix /bin/bash
+cd /symcc
+patch -p1 < /src/symcc_nosolve.patch
+cd build
+rm -rf libSymbolize.so
+ninja
+```
+
+
 ### 3.1.1 nbench
 
 1. Run Native
@@ -121,8 +133,33 @@ cd /src/build-programs-symcc
 
 ## 3.3 Code coverage
 
+Re-enable SymCC's solving
+
+```
+cd /symcc
+git reset --hard
+cd build
+rm -rf libSymbolize.so
+ninja
+```
+
 ### 3.3.1 CGC
+
+1. Run SymCC
+
+```
+cd /src/cgc_programs/build_symcc
+./run_symcc.sh
+```
+
 ### 3.3.2 Real-world applications
+
+1. Run SymCC (objdump)
+
+```
+cd /src/build-programs-symcc
+./run_symcc_time.sh /out/real_seeds/objdump_reduced objdump -D
+```
 
 ## 3.4 End-to-end fuzzing
 
