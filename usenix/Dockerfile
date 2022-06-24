@@ -174,3 +174,4 @@ COPY run_symcc_mem.sh /src/build-programs-symcc/
 COPY run_native_mem.sh /src/build-programs-native/
 COPY run_symsan_mem.sh /src/build-programs-symsannosolve/
 RUN apt-get install -y time
+COPY symcc_nosolve.patch /src
