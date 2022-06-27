@@ -26,7 +26,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update && DEBIAN_FRONTEND="noninter
 
 #install protobuf
 #RUN wget https://apt.llvm.org/llvm.sh && ct clone https://github.com/xiph/vorbis.githmod +x llvm.sh && ./llvm.sh 9
-RUN wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && ./llvm.sh 12
+#RUN wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && ./llvm.sh 12
 #RUN ln -s /usr/bin/llvm-config-12 /usr/bin/llvm-config
 #RUN ln -s /usr/bin/clang-12 /usr/bin/clang
 #RUN ln -s /usr/bin/clang++-12 /usr/bin/clang++
