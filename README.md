@@ -31,19 +31,22 @@ ninja
 1. Run Native
 
 ```
-/src/nbench_native/nbench
+cd /src/nbench_native
+./nbench
 ```
 
 2. Run SymSan
 
 ```
-/src/nbench_symsan/nbench
+cd /src/nbench_symsan
+./nbench
 ```
 
 3. Run SymCC
 
 ```
-SYMCC_NO_SYMBOLIC_INPUT=1 /src/nbench_symcc/nbench
+cd /src/nbench_symcc
+SYMCC_NO_SYMBOLIC_INPUT=1 ./nbench
 ```
 
 ### 3.1.2 CGC
@@ -65,7 +68,8 @@ cd /src/cgc_programs/build_symsannosolve
 3. Run SymCC
 
 ```
-cd /src/cgc_programs/build_symcc
+cd /src/cgc_programs/
+build_symcc
 ./run_symcc.sh
 ```
 
