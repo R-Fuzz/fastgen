@@ -17,7 +17,7 @@ docker build -t usenix .
 Run docker image interactively and disable SymCC solving
 
 ```
-docker run -it usenix /bin/bash
+docker run -it --ulimit core=0 usenix /bin/bash
 cd /symcc
 patch -p1 < /src/symcc_nosolve.patch
 cd build
