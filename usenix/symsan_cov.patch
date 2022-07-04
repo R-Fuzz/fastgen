@@ -1,131 +1,407 @@
-diff --git a/common/src/config.rs b/common/src/config.rs
-index f9930dc..d370b5e 100644
---- a/common/src/config.rs
-+++ b/common/src/config.rs
-@@ -14,7 +14,7 @@ pub const MAX_INPUT_LEN: usize = 100000;
- pub const SAVING_WHOLE: bool = false;
- pub const USE_CODECACHE: bool = true;
- pub const SAMPLING: bool = true;
--pub const RUNAFL: bool = true;
-+pub const RUNAFL: bool = false;
- pub const QSYM_FILTER: bool = true;
+diff --git a/build/build.sh b/build/build.sh
+index 8187138..d97d0eb 100755
+--- a/build/build.sh
++++ b/build/build.sh
+@@ -4,26 +4,9 @@ ROOT_DIR=$(dirname $(dirname $BIN_PATH))
  
+ set -euxo pipefail
  
-diff --git a/fuzzer/cpp_core/filter.cc b/fuzzer/cpp_core/filter.cc
-index e74cc8f..1944f15 100644
---- a/fuzzer/cpp_core/filter.cc
-+++ b/fuzzer/cpp_core/filter.cc
-@@ -110,8 +110,8 @@ extern "C" {
-     memset(virgin_map_, 0, kMapSize);
-     prev_loc_ = 0;
-     //for ce testing
--    //memset(trace_map_, 0, kMapSize);
--    //.memset(context_map_, 0, kMapSize);
-+    memset(trace_map_, 0, kMapSize);
-+    memset(context_map_, 0, kMapSize);
-     visited_.clear();
+-git submodule init
+-git submodule update
+-
+-sudo apt-get update
+-sudo apt-get install -y libc6 libstdc++6 linux-libc-dev gcc-multilib \
+-    cmake clang llvm-dev g++ g++-multilib python python-pip zlib1g-dev \
+-    libc++-dev libc++abi-dev
+ 
+ PREFIX=${PREFIX:-${ROOT_DIR}/bin/}
+ 
+-# install Z3
+-pushd z3
+-rm -rf build
+-python scripts/mk_make.py
+-pushd build
+-make -j$(nproc)
+-sudo make install
+-popd
+-popd
+-
+ mkdir -p ${PREFIX}
+ mkdir -p ${PREFIX}/lib
+ # cp target/release/fuzzer ${PREFIX}
+@@ -33,9 +16,9 @@ pushd llvm_mode
+ rm -rf build
+ mkdir -p build
+ pushd build
+-CC=clang CXX=clang++ cmake -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_BUILD_TYPE=Release ..
++CC=clang-6.0 CXX=clang++-6.0 cmake -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_BUILD_TYPE=Release ..
+ make -j$(nproc)
+-sudo make install
++make install
+ popd
+ popd
+ 
+diff --git a/llvm_mode/compiler/ko_clang.c b/llvm_mode/compiler/ko_clang.c
+index 1a20d18..0a55836 100644
+--- a/llvm_mode/compiler/ko_clang.c
++++ b/llvm_mode/compiler/ko_clang.c
+@@ -283,7 +283,7 @@ static void edit_params(u32 argc, char **argv) {
+   if (!getenv("KO_DONT_OPTIMIZE")) {
+     cc_params[cc_par_cnt++] = "-g";
+     cc_params[cc_par_cnt++] = "-O3";
+-    //cc_params[cc_par_cnt++] = "-funroll-loops";
++    cc_params[cc_par_cnt++] = "-funroll-loops";
    }
  
-diff --git a/fuzzer/src/file.rs b/fuzzer/src/file.rs
-index 5ebcfb3..4a92021 100644
---- a/fuzzer/src/file.rs
-+++ b/fuzzer/src/file.rs
-@@ -7,7 +7,7 @@ use std::time;
- use std::thread;
+   if (is_cxx && !getenv("KO_USE_NATIVE_LIBCXX")) {
+diff --git a/llvm_mode/dfsan_rt/dfsan/dfsan.cc b/llvm_mode/dfsan_rt/dfsan/dfsan.cc
+index ddc9764..34d1197 100644
+--- a/llvm_mode/dfsan_rt/dfsan/dfsan.cc
++++ b/llvm_mode/dfsan_rt/dfsan/dfsan.cc
+@@ -52,6 +52,10 @@
  
- pub fn get_file_name(dir: &Path, id: usize) -> PathBuf {
--    let file_name = format!("id:{:06}", id);
-+    let file_name = format!("id:{:08}", id);
-     dir.join(file_name)
- }
+ #define OPTIMISTIC 1
  
-diff --git a/fuzzer/src/fuzz_loop.rs b/fuzzer/src/fuzz_loop.rs
-index c7eb960..7e6bdce 100644
---- a/fuzzer/src/fuzz_loop.rs
-+++ b/fuzzer/src/fuzz_loop.rs
-@@ -184,7 +184,11 @@ pub fn grading_loop(
-         predicate = sol.predicate;
-         fid = sol.fid;
-         let mut_buf = mutate(buf, &sol.sol, sol.field_index, sol.field_size);
--        let new_path = executor.run_sync_with_cond(&mut_buf, bid, sctx, order);
-+        //let new_path = executor.run_sync_with_cond(&mut_buf, bid, sctx, order);
-+        let new_path = (false,0);
-+        executor.run_norun(&mut_buf);
-+        
-+        continue;
++#define XXH_STATIC_LINKING_ONLY   /* access advanced declarations */
++#define XXH_IMPLEMENTATION
++#include "xxhash.h"
++
+ using namespace __dfsan;
  
-         let direction_out = executor.get_cond();
-         if (direction_out == 0 && direction == 1) || (direction_out == 1 && direction == 0) {
-@@ -304,6 +308,7 @@ pub fn fuzz_loop(
-     restart: bool,
-     forklock: Arc<Mutex<u32>>,
-     bq: BlockingQueue<Solution>,
-+    num_seeds: usize,
-     ) {
- 
-   let mut id: u32 = 0;
-@@ -340,7 +345,8 @@ pub fn fuzz_loop(
-   let branch_hitcount = Arc::new(RwLock::new(HashMap::<(u64,u64,u32,u64), u32>::new()));
- 
-   while running.load(Ordering::Relaxed) {
--    if (id as usize) < depot.get_num_inputs() {
-+    //if (id as usize) < depot.get_num_inputs() {
-+    if (id as usize) < num_seeds {
- 
- 
-       let t_start = time::Instant::now();
-diff --git a/fuzzer/src/fuzz_main.rs b/fuzzer/src/fuzz_main.rs
-index acaa733..a061769 100644
---- a/fuzzer/src/fuzz_main.rs
-+++ b/fuzzer/src/fuzz_main.rs
-@@ -33,6 +33,7 @@ pub fn fuzz_main(
-     mem_limit: u64,
-     time_limit: u64,
-     sync_afl: bool,
-+    num_seeds: usize,
-     ) {
-   pretty_env_logger::init();
- 
-@@ -105,7 +106,7 @@ pub fn fuzz_main(
-     let fk = forklock.clone();
-     let bqc = bq.clone();
-     let handle = thread::spawn(move || {
--        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, blist, restart, fk, bqc);
-+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, blist, restart, fk, bqc, num_seeds);
-         });
-     handlers.push(handle);
+ typedef atomic_uint32_t atomic_dfsan_label;
+@@ -85,7 +89,7 @@ struct context_hash {
    }
-@@ -120,7 +121,7 @@ pub fn fuzz_main(
-     let fk = forklock.clone();
-     let bqc = bq.clone();
-     let handle = thread::spawn(move || {
--        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, blist, restart, fk, bqc);
-+        fuzz_loop::fuzz_loop(r, cmd, d, b, bg, blist, restart, fk, bqc, num_seeds);
-         });
-     handlers.push(handle);
-   } 
-diff --git a/fuzzer/src/main.rs b/fuzzer/src/main.rs
-index 5fb44f9..9d7b616 100644
---- a/fuzzer/src/main.rs
-+++ b/fuzzer/src/main.rs
-@@ -55,6 +55,12 @@ fn main() {
-              .value_name("JOB")
-              .help("Sets the number of thread jobs, default is 1")
-              .takes_value(true))
-+        .arg(Arg::with_name("num_seeds")
-+             .short("s")
-+             .long("num_seeds")
-+             .value_name("SEEDS")
-+             .help("Sets the number of seeds for CE testing")
-+             .takes_value(true))
-         .arg(Arg::with_name("grader_jobs")
-              .short("g")
-              .long("graders")
-@@ -77,6 +83,7 @@ fn main() {
-         value_t!(matches, "memory_limit", u64).unwrap_or(fastgen_common::config::MEM_LIMIT),
-         value_t!(matches, "time_limit", u64).unwrap_or(fastgen_common::config::TIME_LIMIT),
-         matches.occurrences_of("sync_afl") > 0,
-+        value_t!(matches, "num_seeds", usize).unwrap_or(0),
-     );
+ };
+ static std::unordered_map<trace_context, u16, context_hash> __branches;
+-static const u16 MAX_BRANCH_COUNT = 16;
++static const u16 MAX_BRANCH_COUNT = 64;
+ static const u64 MAX_GEP_INDEX = 0x10000;
  
+ // dependencies
+@@ -148,6 +152,93 @@ static uptr UnusedAddr() {
+   return MappingArchImpl<MAPPING_HASH_TABLE_ADDR>() + hashtable_size;
  }
+ 
++static std::unordered_set<uint32_t> visited_;
++
++const int kMapSize = 65536;
++uint8_t context_map_[kMapSize];
++uint8_t virgin_map_[kMapSize];
++uint8_t trace_map_[kMapSize];
++uint32_t prev_loc_ = 0;
++
++inline bool isPowerofTwoOrZero(uint32_t x) {
++  return ((x & (x - 1)) == 0);
++}
++
++XXH32_hash_t hashPc(uint64_t pc, bool taken) {
++  XXH32_state_t state;
++  XXH32_reset(&state, 0);
++  XXH32_update(&state, &pc, sizeof(pc));
++  XXH32_update(&state, &taken, sizeof(taken));
++  return XXH32_digest(&state) % kMapSize;
++}
++
++uint32_t getIndex(uint32_t h) {
++  return ((prev_loc_ >> 1) ^ h) % kMapSize;
++}
++
++bool isInterestingContext(uint32_t h, uint32_t bits) {
++  bool interesting = false;
++  if (!isPowerofTwoOrZero(bits))
++    return false;
++  for (auto it = visited_.begin();
++      it != visited_.end();
++      it++) {
++    uint32_t prev_h = *it;
++
++    // Calculate hash(prev_h || h)
++    XXH32_state_t state;
++    XXH32_reset(&state, 0);
++    XXH32_update(&state, &prev_h, sizeof(prev_h));
++    XXH32_update(&state, &h, sizeof(h));
++
++    uint32_t hash = XXH32_digest(&state) % (kMapSize * CHAR_BIT);
++    uint32_t idx = hash / CHAR_BIT;
++    uint32_t mask = 1 << (hash % CHAR_BIT);
++
++    if ((context_map_[idx] & mask) == 0) {
++      context_map_[idx] |= mask;
++      interesting = true;
++    }
++  }
++
++  if (bits == 0)
++    visited_.insert(h);
++
++  return interesting;
++}
++
++bool isInterestingBranch(uint64_t pc, bool taken) {
++  uint32_t h = hashPc(pc, taken);
++  uint32_t idx = getIndex(h);
++  bool new_context = isInterestingContext(h, virgin_map_[idx]);
++  bool ret = true;
++
++  virgin_map_[idx]++;
++
++  if ((virgin_map_[idx] | trace_map_[idx]) != trace_map_[idx]) {
++    uint32_t inv_h = hashPc(pc, !taken);
++    uint32_t inv_idx = getIndex(inv_h);
++
++    trace_map_[idx] |= virgin_map_[idx];
++
++    // mark the inverse case, because it's already covered by current testcase
++    virgin_map_[inv_idx]++;
++
++    trace_map_[inv_idx] |= virgin_map_[inv_idx];
++
++    virgin_map_[inv_idx]--;
++    ret = true;
++  }
++  else if (new_context) {
++    ret = true;
++  }
++  else
++    ret = false;
++
++  prev_loc_ = h;
++  return ret;
++}
++
+ // Checks we do not run out of labels.
+ static void dfsan_check_label(dfsan_label label) {
+   if (label == kInitializingLabel) {
+@@ -826,10 +917,12 @@ add_constraints(dfsan_label label) {
+   get_label_info(label)->flags |= B_FLIPPED;
+ }
+ 
+-static void __solve_cond(dfsan_label label, z3::expr &result, bool add_nested, void *addr) {
++static void __solve_cond(dfsan_label label, z3::expr &result, bool add_nested, void *addr, bool direction) {
+   if ((get_label_info(label)->flags & B_FLIPPED))
+     return;
+ 
++  bool interesting = isInterestingBranch((uint64_t)addr, direction);
++
+   bool pushed = false;
+   try {
+     std::unordered_set<dfsan_label> inputs;
+@@ -842,6 +935,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result, bool add_nested, v
+     }
+ #endif
+ 
++
+     // collect additional input deps
+     std::vector<dfsan_label> worklist;
+     worklist.insert(worklist.begin(), inputs.begin(), inputs.end());
+@@ -858,6 +952,7 @@ static void __solve_cond(dfsan_label label, z3::expr &result, bool add_nested, v
+       }
+     }
+ 
++    if (interesting) {
+     __z3_solver.reset();
+         //AOUT("%s\n", cond.to_string().c_str());
+     __z3_solver.add(cond != result);
+@@ -899,6 +994,9 @@ static void __solve_cond(dfsan_label label, z3::expr &result, bool add_nested, v
+       //AOUT("  tree_size = %d", __dfsan_label_info[label].tree_size);
+     }
+ 
++    get_label_info(label)->flags |= B_FLIPPED;
++    }
++
+     // nested branch
+     if (add_nested) {
+       for (auto off : inputs) {
+@@ -917,7 +1015,6 @@ static void __solve_cond(dfsan_label label, z3::expr &result, bool add_nested, v
+     }
+ 
+     // mark as flipped
+-    get_label_info(label)->flags |= B_FLIPPED;
+   } catch (z3::exception e) {
+     Report("WARNING: solving error: %s @%p\n", e.msg(), addr);
+   }
+@@ -931,6 +1028,7 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
+     return;
+ 
+   void *addr = __builtin_return_address(0);
++  /*
+   auto itr = __branches.find({__taint_trace_callstack, addr});
+   if (itr == __branches.end()) {
+     itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
+@@ -939,8 +1037,9 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
+   } else {
+     return;
+   }
++  */
+ 
+-  AOUT("solving cmp: %u %u %u %d %llu %llu @%p\n", op1, op2, size, predicate, c1, c2, addr);
++  //AOUT("solving cmp: %u %u %u %d %llu %llu @%p\n", op1, op2, size, predicate, c1, c2, addr);
+ 
+   dfsan_label temp = dfsan_union(op1, op2, (predicate << 8) | ICmp, size, c1, c2);
+ 
+@@ -950,7 +1049,7 @@ __taint_trace_cmp(dfsan_label op1, dfsan_label op2, u32 size, u32 predicate,
+ 
+   // trace_cmp is only used in switch statement
+   // only add nested constraints for the case taken
+-  __solve_cond(temp, result, c1 == c2, addr);
++  __solve_cond(temp, result, c1 == c2, addr, c1==c2);
+ }
+ 
+ extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+@@ -959,6 +1058,7 @@ __taint_trace_cond(dfsan_label label, u8 r) {
+     return;
+ 
+   void *addr = __builtin_return_address(0);
++  /*
+   auto itr = __branches.find({__taint_trace_callstack, addr});
+   if (itr == __branches.end()) {
+     itr = __branches.insert({{__taint_trace_callstack, addr}, 1}).first;
+@@ -967,11 +1067,13 @@ __taint_trace_cond(dfsan_label label, u8 r) {
+   } else {
+     return;
+   }
++  */
+ 
+-  AOUT("solving cond: %u %u %u %p %u\n", label, r, __taint_trace_callstack, addr, itr->second);
++
++  //AOUT("solving cond: %u %u %u %p %u\n", label, r, __taint_trace_callstack, addr, itr->second);
+ 
+   z3::expr result = __z3_context.bool_val(r);
+-  __solve_cond(label, result, true, addr);
++  __solve_cond(label, result, true, addr, r);
+ }
+ 
+ extern "C" SANITIZER_INTERFACE_ATTRIBUTE void
+@@ -1307,6 +1409,10 @@ static void dfsan_init(int argc, char **argv, char **envp) {
+ 
+   InitializeSolver();
+ 
++  memset(virgin_map_, 0, 65536);
++  memset(trace_map_, 0, 65536);
++  memset(context_map_, 0, 65536);
++
+   // Register the fini callback to run when the program terminates successfully
+   // or it is killed by the runtime.
+   Atexit(dfsan_fini);
+diff --git a/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc b/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
+index 8dad0ab..9dd428f 100644
+--- a/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
++++ b/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
+@@ -1860,4 +1860,22 @@ __dfsw_fseeko64(FILE *stream, off64_t offset, int whence, dfsan_label stream_lab
+   return ret;
+ }
+ 
++
++SANITIZER_INTERFACE_ATTRIBUTE dfsan_label
++__dfsw_bswap(u32 netlong, dfsan_label net_label, uint8_t bytes) {
++  //b3b2b1b0
++  dfsan_label b0 = dfsan_union(net_label, 0, Extract, 8, 0, 0);
++  dfsan_label b1 = dfsan_union(net_label, 0, Extract, 8, 0, 8);
++  dfsan_label b2 = dfsan_union(net_label, 0, Extract, 8, 0, 16);
++  dfsan_label b3 = dfsan_union(net_label, 0, Extract, 8, 0, 24);
++
++  //b0b1
++  dfsan_label ret = dfsan_union(b1, b0, Concat, 16, 0, 0);
++  //b0b1b2
++  ret = dfsan_union(b2, ret, Concat, 24, 0, 0);
++  //b0b1b2b3
++  ret = dfsan_union(b3, ret, Concat, 32, 0, 0);
++  return ret;
++}
++
+ }  // extern "C"
+diff --git a/llvm_mode/dfsan_rt/dfsan/done_abilist.txt b/llvm_mode/dfsan_rt/dfsan/done_abilist.txt
+index 8ac1c2c..52c4b8d 100644
+--- a/llvm_mode/dfsan_rt/dfsan/done_abilist.txt
++++ b/llvm_mode/dfsan_rt/dfsan/done_abilist.txt
+@@ -490,3 +490,32 @@ fun:__taint_*=discard
+ #fun:LLVMFuzzerTestOneInput=uninstrumented
+ fun:__afl_manual_init=uninstrumented
+ fun:__afl_manual_init=discard
++
++fun:cgc_pow=uninstrumented
++fun:cgc_pow=discard
++fun:cgc_remainder=uninstrumented
++fun:cgc_remainder=discard
++fun:cgc_log10=uninstrumented
++fun:cgc_log10=discard
++fun:cgc_floor=uninstrumented
++fun:cgc_floor=discard
++fun:cgc_rint=uninstrumented
++fun:cgc_rint=discard
++fun:cgc_sin=uninstrumented
++fun:cgc_sin=discard
++fun:cgc_cos=uninstrumented
++fun:cgc_cos=discard
++fun:cgc_log2=uninstrumented
++fun:cgc_log2=discard
++fun:cgc_atan2=uninstrumented
++fun:cgc_atan2=discard
++fun:cgc_sqrt=uninstrumented
++fun:cgc_sqrt=discard
++fun:cgc_log=uninstrumented
++fun:cgc_log=discard
++fun:cgc_fabs=discard
++fun:cgc_fabs=uninstrumented
++fun:cgc_tan=uninstrumented
++fun:cgc_tan=discard
++fun:cgc_logf=uninstrumented
++fun:cgc_logf=discard
+diff --git a/llvm_mode/pass/TaintPass.cc b/llvm_mode/pass/TaintPass.cc
+index 590a59d..8a11165 100644
+--- a/llvm_mode/pass/TaintPass.cc
++++ b/llvm_mode/pass/TaintPass.cc
+@@ -330,6 +330,7 @@ class Taint : public ModulePass {
+   FunctionType *TaintNonzeroLabelFnTy;
+   FunctionType *TaintVarargWrapperFnTy;
+   FunctionType *TaintTraceCmpFnTy;
++  FunctionType *BSwapFnTy;
+   FunctionType *TaintTraceCondFnTy;
+   FunctionType *TaintTraceIndirectCallFnTy;
+   FunctionType *TaintTraceGEPFnTy;
+@@ -650,6 +651,8 @@ bool Taint::doInitialization(Module &M) {
+       Type::getVoidTy(*Ctx), { ShadowTy }, false);
+   TaintTraceGEPFnTy = FunctionType::get(
+       Type::getVoidTy(*Ctx), { ShadowTy, Int64Ty }, false);
++  BSwapFnTy = FunctionType::get(
++      ShadowTy, { Int64Ty, ShadowTy, IntegerType::get(*Ctx, 8)}, false);
+ 
+   TaintDebugFnTy = FunctionType::get(Type::getVoidTy(*Ctx),
+       {ShadowTy, ShadowTy, ShadowTy, ShadowTy, ShadowTy}, false);
+@@ -1644,12 +1647,35 @@ void TaintVisitor::visitReturnInst(ReturnInst &RI) {
+ 
+ void TaintVisitor::visitCallSite(CallSite CS) {
+   Function *F = CS.getCalledFunction();
+-  if ((F && F->isIntrinsic()) || isa<InlineAsm>(CS.getCalledValue())) {
++  if ((F && F->isIntrinsic())) {
+     //visitOperandShadowInst(*CS.getInstruction());
+     //llvm::errs() << *(CS.getCalledValue()) << "\n";
+     return;
+   }
+ 
++  if (isa<InlineAsm>(CS.getCalledValue())) {
++    AttributeList AL;
++    AL = AL.addAttribute(TF.TT.Mod->getContext(), AttributeList::FunctionIndex,
++        Attribute::NoUnwind);
++    AL = AL.addParamAttribute(TF.TT.Mod->getContext(), 0, Attribute::ZExt);
++    Constant* BSwapFn = TF.TT.Mod->getOrInsertFunction("__dfsw_bswap", TF.TT.BSwapFnTy, AL);
++    const InlineAsm* asmt = cast<InlineAsm>(CS.getCalledValue());
++    const std::string& asm_tr = asmt->getAsmString();
++    if (asm_tr.find("bswap") != llvm::StringLiteral::npos) {
++      //  // insert a call to the callback __dfsw_bswap
++      IRBuilder<> IRB(CS.getInstruction());
++      Value *Op = CS.getArgOperand(0);
++      Value *Shadow = TF.getShadow(Op);
++      auto &DL = TF.TT.Mod->getDataLayout();
++      Value *Bytes = ConstantInt::get(TF.TT.Int8Ty, DL.getTypeSizeInBits(Op->getType()) / 8);
++      Op = IRB.CreateZExt(Op, TF.TT.Int64Ty);
++      Value *RetShadow = IRB.CreateCall(BSwapFn, {Op, Shadow, Bytes});
++      TF.setShadow(CS.getInstruction(), RetShadow);
++    }
++    return;
++  }
++
++
+   // Calls to this function are synthesized in wrappers, and we shouldn't
+   // instrument them.
+   if (F == TF.TT.TaintVarargWrapperFn)
