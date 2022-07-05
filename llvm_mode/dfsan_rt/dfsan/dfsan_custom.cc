@@ -191,7 +191,7 @@ SANITIZER_INTERFACE_ATTRIBUTE int __dfsw_memcmp(const void *s1, const void *s2,
   dfsan_label ls2 = dfsan_read_label(s2, n);
   // ugly hack ...
   *ret_label = dfsan_union(ls1, ls2, fmemcmp, n, (u64)s1, (u64)s2);
-  return !!ret;
+  return ret;
 }
 
 DECLARE_WEAK_INTERCEPTOR_HOOK(dfsan_weak_hook_strcmp, uptr caller_pc,
@@ -214,7 +214,7 @@ SANITIZER_INTERFACE_ATTRIBUTE int __dfsw_strcmp(const char *s1, const char *s2,
   dfsan_label ls2 = dfsan_read_label(s2, size);
   // ugly hack ...
   *ret_label = dfsan_union(ls1, ls2, fmemcmp, size, (u64)s1, (u64)s2);
-  return !!ret;
+  return ret;
 }
 
 SANITIZER_INTERFACE_ATTRIBUTE int
@@ -266,7 +266,7 @@ SANITIZER_INTERFACE_ATTRIBUTE int __dfsw_strncmp(const char *s1, const char *s2,
   dfsan_label ls2 = dfsan_read_label(s2, n);
   // ugly hack ...
   *ret_label = dfsan_union(ls1, ls2, fmemcmp, n, (u64)s1, (u64)s2);
-  return !!ret;
+  return ret;
 }
 
 SANITIZER_INTERFACE_ATTRIBUTE int
