@@ -213,9 +213,3 @@ index 68b093b..9010197 100644
    return registerExpression(
        g_expr_builder->boolToBit(allocatedExpressions.at(expr), bits));
  }
-diff --git a/runtime/qsym_backend/qsym b/runtime/qsym_backend/qsym
---- a/runtime/qsym_backend/qsym
-+++ b/runtime/qsym_backend/qsym
-@@ -1 +1 @@
--Subproject commit d17a39d40dc3ea1d17262dd52607f8a6527dde10
-+Subproject commit d17a39d40dc3ea1d17262dd52607f8a6527dde10-dirty

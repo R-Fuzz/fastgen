@@ -78,7 +78,7 @@ RUN rm -rf /usr/include/llvm && rm -rf /usr/include/llvm-c
 RUN ln -s /usr/lib/llvm-6.0/include/llvm /usr/include/llvm
 RUN ln -s /usr/lib/llvm-6.0/include/llvm-c /usr/include/llvm-c
 # build kirenenko
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- --default-toolchain=1.61.0 -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN apt-get -y install libc++-dev libc++abi-dev
 RUN git clone https://github.com/r-fuzz/fastgen.git /symsan
@@ -94,6 +94,7 @@ RUN cd /src/build-programs && ./build_symsan.sh
 RUN apt-get install -y cargo clang-10 libpixman-1-dev cmake g++ git llvm-10-dev llvm-10-tools ninja-build python3-pip zlib1g-dev
 RUN pip3 install lit
 RUN pip3 install jinja2
+RUN pip install jinja2
 RUN git clone https://github.com/eurecom-s3/symcc.git /symcc
 RUN cd /symcc && git checkout 07c8895fea8e5fae90417df60a130be7a9c63d92  && git submodule update --init && \
     mkdir build && cd build && cmake -G Ninja -DQSYM_BACKEND=ON ../ && ninja all &&  \
