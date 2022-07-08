@@ -65,18 +65,43 @@ cd /src/cgc_programs/build
 ./run_native.sh
 ```
 
-2. Run SymSan
+2.1 Run SymSan (No solve)
 
 ```
 cd /src/cgc_programs/build_symsannosolve
 ./run_symsan.sh
 ```
 
-3. Run SymCC
+2.2 Run SymSan (Pure Taint) - Apply the pure taint patch, and rebuild symsan
+```
+cd /symsan
+git reset --hard
+patch -p1 < /src/ablation_symsan.patch
+./build/build.sh
+cd /src/
+rm -rf build_symsannosolve
+./build_symsannosolve.sh
+cd /src/cgc_programs/build_symsannosolve
+./run_symsan.sh
+```
+
+
+3.1 Run SymCC (No solve)
 
 ```
-cd /src/cgc_programs/
-build_symcc
+cd /src/cgc_programs/build_symcc
+./run_symcc.sh
+```
+
+3.2 Run SymCC (Pure Taint) - Apply the pure taint patch, and rerun
+
+```
+cd /symcc
+git reset --hard
+patch -p1 < /src/ablation.patch
+cd build
+ninja
+cd /src/cgc_programs/build_symcc
 ./run_symcc.sh
 ```
 
@@ -103,9 +128,35 @@ cd /src/build-programs-symsannosolve
 ./run_symsan_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
-3. Run SymCC (objdump)
+2.2 Run SymSan - Pure Taint, apply the patch and rebuild
 
 ```
+cd /symsan
+git reset --hard
+patch -p1 < /src/ablation_symsan.patch
+./build/build.sh
+git clone https://github.com/chenju2k6/build-programs.git /src/build-programs-symsanpuretaint
+cd /src/build-programs-symsanpuretaint && ./build_symsan.sh
+./run_symsan_time.sh /out/real_seeds/objdump_reduced objdump -D
+```
+
+3.1 Run SymCC (objdump)
+
+```
+cd /src/build-programs-symcc
+./run_symcc_time.sh /out/real_seeds/objdump_reduced objdump -D
+```
+
+3.2 Run SymCC (Pure Taint) - Apply the pure taint patch, and rerun
+
+```
+cd /symcc
+git reset --hard
+patch -p1 < /src/ablation.patch
+cd build
+ninja
+cd /src/cgc_programs/build_symcc
+./run_symcc.sh
 cd /src/build-programs-symcc
 ./run_symcc_time.sh /out/real_seeds/objdump_reduced objdump -D
 ```
@@ -128,14 +179,34 @@ cd /src/build-programs-native
 ./run_native_mem.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
-2. Run SymSan
+2.1 Run SymSan
 
 ```
 cd /src/build-programs-symsannosolve
 ./run_symsan_mem.sh /out/real_seeds/objdump_reduced objdump -D
 ```
+2.2 Run SymSan - with QSYM backend (rebuild)
+
+```
+cd /symsan
+git reset --hard
+patch -p1 < /src/qsym.patch
+./build/build.sh
+git clone https://github.com/chenju2k6/build-programs.git /src/build-programs-symsanqsym
+cd /src/build-programs-symsanqsym && ./build_symsan.sh
+./run_symsan_mem.sh /out/real_seeds/objdump_reduced objdump -D
+```
 
 3. Run SymCC
+
+Don't forget to re-apply symcc_nosolve.patch
+```
+cd /symcc
+git reset --hard
+patch -p1 < /src/symcc_nosolve.patch
+cd build
+ninja
+```
 
 ```
 cd /src/build-programs-symcc
