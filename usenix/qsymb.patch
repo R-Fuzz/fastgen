@@ -36,6 +36,147 @@ index 221be8e..b091021 100644
    union_util.h
    union_hashtable.h)
  
+diff --git a/llvm_mode/dfsan_rt/dfsan/compiler.h b/llvm_mode/dfsan_rt/dfsan/compiler.h
+new file mode 100644
+index 0000000..699f6a2
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/compiler.h
+@@ -0,0 +1,14 @@
++#ifndef QSYM_COMPILER_H_
++#define QSYM_COMPILER_H_
++
++#define xglue(x, y) x ## y
++#define glue(x, y) xglue(x, y)
++
++#define likely(x)       __builtin_expect((x), 1)
++#define unlikely(x)     __builtin_expect((x), 0)
++
++inline void CRASH() {
++  ((void(*)())0)();
++}
++
++#endif // QSYM_COMPILER_H_
+diff --git a/llvm_mode/dfsan_rt/dfsan/dependency.cpp b/llvm_mode/dfsan_rt/dfsan/dependency.cpp
+new file mode 100644
+index 0000000..029e43b
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/dependency.cpp
+@@ -0,0 +1,19 @@
++#include <cassert>
++
++#include "dependency.h"
++namespace RGDPROXY {
++
++  DependencyNode::DependencyNode()
++    : dependencies_(NULL)
++  {}
++
++  DependencyNode::~DependencyNode() {
++    delete dependencies_;
++  }
++
++  DependencySet* DependencyNode::getDependencies() {
++    if (dependencies_ == NULL)
++      dependencies_ = new DependencySet(computeDependencies());
++    return dependencies_;
++  }
++}
+diff --git a/llvm_mode/dfsan_rt/dfsan/dependency.h b/llvm_mode/dfsan_rt/dfsan/dependency.h
+new file mode 100644
+index 0000000..2a9fe43
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/dependency.h
+@@ -0,0 +1,90 @@
++#ifndef QSYM_DEPENDENCY_H_
++#define QSYM_DEPENDENCY_H_
++
++//#include <iostream>
++#include <memory>
++#include <set>
++#include <vector>
++namespace RGDPROXY {
++
++  typedef std::set<size_t> DependencySet;
++
++  class DependencyNode {
++    public:
++      DependencyNode();
++      virtual ~DependencyNode();
++      DependencySet* getDependencies();
++      virtual DependencySet computeDependencies() = 0; 
++
++    private:
++      DependencySet* dependencies_;
++  };
++
++  template<class T>
++  class DependencyTree {
++    public:
++      void addNode(std::shared_ptr<T> node) {
++        DependencySet* deps = node->getDependencies();
++        nodes_.push_back(node);
++        deps_.insert(deps->begin(), deps->end());
++      }
++
++      void merge(const DependencyTree<T>& other) {
++        const DependencySet& other_deps = other.getDependencies();
++        const std::vector<std::shared_ptr<T>>& other_nodes = other.getNodes();
++
++        nodes_.insert(nodes_.end(), other_nodes.begin(), other_nodes.end());
++        deps_.insert(other_deps.begin(), other_deps.end());
++      }
++
++      const DependencySet & getDependencies() const {
++        return deps_;
++      }
++
++      const std::vector<std::shared_ptr<T>>& getNodes() const {
++        return nodes_;
++      }
++
++    private:
++      std::vector<std::shared_ptr<T>> nodes_;
++      DependencySet deps_;
++  };
++
++  template<class T>
++  class DependencyForest {
++    public:
++      std::shared_ptr<DependencyTree<T>> find(size_t index) {
++        if (forest_.size() <= index)
++          forest_.resize(index + 1);
++
++        if (forest_[index] == NULL)
++          forest_[index] = std::make_shared<DependencyTree<T>>();
++
++        assert(forest_[index] != NULL);
++        return forest_[index];
++      }
++
++      void addNode(std::shared_ptr<T> node) {
++        DependencySet* deps = node->getDependencies();
++        std::shared_ptr<DependencyTree<T>> tree = NULL;
++        for (const size_t& index : *deps) {
++          std::shared_ptr<DependencyTree<T>> other_tree = find(index);
++          if (tree == NULL)
++            tree = other_tree;
++          else if (tree != other_tree) {
++            tree->merge(*other_tree);
++            // Update existing reference
++            for (const size_t& index : other_tree->getDependencies())
++              forest_[index] = tree;
++          }
++          forest_[index] = tree;
++        }
++        tree->addNode(node);
++      }
++
++    private:
++      std::vector<std::shared_ptr<DependencyTree<T>>> forest_;
++  };
++
++}
++#endif
 diff --git a/llvm_mode/dfsan_rt/dfsan/dfsan.cc b/llvm_mode/dfsan_rt/dfsan/dfsan.cc
 index 252cb85..8e06f9e 100644
 --- a/llvm_mode/dfsan_rt/dfsan/dfsan.cc
@@ -598,7 +739,7 @@ index 8133348..9c153f1 100644
  using __sanitizer::uptr;
  using __sanitizer::u64;
 diff --git a/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc b/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
-index 113f2e1..5da921d 100644
+index 539ec83..cf834a7 100644
 --- a/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
 +++ b/llvm_mode/dfsan_rt/dfsan/dfsan_custom.cc
 @@ -74,11 +74,13 @@ SANITIZER_INTERFACE_ATTRIBUTE int
@@ -687,3 +828,6055 @@ index 113f2e1..5da921d 100644
    }
    *ret_label = 0;
    return ret;
+diff --git a/llvm_mode/dfsan_rt/dfsan/done_abilist.txt b/llvm_mode/dfsan_rt/dfsan/done_abilist.txt
+index 756ada0..fe81e70 100644
+--- a/llvm_mode/dfsan_rt/dfsan/done_abilist.txt
++++ b/llvm_mode/dfsan_rt/dfsan/done_abilist.txt
+@@ -492,3 +492,33 @@ fun:__grade_*=discard
+ #fun:LLVMFuzzerTestOneInput=uninstrumented
+ fun:__afl_manual_init=uninstrumented
+ fun:__afl_manual_init=discard
++
++fun:cgc_pow=uninstrumented
++fun:cgc_pow=discard
++fun:cgc_remainder=uninstrumented
++fun:cgc_remainder=discard
++fun:cgc_log10=uninstrumented
++fun:cgc_log10=discard
++fun:cgc_floor=uninstrumented
++fun:cgc_floor=discard
++fun:cgc_rint=uninstrumented
++fun:cgc_rint=discard
++fun:cgc_sin=uninstrumented
++fun:cgc_sin=discard
++fun:cgc_cos=uninstrumented
++fun:cgc_cos=discard
++fun:cgc_log2=uninstrumented
++fun:cgc_log2=discard
++fun:cgc_atan2=uninstrumented
++fun:cgc_atan2=discard
++fun:cgc_sqrt=uninstrumented
++fun:cgc_sqrt=discard
++fun:cgc_log=uninstrumented
++fun:cgc_log=discard
++fun:cgc_fabs=discard
++fun:cgc_fabs=uninstrumented
++fun:cgc_tan=uninstrumented
++fun:cgc_tan=discard
++fun:cgc_logf=uninstrumented
++fun:cgc_logf=discard
++
+diff --git a/llvm_mode/dfsan_rt/dfsan/expr.cpp b/llvm_mode/dfsan_rt/dfsan/expr.cpp
+new file mode 100644
+index 0000000..568832f
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/expr.cpp
+@@ -0,0 +1,94 @@
++#include "expr.h"
++Expr::Expr(Kind kind, uint32_t bits)
++  : DependencyNode()
++  , kind_(kind)
++  , bits_(bits)
++  , children_()
++  , hash_(NULL)
++  , isConcrete_(true)
++  , hasExtended(false)
++  , depth_(-1)
++  , deps_(NULL)
++  , leading_zeros_((uint32_t)-1)
++  , evaluation_(NULL)
++  {}
++
++Expr::~Expr() {
++  delete hash_;
++  delete deps_;
++}
++
++
++std::string Expr::toString() const {
++  std::ostringstream stream;
++  this->print(stream);
++  return stream.str();
++}
++
++
++DependencySet Expr::computeDependencies() {
++  DependencySet deps;
++  for (const int& dep : getDeps()) {
++    deps.insert((size_t)dep);
++  }
++  return deps;
++}
++
++
++void Expr::printChildren(std::ostream& os, bool start, uint32_t depth) const {
++  for (int32_t i = 0; i < num_children(); i++) {
++    if (start)
++      start = false;
++    else
++      os << ", ";
++    children_[i]->print(os, depth + 1);
++  }
++}
++
++
++void Expr::print(std::ostream& os, uint32_t depth) const {
++  os << getName() << "(";
++  bool begin = !printAux(os);
++  printChildren(os, begin, depth);
++  os << ")";
++}
++
++void ConstantExpr::print(std::ostream& os, uint32_t depth) const {
++    os << "0x" << value_.toString(16, false);
++}
++
++void BinaryExpr::print(std::ostream& os, uint32_t depth, const char* op) const {
++  ExprRef c0 = getChild(0);
++  ExprRef c1 = getChild(1);
++  bool c0_const = c0->isConstant();
++  bool c1_const = c1->isConstant();
++
++  if (!c0_const)
++    os << "(";
++  c0->print(os, depth + 1);
++  if (!c0_const)
++    os << ")";
++
++  os << " " << op << " ";
++
++  if (!c1_const)
++    os << "(";
++  c1->print(os, depth + 1);
++  if (!c1_const)
++    os << ")";
++}
++
++
++void AddExpr::print(std::ostream& os, uint32_t depth) const {
++	BinaryExpr::print(os, depth, "+");
++}
++
++void SubExpr::print(std::ostream& os, uint32_t depth) const {
++	BinaryExpr::print(os, depth, "-");
++}
++
++void MulExpr::print(std::ostream& os, uint32_t depth) const {
++	BinaryExpr::print(os, depth, "*");
++}
++
++
+diff --git a/llvm_mode/dfsan_rt/dfsan/expr.h b/llvm_mode/dfsan_rt/dfsan/expr.h
+new file mode 100644
+index 0000000..13e0455
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/expr.h
+@@ -0,0 +1,1292 @@
++#ifndef QSYM_EXPR_H_
++#define QSYM_EXPR_H_
++
++//#include <iostream>
++//#include <iomanip>
++#include <map>
++#include <unordered_set>
++#include <set>
++//#include <sstream>
++#include <vector>
++#include <z3++.h>
++
++
++//#include "common.h"
++#include "compiler.h"
++#include "dependency.h"
++#include "logging.h"
++#define XXH_STATIC_LINKING_ONLY
++#include "xxhash.h"
++
++namespace RGDPROXY {
++
++extern z3::context *g_z3_context;
++
++inline void LogError(const char *Str) {
++  LOG_INFO(Str);
++}
++
++inline void LogErrorV(const char *Str) {
++  LogError(Str);
++}
++
++const int32_t kMaxDepth = 100;
++
++enum Kind {
++  Bool, // 0
++  Constant, // 1
++  Read, // 2
++  Concat, // 3
++  Extract, // 4
++
++  ZExt, // 5
++  SExt, // 6
++
++  // Arithmetic
++  Add, // 7
++  Sub, // 8
++  Mul, // 9
++  UDiv, // 10
++  SDiv, // 11
++  URem, // 12
++  SRem, // 13
++  Neg,  // 14
++
++  // Bit
++  Not, // 15
++  And, // 16
++  Or, // 17
++  Xor, // 18
++  Shl, // 19
++  LShr, // 20
++  AShr, // 21
++
++  // Compare
++  Equal, // 22
++  Distinct, // 23
++  Ult, // 24
++  Ule, // 25
++  Ugt, // 26
++  Uge, // 27
++  Slt, // 28
++  Sle, // 29
++  Sgt, // 30
++  Sge, // 31
++
++  // Logical
++  LOr, // 32
++  LAnd, // 33
++  LNot, // 34
++
++  // Special
++  Ite, // 35
++
++  //UCR hack extend opcodes
++  Set,
++  Pack,
++  Vpack,
++  Bsf,
++  Bsr,
++  Shufb,
++  Pcmp,
++  Pmov,
++  Pcmpxchg,
++
++  // Virtual operation
++  Rol,
++  Ror,
++  Invalid
++};
++
++Kind swapKind(Kind kind);
++Kind negateKind(Kind kind);
++bool isNegatableKind(Kind kind);
++
++// forward declaration
++#define DECLARE_EXPR(cls) \
++  class cls; \
++  typedef std::shared_ptr<cls> glue(cls, Ref);
++
++DECLARE_EXPR(Expr);
++DECLARE_EXPR(ConstantExpr);
++DECLARE_EXPR(NonConstantExpr);
++DECLARE_EXPR(BoolExpr);
++
++/*UCR hacking*/
++DECLARE_EXPR(ExtractExpr);
++DECLARE_EXPR(ReadExpr);
++
++typedef std::weak_ptr<Expr> WeakExprRef;
++typedef std::vector<WeakExprRef> WeakExprRefVectorTy;
++
++template <class T>
++inline std::shared_ptr<T> castAs(ExprRef e) {
++  if (T::classOf(*e))
++    return std::static_pointer_cast<T>(e);
++  else
++    return NULL;
++}
++
++template <class T>
++inline std::shared_ptr<T> castAsNonNull(ExprRef e) {
++  assert(T::classOf(*e));
++  return std::static_pointer_cast<T>(e);
++}
++
++class ExprBuilder;
++class IndexSearchTree;
++
++
++typedef std::set<int32_t> DepSet;
++
++class Expr : public DependencyNode {
++  public:
++    Expr(Kind kind, uint32_t bits);
++    virtual ~Expr();
++    Expr(const Expr& that) = delete;
++
++    XXH32_hash_t hash();
++
++    Kind kind() const {
++      return kind_;
++    }
++
++    uint32_t bits() const {
++      return bits_;
++    }
++
++    uint32_t label() const {
++      return label_;
++    }
++
++    void set_label(uint32_t l) {
++      label_ = l;
++    }
++
++    uint32_t bytes() const {
++      // utility function to convert from bits to bytes
++      assert(bits() % CHAR_BIT == 0);
++      return bits() / CHAR_BIT;
++    }
++
++    inline ExprRef getChild(uint32_t index) const {
++      return children_[index];
++    }
++ 
++
++    inline int32_t num_children() const {
++      return children_.size();
++    }
++
++    inline ExprRef getFirstChild() const {
++      return getChild(0);
++    }
++
++    inline ExprRef getSecondChild() const {
++      return getChild(1);
++    }
++
++    inline ExprRef getLeft() const {
++      return getFirstChild();
++    }
++
++    inline ExprRef getRight() const {
++      return getSecondChild();
++    }
++
++    int32_t depth();
++
++    bool isConcrete() const {
++      return isConcrete_;
++    }
++
++    bool isConstant() const {
++      return kind_ == Constant;
++    }
++
++    bool isBool() const {
++      return kind_ == Bool;
++    }
++
++    bool isZero() const;
++    bool isAllOnes() const;
++    bool isOne() const;
++
++    DepSet& getDeps() {
++      if (deps_ == NULL) {
++        deps_ = new DepSet();
++        DepSet& deps = *deps_;
++        for (int32_t i = 0; i < num_children(); i++) {
++          DepSet& other = getChild(i)->getDeps();
++          deps.insert(other.begin(), other.end());
++        }
++      }
++      return *deps_;
++    }
++
++    DependencySet computeDependencies() override;
++
++    uint32_t countLeadingZeros() {
++      if (leading_zeros_ == (uint32_t)-1)
++        leading_zeros_ = _countLeadingZeros();
++      return leading_zeros_;
++    }
++    virtual uint32_t _countLeadingZeros() const { return 0; }
++   // virtual void print(std::ostream& os=std::cerr, uint32_t depth=0) const;
++    void printConstraints();
++    std::string consToString();
++    //std::string toString() const;
++    //UCR hacking
++    std::string toStringExtOp() const;
++    //UCR hacking end
++    void simplify();
++    //virtual std::string printLLVMIr() const {return "hahaah";}
++    //virtual void doPrintLLVMIr(ostream& os=std::cerr) const {}
++
++    z3::expr& toZ3Expr(bool verbose=false) {
++      if (expr_ == NULL) {
++        z3::expr z3_expr = toZ3ExprRecursively(verbose);
++        expr_ = new z3::expr(z3_expr);
++      }
++      return *expr_;
++    }
++
++
++    
++    friend bool equalMetadata(const Expr& l, const Expr& r) {
++      return (const_cast<Expr&>(l).hash() == const_cast<Expr&>(r).hash()
++          && l.kind_ == r.kind_
++          && l.num_children() == r.num_children()
++          && l.bits_ == r.bits_
++          && l.equalAux(r));
++    }
++
++    friend bool equalShallowly(const Expr& l, const Expr& r) {
++      // Check equality only in 1 depth if not return false
++      if (!equalMetadata(l, r))
++        return false;
++
++      // If one of childrens is different, then false
++      for (int32_t i = 0; i < l.num_children(); i++) {
++        if (l.children_[i] != r.children_[i])
++          return false;
++      }
++      return true;
++    }
++
++    friend bool operator==(const Expr& l, const Expr& r) {
++      // 1. if metadata are different -> different
++      if (!equalMetadata(l, r))
++        return false;
++
++      // 2. if metadata of children are different -> different
++      for (int32_t i = 0; i < l.num_children(); i++) {
++        if (!equalMetadata(*l.children_[i], *r.children_[i]))
++          return false;
++      }
++
++      // 3. if all childrens are same --> same
++      for (int32_t i = 0; i < l.num_children(); i++) {
++        if (l.children_[i] != r.children_[i]
++            && *l.children_[i] != *r.children_[i])
++          return false;
++      }
++      return true;
++    }
++
++    friend bool operator!=(const Expr& l, const Expr& r) {
++      return !(l == r);
++    }
++    
++
++    inline void addChild(ExprRef e) {
++      children_.push_back(e);
++      if (!e->isConcrete())
++        isConcrete_ = false;
++    }
++    inline void addUse(WeakExprRef e) { uses_.push_back(e); }
++
++    //void addConstraint(Kind kind, llvm::APInt rhs, llvm::APInt adjustment);
++
++    void concretize() {
++      if (!isConcrete()) {
++        isConcrete_ = true;
++        for (auto it = uses_.begin(); it != uses_.end(); it++) {
++          WeakExprRef& ref = *it;
++          if (ref.expired())
++            continue;
++          ref.lock()->tryConcretize();
++        }
++      }
++    }
++
++    void tryConcretize() {
++      if (isConcrete())
++        return;
++
++      for (int32_t i = 0; i < num_children(); i++) {
++        ExprRef e = getChild(i);
++        if (!e->isConcrete())
++          return;
++      }
++
++      concretize();
++    }
++
++    ExprRef evaluate();
++
++
++  protected:
++    Kind kind_;
++    uint32_t bits_;
++    uint32_t label_;
++    std::vector< ExprRef > children_;
++    z3::context& context_;
++    z3::expr *expr_;
++    XXH32_hash_t* hash_;
++
++    // concretization
++    bool isConcrete_;
++
++    //UCR hacking
++    bool hasExtended;
++    Kind kindEx_;
++
++
++    int32_t depth_;
++    DepSet* deps_;
++    WeakExprRefVectorTy uses_;
++    uint32_t leading_zeros_;
++    ExprRef evaluation_;
++
++    //void printChildren(std::ostream& os, bool start, uint32_t depth) const;
++/*
++    virtual bool printAux(std::ostream& os) const {
++      return false;
++    }
++*/
++
++    
++    virtual std::string getName() const = 0;
++    virtual z3::expr toZ3ExprRecursively(bool verbose) = 0;
++        virtual void hashAux(XXH32_state_t* state) { return; }
++    virtual bool equalAux(const Expr& other) const { return true; }
++    //virtual ExprRef evaluateImpl() = 0;
++
++}; // class Expr
++
++struct ExprRefHash {
++  XXH32_hash_t operator()(const ExprRef e) const {
++    return std::const_pointer_cast<Expr>(e)->hash();
++  }
++};
++
++struct ExprRefEqual {
++  bool operator()(const ExprRef l,
++      const ExprRef r) const {
++    return l == r || equalShallowly(*l, *r);
++  }
++};
++
++
++class ConstantExpr : public Expr {
++public:
++  ConstantExpr(uint64_t value, uint32_t bits) :
++    Expr(Constant, bits),
++    value_(value) {}
++/*
++  ConstantExpr(const llvm::APInt& value, uint32_t bits) :
++    Expr(Constant, bits),
++    value_(value) {}
++*/
++
++  //inline llvm::APInt value() const { return value_; }
++  inline uint64_t value() const { return value_; }
++  inline bool isZero() const { return value_ == 0; }
++  inline bool isOne() const { return value_ == 1; }
++  inline bool isAllOnes() const { return false; }
++  static bool classOf(const Expr& e) { return e.kind() == Constant; }
++  uint32_t getActiveBits() const { return 0; }
++  //void print(std::ostream& os, uint32_t depth) const override;
++  uint32_t _countLeadingZeros() const override {
++    //return value_.countLeadingZeros();
++    return 0;
++  }
++
++
++protected:
++  std::string getName() const override {
++    return "Constant";
++  }
++
++ /* 
++  bool printAux(std::ostream& os) const override {
++   // os << "value=0x" << value_.toString(16, false)
++    os << "value=0x" << value_
++      << ", bits=" << bits_;
++    return true;
++  }
++*/
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return context_.bv_val(value_,bits_);
++  }
++
++  
++  void hashAux(XXH32_state_t* state) override {
++/*
++    XXH32_update(state,
++        value_.getRawData(),
++        value_.getNumWords() * sizeof(uint64_t));
++*/
++    XXH32_update(state,
++        &value_, sizeof(uint64_t));
++    
++  }
++
++  bool equalAux(const Expr& other) const override {
++    const ConstantExpr& typed_other = static_cast<const ConstantExpr&>(other);
++    return value_ == typed_other.value();
++  }
++
++  //ExprRef evaluateImpl() override;
++  uint64_t value_;
++};
++
++
++class NonConstantExpr : public Expr {
++  public:
++    using Expr::Expr;
++    static bool classOf(const Expr& e) { return !ConstantExpr::classOf(e); }
++};
++
++class UnaryExpr : public NonConstantExpr {
++public:
++  UnaryExpr(Kind kind, ExprRef e, uint32_t bits)
++    : NonConstantExpr(kind, bits) {
++      addChild(e);
++    }
++  UnaryExpr(Kind kind, ExprRef e)
++    : UnaryExpr(kind, e, e->bits()) {}
++
++  ExprRef expr() const { return getFirstChild(); }
++
++protected:
++  //ExprRef evaluateImpl() override;
++};
++
++class BinaryExpr : public NonConstantExpr {
++public:
++  BinaryExpr(Kind kind, ExprRef l,
++      ExprRef r, uint32_t bits) :
++    NonConstantExpr(kind, bits) {
++      addChild(l);
++      addChild(r);
++      assert(l->bits() == r->bits());
++    }
++
++  BinaryExpr(Kind kind,
++      ExprRef l,
++      ExprRef r) :
++    BinaryExpr(kind, l, r, l->bits()) {}
++
++  //void print(std::ostream& os, uint32_t depth, const char* op) const;
++protected:
++  //ExprRef evaluateImpl() override;
++};
++
++class LinearBinaryExpr : public BinaryExpr {
++using BinaryExpr::BinaryExpr;
++};
++
++class NonLinearBinaryExpr : public BinaryExpr {
++using BinaryExpr::BinaryExpr;
++};
++
++class CompareExpr : public LinearBinaryExpr {
++public:
++  CompareExpr(Kind kind,
++      ExprRef l,
++      ExprRef r) :
++    LinearBinaryExpr(kind, l, r, 1) {
++      assert(l->bits() == r->bits());
++    }
++};
++
++class BoolExpr : public NonConstantExpr {
++public:
++  BoolExpr(bool value) :
++    NonConstantExpr(Bool, 1),
++    value_(value) {}
++
++  inline bool value() const { return value_; }
++  static bool classOf(const Expr& e) { return e.kind() == Bool; }
++
++protected:
++  std::string getName() const override {
++    return "Bool";
++  }
++/*
++  bool printAux(std::ostream& os) const override {
++    os << "value=" << value_;
++    return true;
++  }
++*/
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return context_.bool_val(value_);
++  }
++
++  
++  void hashAux(XXH32_state_t* state) override {
++    XXH32_update(state, &value_, sizeof(value_));
++  }
++
++  bool equalAux(const Expr& other) const override {
++    const BoolExpr& typed_other = static_cast<const BoolExpr&>(other);
++    return value_ == typed_other.value();
++  }
++
++  //ExprRef evaluateImpl() override;
++  bool value_;
++};
++
++
++class ReadExpr : public NonConstantExpr {
++public:
++  ReadExpr(uint32_t index, uint32_t size)
++    : NonConstantExpr(Read, 8 * size), index_(index), size_(size) {
++    //deps_ = new DepSet();
++    //for (uint32_t i = 0; i < size; ++i) {
++    //  deps_->insert(index + i);
++    //}
++    isConcrete_ = false;
++  }
++
++  std::string getName() const override {
++    return "Read";
++  }
++
++  inline uint32_t index() const { return index_; }
++  inline uint32_t size() const { return size_; }
++  static bool classOf(const Expr& e) { return e.kind() == Read; }
++
++
++protected:
++/*
++  bool printAux(std::ostream& os) const override {
++    os << "index=" << index_;
++    return true;
++  }
++*/
++
++  
++  void hashAux(XXH32_state_t* state) override {
++    XXH32_update(state, &index_, sizeof(index_));
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    z3::symbol symbol = context_.int_symbol(index_);
++    z3::sort sort = context_.bv_sort(8);
++    return context_.constant(symbol,sort);
++  }
++
++  bool equalAux(const Expr& other) const override {
++    const ReadExpr& typed_other = static_cast<const ReadExpr&>(other);
++    return index_ == typed_other.index();
++  }
++
++  //ExprRef evaluateImpl() override;
++  uint32_t index_;
++  uint32_t size_;
++};
++
++class ConcatExpr : public NonConstantExpr {
++public:
++  ConcatExpr(ExprRef l, ExprRef r)
++    : NonConstantExpr(Concat, l->bits() + r->bits()) {
++    addChild(l);
++    addChild(r);
++  }
++
++//  void print(std::ostream& os, uint32_t depth) const override;
++
++  std::string getName() const override {
++    return "Concat";
++  }
++
++  static bool classOf(const Expr& e) { return e.kind() == Concat; }
++  uint32_t _countLeadingZeros() const override {
++    uint32_t result = getChild(0)->countLeadingZeros();
++    if (result == getChild(0)->bits())
++      result += getChild(1)->countLeadingZeros();
++    return result;
++  }
++
++protected:
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::concat(children_[0]->toZ3Expr(verbose), children_[1]->toZ3Expr(verbose));
++  }
++
++  //ExprRef evaluateImpl() override;
++};
++
++class ExtractExpr : public UnaryExpr {
++public:
++  ExtractExpr(ExprRef e, uint32_t index, uint32_t bits)
++  : UnaryExpr(Extract, e, bits), index_(index) {
++    assert(bits + index <= e->bits());
++  }
++
++  uint32_t index() const { return index_; }
++  ExprRef expr() const { return getFirstChild(); }
++  static bool classOf(const Expr& e) { return e.kind() == Extract; }
++
++protected:
++  std::string getName() const override {
++    return "Extract";
++  }
++/*
++  bool printAux(std::ostream& os) const override {
++    os << "index=" << index_ << ", bits=" << bits_;
++    return true;
++  }
++*/
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    z3::expr e = children_[0]->toZ3Expr(verbose);
++    return e.extract(index_ + bits_ - 1, index_);
++  }
++
++  
++  void hashAux(XXH32_state_t* state) override {
++    XXH32_update(state, &index_, sizeof(index_));
++  }
++
++  bool equalAux(const Expr& other) const override {
++    const ExtractExpr& typed_other = static_cast<const ExtractExpr&>(other);
++    return index_ == typed_other.index();
++  }
++
++  //ExprRef evaluateImpl() override;
++
++  uint32_t index_;
++};
++
++class ExtExpr : public UnaryExpr {
++public:
++  using UnaryExpr::UnaryExpr;
++
++  ExprRef expr() const { return getFirstChild(); }
++  static bool classOf(const Expr& e) {
++    return e.kind() == ZExt || e.kind() == SExt;
++  }
++};
++
++class ZExtExpr : public ExtExpr {
++public:
++  ZExtExpr(ExprRef e, uint32_t bits)
++    : ExtExpr(ZExt, e, bits) {}
++
++  std::string getName() const override {
++    return "ZExt";
++  }
++
++  static bool classOf(const Expr& e) { return e.kind() == ZExt; }
++  uint32_t _countLeadingZeros() const override {
++    return bits_ - getChild(0)->bits();
++  }
++
++
++
++protected:
++  
++/*
++  bool printAux(std::ostream& os) const override {
++    os << "bits=" << bits_;
++    return true;
++  }
++*/
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    ExprRef e = children_[0];
++    return z3::zext(e->toZ3Expr(verbose), bits_ - e->bits());
++  }
++
++  //ExprRef evaluateImpl() override;
++};
++
++class SExtExpr : public ExtExpr {
++public:
++  SExtExpr(ExprRef e, uint32_t bits)
++    : ExtExpr(SExt, e, bits) {}
++
++  std::string getName() const override {
++    return "SExt";
++  }
++
++  static bool classOf(const Expr& e) { return e.kind() == SExt; }
++
++
++protected:
++/*
++  bool printAux(std::ostream& os) const override {
++    os << "bits=" << bits_;
++    return true;
++  }
++*/
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    ExprRef e = getChild(0);
++    return z3::sext(e->toZ3Expr(verbose), bits_ - e->bits());
++  }
++  
++  //ExprRef evaluateImpl() override;
++};
++
++class NotExpr : public UnaryExpr {
++public:
++  NotExpr(ExprRef e)
++    : UnaryExpr(Not, e) {}
++  static bool classOf(const Expr& e) { return e.kind() == Not; }
++
++protected:
++  std::string getName() const override {
++    return "Not";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    ExprRef e = getChild(0);
++    return ~e->toZ3Expr(verbose);
++  }
++
++};
++
++class AndExpr : public NonLinearBinaryExpr {
++public:
++  AndExpr(ExprRef l, ExprRef h)
++    : NonLinearBinaryExpr(And, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == And; }
++
++protected:
++  std::string getName() const override {
++    return "And";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) & children_[1]->toZ3Expr(verbose);
++  }
++};
++
++class OrExpr : public NonLinearBinaryExpr {
++public:
++  OrExpr(ExprRef l, ExprRef h)
++    : NonLinearBinaryExpr(Or, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Or; }
++
++protected:
++  std::string getName() const override {
++    return "Or";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) | children_[1]->toZ3Expr(verbose);
++  }
++
++};
++
++class XorExpr : public NonLinearBinaryExpr {
++public:
++  XorExpr(ExprRef l, ExprRef h)
++    : NonLinearBinaryExpr(Xor, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Xor; }
++
++protected:
++  std::string getName() const override {
++    return "Xor";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) ^ children_[1]->toZ3Expr(verbose);
++  }
++  
++};
++
++class ShlExpr : public NonLinearBinaryExpr {
++public:
++  ShlExpr(ExprRef l, ExprRef r)
++    : NonLinearBinaryExpr(Shl, l, r) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Shl; }
++
++protected:
++  std::string getName() const override {
++    return "Shl";
++  }
++
++  
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::shl(children_[0]->toZ3Expr(verbose), children_[1]->toZ3Expr(verbose));
++  }
++
++};
++
++class LShrExpr : public NonLinearBinaryExpr {
++public:
++  LShrExpr(ExprRef l, ExprRef r)
++    : NonLinearBinaryExpr(LShr, l, r) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == LShr; }
++
++protected:
++  std::string getName() const override {
++    return "LShr";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::lshr(children_[0]->toZ3Expr(verbose), children_[1]->toZ3Expr(verbose));
++  }
++
++};
++
++class AShrExpr : public NonLinearBinaryExpr {
++public:
++  AShrExpr(ExprRef l, ExprRef h)
++    : NonLinearBinaryExpr(AShr, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == AShr; }
++
++protected:
++  std::string getName() const override {
++    return "AShr";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::ashr(children_[0]->toZ3Expr(verbose), children_[1]->toZ3Expr(verbose));
++  }
++
++};
++
++class AddExpr : public LinearBinaryExpr {
++public:
++  AddExpr(ExprRef l, ExprRef h)
++    : LinearBinaryExpr(Add, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Add; }
++  //void print(std::ostream& os, uint32_t depth) const override;
++
++
++protected:
++  std::string getName() const override {
++    return "Add";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) + children_[1]->toZ3Expr(verbose);
++  }
++
++};
++
++class SubExpr : public LinearBinaryExpr {
++public:
++  SubExpr(ExprRef l, ExprRef h)
++    : LinearBinaryExpr(Sub, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Sub; }
++
++protected:
++  std::string getName() const override {
++    return "Sub";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) - children_[1]->toZ3Expr(verbose);
++  }
++
++  //void print(std::ostream& os=std::cerr, uint32_t depth=0) const override;
++};
++
++class MulExpr : public NonLinearBinaryExpr {
++public:
++  MulExpr(ExprRef l, ExprRef h)
++    : NonLinearBinaryExpr(Mul, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Mul; }
++//  void print(std::ostream& os, uint32_t depth) const override;
++
++protected:
++  std::string getName() const override {
++    return "Mul";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) * children_[1]->toZ3Expr(verbose);
++  }
++
++};
++
++class UDivExpr : public NonLinearBinaryExpr {
++public:
++  UDivExpr(ExprRef l, ExprRef h)
++    : NonLinearBinaryExpr(UDiv, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == UDiv; }
++ // void print(std::ostream& os, uint32_t depth) const override;
++
++protected:
++  std::string getName() const override {
++    return "UDiv";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::udiv(children_[0]->toZ3Expr(verbose) , children_[1]->toZ3Expr(verbose));
++  }
++
++};
++
++class SDivExpr : public NonLinearBinaryExpr {
++public:
++  SDivExpr(ExprRef l, ExprRef h)
++    : NonLinearBinaryExpr(SDiv, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == SDiv; }
++  //void print(std::ostream& os, uint32_t depth) const override;
++
++protected:
++  std::string getName() const override {
++    return "SDiv";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) / children_[1]->toZ3Expr(verbose);
++  }
++
++};
++
++class URemExpr : public NonLinearBinaryExpr {
++public:
++  URemExpr(ExprRef l, ExprRef h)
++    : NonLinearBinaryExpr(URem, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == URem; }
++ // void print(std::ostream& os, uint32_t depth) const override;
++
++protected:
++  std::string getName() const override {
++    return "URem";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::urem(children_[0]->toZ3Expr(verbose) , children_[1]->toZ3Expr(verbose));
++  }
++
++};
++
++class SRemExpr : public NonLinearBinaryExpr {
++public:
++  SRemExpr(ExprRef l, ExprRef h)
++    : NonLinearBinaryExpr(SRem, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == SRem; }
++  //void print(std::ostream& os, uint32_t depth) const override;
++
++protected:
++  std::string getName() const override {
++    return "SRem";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::srem(children_[0]->toZ3Expr(verbose) , children_[1]->toZ3Expr(verbose));
++  }
++
++};
++
++class NegExpr : public UnaryExpr {
++public:
++  NegExpr(ExprRef e)
++    : UnaryExpr(Neg, e) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Neg; }
++
++protected:
++  std::string getName() const override {
++    return "Neg";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    ExprRef e = children_[0];
++    return -e->toZ3Expr(verbose);
++  }
++
++};
++
++class EqualExpr : public CompareExpr {
++public:
++  EqualExpr(ExprRef l, ExprRef h)
++    : CompareExpr(Equal, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Equal; }
++
++
++protected:
++  std::string getName() const override {
++    return "Equal";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) == children_[1]->toZ3Expr(verbose);
++  }
++};
++
++class DistinctExpr : public CompareExpr {
++public:
++  DistinctExpr(ExprRef l, ExprRef h)
++    : CompareExpr(Distinct, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Distinct; }
++
++
++protected:
++  std::string getName() const override {
++    return "Distinct";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) != children_[1]->toZ3Expr(verbose);
++  }
++
++};
++
++class UltExpr : public CompareExpr {
++public:
++  UltExpr(ExprRef l, ExprRef h)
++    : CompareExpr(Ult, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Ult; }
++
++protected:
++  std::string getName() const override {
++    return "Ult";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::ult(children_[0]->toZ3Expr(verbose) , children_[1]->toZ3Expr(verbose));
++  }
++
++};
++
++class UleExpr : public CompareExpr {
++public:
++  UleExpr(ExprRef l, ExprRef h)
++    : CompareExpr(Ule, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Ule; }
++
++protected:
++  std::string getName() const override {
++    return "Ule";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::ule(children_[0]->toZ3Expr(verbose) ,children_[1]->toZ3Expr(verbose));
++  }
++
++};
++
++class UgtExpr : public CompareExpr {
++public:
++  UgtExpr(ExprRef l, ExprRef h)
++    : CompareExpr(Ugt, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Ugt; }
++
++protected:
++  std::string getName() const override {
++    return "Ugt";
++  }
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::ugt(children_[0]->toZ3Expr(verbose) , children_[1]->toZ3Expr(verbose));
++  }
++
++};
++
++class UgeExpr : public CompareExpr {
++public:
++  UgeExpr(ExprRef l, ExprRef h)
++    : CompareExpr(Uge, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Uge; }
++
++protected:
++  std::string getName() const override {
++    return "Uge";
++  }
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::uge(children_[0]->toZ3Expr(verbose), children_[1]->toZ3Expr(verbose));
++  }
++
++};
++
++class SltExpr : public CompareExpr {
++public:
++  SltExpr(ExprRef l, ExprRef h)
++    : CompareExpr(Slt, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Slt; }
++
++protected:
++  std::string getName() const override {
++    return "Slt";
++  }
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) < children_[1]->toZ3Expr(verbose);
++  }
++
++};
++
++class SleExpr : public CompareExpr {
++public:
++  SleExpr(ExprRef l, ExprRef h)
++    : CompareExpr(Sle, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Sle; }
++
++protected:
++  std::string getName() const override {
++    return "Sle";
++  }
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) <= children_[1]->toZ3Expr(verbose);
++  }
++
++};
++
++class SgtExpr : public CompareExpr {
++public:
++  SgtExpr(ExprRef l, ExprRef h)
++    : CompareExpr(Sgt, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == Sgt; }
++
++protected:
++  std::string getName() const override {
++    return "Sgt";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) > children_[1]->toZ3Expr(verbose);
++  }
++
++};
++
++class SgeExpr : public CompareExpr {
++public:
++  SgeExpr(ExprRef l, ExprRef h)
++    : CompareExpr(Sge, l, h) {}
++  //TODO fix Sge
++  static bool classOf(const Expr& e) { return e.kind() == Sge; }
++
++protected:
++  std::string getName() const override {
++    return "Sge";
++  }
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) >= children_[1]->toZ3Expr(verbose);
++  }
++
++};
++
++class LAndExpr : public NonLinearBinaryExpr {
++public:
++  LAndExpr(ExprRef l, ExprRef h)
++    : NonLinearBinaryExpr(LAnd, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == LAnd; }
++
++protected:
++  std::string getName() const override {
++    return "LAnd";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) && children_[1]->toZ3Expr(verbose);
++  }
++  
++};
++
++class LOrExpr : public NonLinearBinaryExpr {
++public:
++  LOrExpr(ExprRef l, ExprRef h)
++    : NonLinearBinaryExpr(LOr, l, h) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == LOr; }
++
++protected:
++  std::string getName() const override {
++    return "LOr";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return children_[0]->toZ3Expr(verbose) || children_[1]->toZ3Expr(verbose);
++  }
++
++};
++
++class LNotExpr : public UnaryExpr {
++public:
++  LNotExpr(ExprRef e)
++    : UnaryExpr(LNot, e) {}
++
++  static bool classOf(const Expr& e) { return e.kind() == LNot; }
++
++protected:
++  std::string getName() const override {
++    return "LNot";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    ExprRef e = children_[0];
++    return !e->toZ3Expr(verbose);
++  }
++
++};
++
++class IteExpr : public NonConstantExpr {
++public:
++  IteExpr(ExprRef expr_cond, ExprRef expr_true, ExprRef expr_false)
++    : NonConstantExpr(Ite, expr_true->bits()) {
++    assert(expr_true->bits() == expr_false->bits());
++    addChild(expr_cond);
++    addChild(expr_true);
++    addChild(expr_false);
++  }
++
++  static bool classOf(const Expr& e) { return e.kind() == Ite; }
++  ExprRef expr_cond() const { return getChild(0); }
++  ExprRef expr_true() const { return getChild(1); }
++  ExprRef expr_false() const { return getChild(2); }
++
++protected:
++  std::string getName() const override {
++    return "Ite";
++  }
++
++  z3::expr toZ3ExprRecursively(bool verbose) override {
++    return z3::ite(children_[0]->toZ3Expr(verbose), children_[1]->toZ3Expr(verbose), children_[2]->toZ3Expr(verbose));
++  }
++
++  //ExprRef evaluateImpl() override;
++};
++
++// utility functions
++bool isZeroBit(ExprRef e, uint32_t idx);
++bool isOneBit(ExprRef e, uint32_t idx);
++bool isRelational(const Expr* e);
++bool isConstant(ExprRef e);
++bool isConstSym(ExprRef e);
++uint32_t getMSB(ExprRef e);
++}
++#endif // QSYM_EXPR_H_
+diff --git a/llvm_mode/dfsan_rt/dfsan/expr__gen.cpp b/llvm_mode/dfsan_rt/dfsan/expr__gen.cpp
+new file mode 100644
+index 0000000..0b98ee8
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/expr__gen.cpp
+@@ -0,0 +1,343 @@
++#include "expr_builder.h"
++#include "expr.h"
++//#include "solver.h"
++
++// NOTE: Some simplification is ported from KLEE
++namespace RGDPROXY {
++
++Kind swapKind(Kind kind) {
++  // function for finding neg_op s.t. x op y ==> y neg_op x
++  switch (kind) {
++    case Equal:
++      return Equal;
++    case Distinct:
++      return Distinct;
++    case Ult:
++      return Ugt;
++    case Ule:
++      return Uge;
++    case Ugt:
++      return Ult; case Uge:
++      return Ule;
++    case Slt:
++      return Sgt;
++    case Sle:
++      return Sge;
++    case Sgt:
++      return Slt;
++    case Sge:
++      return Sle;
++    default:
++      RGDPROXY_UNREACHABLE();
++      return Invalid;
++  }
++}
++
++Kind negateKind(Kind kind) {
++  // function for finding neg_op s.t. x op y ==> y neg_op x
++  switch (kind) {
++    case Equal:
++      return Distinct;
++    case Distinct:
++      return Equal;
++    case Ult:
++      return Uge;
++    case Ule:
++      return Ugt;
++    case Ugt:
++      return Ule;
++    case Uge:
++      return Ult;
++    case Slt:
++      return Sge;
++    case Sle:
++      return Sgt;
++    case Sgt:
++      return Sle;
++    case Sge:
++      return Slt;
++    default:
++      RGDPROXY_UNREACHABLE();
++      return Invalid;
++  }
++}
++
++bool isNegatableKind(Kind kind) {
++  switch (kind) {
++    case Distinct:
++    case Equal:
++    case Ult:
++    case Ule:
++    case Ugt:
++    case Uge:
++    case Slt:
++    case Sle:
++    case Sgt:
++    case Sge:
++      return true;
++    default:
++      return false;
++  }
++}
++
++bool isZeroBit(ExprRef e, uint32_t idx) {
++/*
++  if (ConstantExprRef ce = castAs<ConstantExpr>(e))
++    return !ce->value()[idx];
++  if (auto ce = castAs<ConcatExpr>(e)) {
++    if (ce->getRight()->bits() <= idx)
++      return isZeroBit(ce->getLeft(), idx - ce->getRight()->bits());
++    else
++      return isZeroBit(ce->getRight(), idx);
++  }
++*/
++  return false; // otherwise return false
++}
++
++bool isOneBit(ExprRef e, uint32_t idx) {
++/*
++  if (ConstantExprRef ce = castAs<ConstantExpr>(e))
++    return ce->value()[idx];
++  if (auto ce = castAs<ConcatExpr>(e)) {
++    if (ce->getRight()->bits() <= idx)
++      return isOneBit(ce->getLeft(), idx - ce->getRight()->bits());
++    else
++      return isOneBit(ce->getRight(), idx);
++  }
++*/
++  return false; // otherwise return false
++}
++
++bool isRelational(const Expr* e) {
++  switch (e->kind()) {
++    case Distinct:
++    case Equal:
++    case Ult:
++    case Ule:
++    case Ugt:
++    case Uge:
++    case Slt:
++    case Sle:
++    case Sgt:
++    case Sge:
++    case LAnd:
++    case LOr:
++    case LNot:
++      return true;
++    default:
++      return false;
++  }
++}
++
++bool isConstant(ExprRef e) {
++ return e->kind() == Constant;
++}
++
++bool isConstSym(ExprRef e) {
++  if (e->num_children() != 2)
++    return false;
++  for (uint32_t i = 0; i < 2; i++) {
++    if (isConstant(e->getChild(i))
++        && !isConstant(e->getChild(1 - i)))
++      return true;
++  }
++  return false;
++}
++
++uint32_t getMSB(
++    ExprRef e)
++{
++  uint32_t i = 0;
++  assert(e->bits() >= 1);
++  for (i = e->bits() - 1; i-- > 0;) {
++    if (!isZeroBit(e, i))
++      break;
++  }
++
++  return i + 1;
++}
++
++// Expr declaration
++Expr::Expr(Kind kind, uint32_t bits)
++  : DependencyNode()
++  , kind_(kind)
++  , bits_(bits)
++  , children_()
++  , context_(*g_z3_context)
++  , expr_(NULL)
++  , hash_(NULL)
++  , isConcrete_(true)
++  , hasExtended(false)
++  , depth_(-1)
++  , deps_(NULL)
++  , leading_zeros_((uint32_t)-1)
++  , evaluation_(NULL)
++  {}
++
++Expr::~Expr() {
++  delete hash_;
++  delete deps_;
++}
++
++DependencySet Expr::computeDependencies() {
++  DependencySet deps;
++  for (const int& dep : getDeps()) {
++    deps.insert((size_t)dep);
++  }
++  return deps;
++}
++
++XXH32_hash_t Expr::hash() {
++  if (hash_ == NULL) {
++    XXH32_state_t state;
++    XXH32_reset(&state, 0); // seed = 0
++    XXH32_update(&state, &kind_, sizeof(kind_));
++    XXH32_update(&state, &bits_, sizeof(bits_));
++    for (int32_t i = 0; i < num_children(); i++) {
++      XXH32_hash_t h = children_[i]->hash();
++      XXH32_update(&state, &h, sizeof(h));
++    }
++    hashAux(&state);
++    hash_ = new XXH32_hash_t(XXH32_digest(&state));
++  }
++  return *hash_;
++}
++
++int32_t Expr::depth() {
++  if (depth_ == -1) {
++    int32_t max_depth = 0;
++    for (int32_t i = 0; i < num_children(); i++) {
++      int32_t child_depth = getChild(i)->depth();
++      if (child_depth > max_depth)
++        max_depth = child_depth;
++    }
++    depth_ = max_depth + 1;
++  }
++  return depth_;
++}
++
++
++/*
++void Expr::print(std::ostream& os, uint32_t depth) const {
++  os << getName() << "(";
++  bool begin = !printAux(os);
++  printChildren(os, begin, depth);
++  os << ")";
++}
++
++
++std::string Expr::toString() const {
++  std::ostringstream stream;
++  this->print(stream);
++  return stream.str();
++}
++
++
++void Expr::printChildren(std::ostream& os, bool start, uint32_t depth) const {
++  for (int32_t i = 0; i < num_children(); i++) {
++    if (start)
++      start = false;
++    else
++      os << ", ";
++    children_[i]->print(os, depth + 1);
++  }
++}
++
++*/
++
++bool Expr::isZero() const {
++  if (isConstant()) {
++    const ConstantExpr* me = static_cast<const ConstantExpr*>(this);
++    return me->isZero();
++  }
++  else
++    return false;
++}
++
++bool Expr::isAllOnes() const {
++  if (isConstant()) {
++    const ConstantExpr* me = static_cast<const ConstantExpr*>(this);
++    return me->isAllOnes();
++  }
++  else
++    return false;
++}
++
++bool Expr::isOne() const {
++  if (isConstant()) {
++    const ConstantExpr* me = static_cast<const ConstantExpr*>(this);
++    return me->isOne();
++  }
++  else
++    return false;
++}
++
++
++/*
++void ConstantExpr::print(std::ostream& os, uint32_t depth) const {
++    os << "0x" << std::to_string(value_);
++}
++
++void ConcatExpr::print(std::ostream& os, uint32_t depth) const {
++  bool start = true;
++  for (int32_t i = 0; i < num_children(); i++) {
++    if (start)
++      start = false;
++    else
++      os << " | ";
++    children_[i]->print(os, depth + 1);
++  }
++}
++
++void BinaryExpr::print(std::ostream& os, uint32_t depth, const char* op) const {
++  ExprRef c0 = getChild(0);
++  ExprRef c1 = getChild(1);
++  bool c0_const = c0->isConstant();
++  bool c1_const = c1->isConstant();
++
++  if (!c0_const)
++    os << "(";
++  c0->print(os, depth + 1);
++  if (!c0_const)
++    os << ")";
++
++  os << " " << op << " ";
++
++  if (!c1_const)
++    os << "(";
++  c1->print(os, depth + 1);
++  if (!c1_const)
++    os << ")";
++}
++
++void AddExpr::print(std::ostream& os, uint32_t depth) const {
++	BinaryExpr::print(os, depth, "+");
++}
++
++void SubExpr::print(std::ostream& os, uint32_t depth) const {
++	BinaryExpr::print(os, depth, "-");
++}
++
++void MulExpr::print(std::ostream& os, uint32_t depth) const {
++	BinaryExpr::print(os, depth, "*");
++}
++
++void SDivExpr::print(std::ostream& os, uint32_t depth) const {
++	BinaryExpr::print(os, depth, "/_s");
++}
++
++void UDivExpr::print(std::ostream& os, uint32_t depth) const {
++	BinaryExpr::print(os, depth, "/_u");
++}
++
++void SRemExpr::print(std::ostream& os, uint32_t depth) const {
++	BinaryExpr::print(os, depth, "%_s");
++}
++
++void URemExpr::print(std::ostream& os, uint32_t depth) const {
++	BinaryExpr::print(os, depth, "%_u");
++}
++*/
++
++}
++
+diff --git a/llvm_mode/dfsan_rt/dfsan/expr_builder.h b/llvm_mode/dfsan_rt/dfsan/expr_builder.h
+new file mode 100644
+index 0000000..9fa1938
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/expr_builder.h
+@@ -0,0 +1,324 @@
++#ifndef QSYM_EXPR_BUILDER_H_
++#define QSYM_EXPR_BUILDER_H_
++
++#include <list>
++
++#include "expr_cache.h"
++
++namespace RGDPROXY {
++
++class ExprBuilder {
++public:
++  ExprBuilder();
++  void setNext(ExprBuilder* next);
++
++  // {BEGIN:FUNC}
++  virtual ExprRef createBool(bool b);
++  virtual ExprRef createConstant(uint32_t value, uint32_t bits);
++  //virtual ExprRef createConstant(llvm::APInt value, uint32_t bits);
++  virtual ExprRef createRead(uint32_t off, uint32_t size);
++  virtual ExprRef createConcat(ExprRef l, ExprRef r);
++  virtual ExprRef createExtract(ExprRef e, uint32_t index, uint32_t bits);
++  virtual ExprRef createZExt(ExprRef e, uint32_t bits);
++  virtual ExprRef createSExt(ExprRef e, uint32_t bits);
++  virtual ExprRef createAdd(ExprRef l, ExprRef r);
++  virtual ExprRef createSub(ExprRef l, ExprRef r);
++  virtual ExprRef createMul(ExprRef l, ExprRef r);
++  virtual ExprRef createUDiv(ExprRef l, ExprRef r);
++  virtual ExprRef createSDiv(ExprRef l, ExprRef r);
++  virtual ExprRef createURem(ExprRef l, ExprRef r);
++  virtual ExprRef createSRem(ExprRef l, ExprRef r);
++  virtual ExprRef createNeg(ExprRef e);
++  virtual ExprRef createNot(ExprRef e);
++  virtual ExprRef createAnd(ExprRef l, ExprRef r);
++  virtual ExprRef createOr(ExprRef l, ExprRef r);
++  virtual ExprRef createXor(ExprRef l, ExprRef r);
++  virtual ExprRef createShl(ExprRef l, ExprRef r);
++  virtual ExprRef createLShr(ExprRef l, ExprRef r);
++  virtual ExprRef createAShr(ExprRef l, ExprRef r);
++  virtual ExprRef createEqual(ExprRef l, ExprRef r);
++  virtual ExprRef createDistinct(ExprRef l, ExprRef r);
++  virtual ExprRef createUlt(ExprRef l, ExprRef r);
++  virtual ExprRef createUle(ExprRef l, ExprRef r);
++  virtual ExprRef createUgt(ExprRef l, ExprRef r);
++  virtual ExprRef createUge(ExprRef l, ExprRef r);
++  virtual ExprRef createSlt(ExprRef l, ExprRef r);
++  virtual ExprRef createSle(ExprRef l, ExprRef r);
++  virtual ExprRef createSgt(ExprRef l, ExprRef r);
++  virtual ExprRef createSge(ExprRef l, ExprRef r);
++  virtual ExprRef createLOr(ExprRef l, ExprRef r);
++  virtual ExprRef createLAnd(ExprRef l, ExprRef r);
++  virtual ExprRef createLNot(ExprRef e);
++  virtual ExprRef createIte(ExprRef expr_cond, ExprRef expr_true, ExprRef expr_false);
++  // {END:FUNC}
++
++  // utility functions
++  ExprRef createTrue();
++  ExprRef createFalse();
++  ExprRef createMsb(ExprRef);
++  ExprRef createLsb(ExprRef);
++
++  ExprRef bitToBool(ExprRef e);
++  ExprRef boolToBit(ExprRef e, uint32_t bits);
++  ExprRef createBinaryExpr(Kind kind, ExprRef l, ExprRef r);
++  ExprRef createUnaryExpr(Kind kind, ExprRef e);
++  ExprRef createConcat(std::list<ExprRef> exprs);
++  ExprRef createLAnd(std::list<ExprRef> exprs);
++  ExprRef createTrunc(ExprRef e, uint32_t bits);
++
++protected:
++  ExprBuilder* next_;
++};
++
++class BaseExprBuilder : public ExprBuilder {
++public:
++  ExprRef createExtract(ExprRef e, uint32_t index, uint32_t bits) override;
++  ExprRef createRead(uint32_t off, uint32_t size) override;
++
++  // {BEGIN:BASE}
++  ExprRef createBool(bool b) override;
++  ExprRef createConstant(uint32_t value, uint32_t bits) override;
++  //ExprRef createConstant(llvm::APInt value, uint32_t bits) override;
++  ExprRef createConcat(ExprRef l, ExprRef r) override;
++  ExprRef createZExt(ExprRef e, uint32_t bits) override;
++  ExprRef createSExt(ExprRef e, uint32_t bits) override;
++  ExprRef createAdd(ExprRef l, ExprRef r) override;
++  ExprRef createSub(ExprRef l, ExprRef r) override;
++  ExprRef createMul(ExprRef l, ExprRef r) override;
++  ExprRef createUDiv(ExprRef l, ExprRef r) override;
++  ExprRef createSDiv(ExprRef l, ExprRef r) override;
++  ExprRef createURem(ExprRef l, ExprRef r) override;
++  ExprRef createSRem(ExprRef l, ExprRef r) override;
++  ExprRef createNeg(ExprRef e) override;
++  ExprRef createNot(ExprRef e) override;
++  ExprRef createAnd(ExprRef l, ExprRef r) override;
++  ExprRef createOr(ExprRef l, ExprRef r) override;
++  ExprRef createXor(ExprRef l, ExprRef r) override;
++  ExprRef createShl(ExprRef l, ExprRef r) override;
++  ExprRef createLShr(ExprRef l, ExprRef r) override;
++  ExprRef createAShr(ExprRef l, ExprRef r) override;
++  ExprRef createEqual(ExprRef l, ExprRef r) override;
++  ExprRef createDistinct(ExprRef l, ExprRef r) override;
++  ExprRef createUlt(ExprRef l, ExprRef r) override;
++  ExprRef createUle(ExprRef l, ExprRef r) override;
++  ExprRef createUgt(ExprRef l, ExprRef r) override;
++  ExprRef createUge(ExprRef l, ExprRef r) override;
++  ExprRef createSlt(ExprRef l, ExprRef r) override;
++  ExprRef createSle(ExprRef l, ExprRef r) override;
++  ExprRef createSgt(ExprRef l, ExprRef r) override;
++  ExprRef createSge(ExprRef l, ExprRef r) override;
++  ExprRef createLOr(ExprRef l, ExprRef r) override;
++  ExprRef createLAnd(ExprRef l, ExprRef r) override;
++  ExprRef createLNot(ExprRef e) override;
++  ExprRef createIte(ExprRef expr_cond, ExprRef expr_true, ExprRef expr_false) override;
++  // {END:BASE}
++};
++
++class CacheExprBuilder : public ExprBuilder {
++public:
++  // {BEGIN:CACHE}
++  ExprRef createConcat(ExprRef l, ExprRef r) override;
++  ExprRef createExtract(ExprRef e, uint32_t index, uint32_t bits) override;
++  ExprRef createZExt(ExprRef e, uint32_t bits) override;
++  ExprRef createSExt(ExprRef e, uint32_t bits) override;
++  ExprRef createAdd(ExprRef l, ExprRef r) override;
++  ExprRef createSub(ExprRef l, ExprRef r) override;
++  ExprRef createMul(ExprRef l, ExprRef r) override;
++  ExprRef createUDiv(ExprRef l, ExprRef r) override;
++  ExprRef createSDiv(ExprRef l, ExprRef r) override;
++  ExprRef createURem(ExprRef l, ExprRef r) override;
++  ExprRef createSRem(ExprRef l, ExprRef r) override;
++  ExprRef createNeg(ExprRef e) override;
++  ExprRef createNot(ExprRef e) override;
++  ExprRef createAnd(ExprRef l, ExprRef r) override;
++  ExprRef createOr(ExprRef l, ExprRef r) override;
++  ExprRef createXor(ExprRef l, ExprRef r) override;
++  ExprRef createShl(ExprRef l, ExprRef r) override;
++  ExprRef createLShr(ExprRef l, ExprRef r) override;
++  ExprRef createAShr(ExprRef l, ExprRef r) override;
++  ExprRef createEqual(ExprRef l, ExprRef r) override;
++  ExprRef createDistinct(ExprRef l, ExprRef r) override;
++  ExprRef createUlt(ExprRef l, ExprRef r) override;
++  ExprRef createUle(ExprRef l, ExprRef r) override;
++  ExprRef createUgt(ExprRef l, ExprRef r) override;
++  ExprRef createUge(ExprRef l, ExprRef r) override;
++  ExprRef createSlt(ExprRef l, ExprRef r) override;
++  ExprRef createSle(ExprRef l, ExprRef r) override;
++  ExprRef createSgt(ExprRef l, ExprRef r) override;
++  ExprRef createSge(ExprRef l, ExprRef r) override;
++  ExprRef createLOr(ExprRef l, ExprRef r) override;
++  ExprRef createLAnd(ExprRef l, ExprRef r) override;
++  ExprRef createLNot(ExprRef e) override;
++  ExprRef createIte(ExprRef expr_cond, ExprRef expr_true, ExprRef expr_false) override;
++  // {END:CACHE}
++
++protected:
++  ExprCache cache_;
++
++  void insertToCache(ExprRef e);
++  ExprRef findInCache(ExprRef e);
++  ExprRef findOrInsert(ExprRef new_expr);
++
++};
++
++class CommutativeExprBuilder : public ExprBuilder {
++public:
++  // {BEGIN:COMMUTATIVE}
++  ExprRef createAdd(ExprRef l, ExprRef r) override;
++  ExprRef createMul(ExprRef l, ExprRef r) override;
++  ExprRef createAnd(ExprRef l, ExprRef r) override;
++  ExprRef createOr(ExprRef l, ExprRef r) override;
++  ExprRef createXor(ExprRef l, ExprRef r) override;
++  ExprRef createEqual(ExprRef l, ExprRef r) override;
++  ExprRef createDistinct(ExprRef l, ExprRef r) override;
++  ExprRef createUlt(ExprRef l, ExprRef r) override;
++  ExprRef createUle(ExprRef l, ExprRef r) override;
++  ExprRef createUgt(ExprRef l, ExprRef r) override;
++  ExprRef createUge(ExprRef l, ExprRef r) override;
++  ExprRef createSlt(ExprRef l, ExprRef r) override;
++  ExprRef createSle(ExprRef l, ExprRef r) override;
++  ExprRef createSgt(ExprRef l, ExprRef r) override;
++  ExprRef createSge(ExprRef l, ExprRef r) override;
++  ExprRef createLAnd(ExprRef l, ExprRef r) override;
++  ExprRef createLOr(ExprRef l, ExprRef r) override;
++  // {END:COMMUTATIVE}
++  ExprRef createSub(ExprRef l, ExprRef r) override;
++};
++
++class CommonSimplifyExprBuilder : public ExprBuilder {
++  // expression builder for common simplification
++public:
++  ExprRef createConcat(ExprRef l, ExprRef r) override;
++  ExprRef createExtract(ExprRef e, uint32_t index, uint32_t bits) override;
++  ExprRef createZExt(ExprRef e, uint32_t bits) override;
++  ExprRef createAdd(ExprRef l, ExprRef r) override;
++  ExprRef createMul(ExprRef, ExprRef) override;
++  ExprRef createAnd(ExprRef, ExprRef) override;
++  ExprRef createOr(ExprRef, ExprRef) override;
++  ExprRef createXor(ExprRef, ExprRef) override;
++  ExprRef createShl(ExprRef l, ExprRef r) override;
++  ExprRef createLShr(ExprRef l, ExprRef r) override;
++  ExprRef createAShr(ExprRef l, ExprRef r) override;
++  ExprRef createEqual(ExprRef l, ExprRef r) override;
++
++private:
++  ExprRef simplifyAnd(ExprRef l, ExprRef r);
++  ExprRef simplifyOr(ExprRef l, ExprRef r);
++  ExprRef simplifyXor(ExprRef l, ExprRef r);
++};
++
++class ConstantFoldingExprBuilder : public ExprBuilder {
++public:
++  ExprRef createConcat(ExprRef l, ExprRef r) override;
++  ExprRef createExtract(ExprRef e, uint32_t index, uint32_t bits) override;
++  ExprRef createZExt(ExprRef e, uint32_t bits) override;
++  ExprRef createSExt(ExprRef e, uint32_t bits) override;
++  ExprRef createAdd(ExprRef l, ExprRef r) override;
++  ExprRef createSub(ExprRef l, ExprRef r) override;
++  ExprRef createMul(ExprRef l, ExprRef r) override;
++  ExprRef createUDiv(ExprRef l, ExprRef r) override;
++  ExprRef createSDiv(ExprRef l, ExprRef r) override;
++  ExprRef createURem(ExprRef l, ExprRef r) override;
++  ExprRef createSRem(ExprRef l, ExprRef r) override;
++  ExprRef createNeg(ExprRef e) override;
++  ExprRef createNot(ExprRef e) override;
++  ExprRef createAnd(ExprRef l, ExprRef r) override;
++  ExprRef createOr(ExprRef l, ExprRef r) override;
++  ExprRef createXor(ExprRef l, ExprRef r) override;
++  ExprRef createShl(ExprRef l, ExprRef r) override;
++  ExprRef createLShr(ExprRef l, ExprRef r) override;
++  ExprRef createAShr(ExprRef l, ExprRef r) override;
++  ExprRef createEqual(ExprRef l, ExprRef r) override;
++  ExprRef createDistinct(ExprRef l, ExprRef r) override;
++  ExprRef createUlt(ExprRef l, ExprRef r) override;
++  ExprRef createUle(ExprRef l, ExprRef r) override;
++  ExprRef createUgt(ExprRef l, ExprRef r) override;
++  ExprRef createUge(ExprRef l, ExprRef r) override;
++  ExprRef createSlt(ExprRef l, ExprRef r) override;
++  ExprRef createSle(ExprRef l, ExprRef r) override;
++  ExprRef createSgt(ExprRef l, ExprRef r) override;
++  ExprRef createSge(ExprRef l, ExprRef r) override;
++  ExprRef createLOr(ExprRef l, ExprRef r) override;
++  ExprRef createLAnd(ExprRef l, ExprRef r) override;
++  ExprRef createLNot(ExprRef e) override;
++  ExprRef createIte(ExprRef expr_cond, ExprRef expr_true, ExprRef expr_false) override;
++
++  static ExprBuilder* create();
++};
++
++class SymbolicExprBuilder : public ExprBuilder {
++public:
++  ExprRef createConcat(ExprRef l, ExprRef r) override;
++  ExprRef createAdd(ExprRef l, ExprRef r) override;
++  ExprRef createSub(ExprRef l, ExprRef r) override;
++  ExprRef createMul(ExprRef l, ExprRef r) override;
++  ExprRef createSDiv(ExprRef l, ExprRef r) override;
++  ExprRef createUDiv(ExprRef l, ExprRef r) override;
++  ExprRef createAnd(ExprRef l, ExprRef r) override;
++  ExprRef createOr(ExprRef l, ExprRef r) override;
++  ExprRef createXor(ExprRef l, ExprRef r) override;
++  ExprRef createEqual(ExprRef l, ExprRef r) override;
++  ExprRef createDistinct(ExprRef l, ExprRef r) override;
++  ExprRef createLOr(ExprRef l, ExprRef r) override;
++  ExprRef createLAnd(ExprRef l, ExprRef r) override;
++  ExprRef createLNot(ExprRef e);
++  ExprRef createIte(
++    ExprRef expr_cond,
++    ExprRef expr_true,
++    ExprRef expr_false) override;
++  ExprRef createExtract(ExprRef op, uint32_t index, uint32_t bits) override;
++
++  static ExprBuilder* create();
++
++private:
++  ExprRef createAdd(ConstantExprRef l, NonConstantExprRef r);
++  ExprRef createAdd(NonConstantExprRef l, NonConstantExprRef r);
++  ExprRef createSub(ConstantExprRef l, NonConstantExprRef r);
++  ExprRef createSub(NonConstantExprRef l, NonConstantExprRef r);
++  ExprRef createMul(ConstantExprRef l, NonConstantExprRef r);
++  ExprRef createAnd(ConstantExprRef l, NonConstantExprRef r);
++  ExprRef createAnd(NonConstantExprRef l, NonConstantExprRef r);
++  ExprRef createOr(ConstantExprRef l, NonConstantExprRef r);
++  ExprRef createOr(NonConstantExprRef l, NonConstantExprRef r);
++  ExprRef createXor(NonConstantExprRef l, NonConstantExprRef r);
++  ExprRef createSDiv(NonConstantExprRef l, ConstantExprRef r);
++  ExprRef createUDiv(NonConstantExprRef l, ConstantExprRef r);
++
++  ExprRef simplifyLNot(ExprRef);
++  ExprRef simplifyExclusiveExpr(ExprRef l, ExprRef r);
++  };
++
++class PruneExprBuilder : public ExprBuilder {
++  public:
++    // {BEGIN:FUZZ}
++    ExprRef createZExt(ExprRef e, uint32_t bits) override;
++    ExprRef createSExt(ExprRef e, uint32_t bits) override;
++    ExprRef createAdd(ExprRef l, ExprRef r) override;
++    ExprRef createSub(ExprRef l, ExprRef r) override;
++    ExprRef createMul(ExprRef l, ExprRef r) override;
++    ExprRef createUDiv(ExprRef l, ExprRef r) override;
++    ExprRef createSDiv(ExprRef l, ExprRef r) override;
++    ExprRef createURem(ExprRef l, ExprRef r) override;
++    ExprRef createSRem(ExprRef l, ExprRef r) override;
++    ExprRef createNeg(ExprRef e) override;
++    ExprRef createNot(ExprRef e) override;
++    ExprRef createAnd(ExprRef l, ExprRef r) override;
++    ExprRef createOr(ExprRef l, ExprRef r) override;
++    ExprRef createXor(ExprRef l, ExprRef r) override;
++    ExprRef createShl(ExprRef l, ExprRef r) override;
++    ExprRef createLShr(ExprRef l, ExprRef r) override;
++    ExprRef createAShr(ExprRef l, ExprRef r) override;
++    ExprRef createLOr(ExprRef l, ExprRef r) override;
++    ExprRef createLAnd(ExprRef l, ExprRef r) override;
++    ExprRef createLNot(ExprRef e) override;
++    ExprRef createIte(ExprRef expr_cond, ExprRef expr_true, ExprRef expr_false) override;
++    // {END:FUZZ}
++
++    static ExprBuilder* create();
++};
++
++extern ExprBuilder *g_expr_builder;
++
++}
++#endif // QSYM_EXPR_BUILDER_H_
++
+diff --git a/llvm_mode/dfsan_rt/dfsan/expr_builder__gen.cpp b/llvm_mode/dfsan_rt/dfsan/expr_builder__gen.cpp
+new file mode 100644
+index 0000000..df80b69
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/expr_builder__gen.cpp
+@@ -0,0 +1,2459 @@
++#include "expr_builder.h"
++//#include "solver.h"
++//#include "call_stack_manager.h"
++//#include <llvm/ADT/StringRef.h>
++
++namespace RGDPROXY {
++
++namespace {
++const int32_t kComplexityThresholdForSimplify = 16;
++
++void addUses(ExprRef e) {
++  for (int i = 0; i < e->num_children(); i++)
++    e->getChild(i)->addUse(e);
++}
++
++// utility function for checking values
++bool isZero(ExprRef e) {
++  ConstantExprRef ce = castAs<ConstantExpr>(e);
++  return ce != NULL && ce->isZero();
++}
++
++bool isOne(ExprRef e) {
++  ConstantExprRef ce = castAs<ConstantExpr>(e);
++  return ce != NULL && ce->isOne();
++}
++
++bool isAllOnes(ExprRef e) {
++  ConstantExprRef ce = castAs<ConstantExpr>(e);
++  return ce != NULL && ce->isAllOnes();
++}
++
++} // namespace
++
++bool canEvaluateTruncated(ExprRef e, uint32_t bits, uint32_t depth=0) {
++  if (depth > 1)
++    return false;
++
++  switch (e->kind()) {
++    default:
++      return false;
++    case Mul:
++      return canEvaluateTruncated(e->getChild(0), depth + 1)
++        && canEvaluateTruncated(e->getChild(1), depth + 1);
++    case UDiv:
++    case URem: {
++      uint32_t high_bits = e->bits() - bits;
++      if (e->getChild(0)->countLeadingZeros() >= high_bits
++          && e->getChild(1)->countLeadingZeros() >= high_bits) {
++        return canEvaluateTruncated(e->getChild(0), depth + 1)
++          && canEvaluateTruncated(e->getChild(1), depth + 1);
++      }
++      else
++        return false;
++    }
++    case ZExt:
++    case SExt:
++    case Constant:
++    case Concat:
++      return true;
++  }
++}
++
++ExprRef evaluateInDifferentType(ExprBuilder* builder, ExprRef op, uint32_t index, uint32_t bits) {
++  // TODO: recursive evaluation
++  switch (op->kind()) {
++    default:
++      return NULL;
++    case Mul:
++    case UDiv:
++    case URem: {
++      ExprRef e1 = builder->createExtract(op->getChild(0), index, bits);
++      ExprRef e2 = builder->createExtract(op->getChild(1), index, bits);
++
++      return builder->createBinaryExpr(op->kind(),
++          builder->createExtract(op->getChild(0), index, bits),
++          builder->createExtract(op->getChild(1), index, bits));
++    }
++  }
++}
++
++ExprBuilder::ExprBuilder() : next_(NULL) {}
++
++void ExprBuilder::setNext(ExprBuilder* next) {
++  next_ = next;
++}
++
++ExprBuilder* SymbolicExprBuilder::create() {
++  ExprBuilder* base = new BaseExprBuilder();
++  ExprBuilder* commu = new CommutativeExprBuilder();
++  ExprBuilder* common = new CommonSimplifyExprBuilder();
++  //ExprBuilder* const_folding = new ConstantFoldingExprBuilder();
++  //ExprBuilder* symbolic = new SymbolicExprBuilder();
++  ExprBuilder* cache = new CacheExprBuilder();
++
++  // commu -> symbolic -> common -> constant folding -> base
++  commu->setNext(common);
++  common->setNext(cache);
++  //symbolic->setNext(cache);
++  //common->setNext(const_folding);
++  //const_folding->setNext(cache);
++  cache->setNext(base);
++  return cache;
++}
++
++ExprBuilder* ConstantFoldingExprBuilder::create() {
++  // constant folding -> base
++  ExprBuilder* const_folding = new ConstantFoldingExprBuilder();
++  ExprBuilder* base = new BaseExprBuilder();
++
++  // commu -> symbolic -> common -> constant folding -> base
++  const_folding->setNext(base);
++  return const_folding;
++}
++
++ExprRef ExprBuilder::createTrue() {
++  return createBool(true);
++}
++
++ExprRef ExprBuilder::createFalse() {
++  return createBool(false);
++}
++
++ExprRef ExprBuilder::createMsb(ExprRef e) {
++  return createExtract(e, e->bits() - 1, 1);
++}
++
++ExprRef ExprBuilder::createLsb(ExprRef e) {
++  return createExtract(e, 0, 1);
++}
++
++ExprRef ExprBuilder::bitToBool(ExprRef e) {
++  RGDPROXY_ASSERT(e->bits() == 1);
++  ExprRef one = createConstant(1, e->bits());
++  return createEqual(e, one);
++}
++
++ExprRef ExprBuilder::boolToBit(ExprRef e, uint32_t bits) {
++  ExprRef e1 = createConstant(1, bits);
++  ExprRef e0 = createConstant(0, bits);
++  return createIte(e, e1, e0);
++}
++
++ExprRef ExprBuilder::createConcat(std::list<ExprRef> exprs) {
++  assert(!exprs.empty());
++  auto it = exprs.begin();
++
++  // get a first element from the list
++  ExprRef e = *it;
++  it++;
++
++  for (; it != exprs.end(); it++)
++    e = createConcat(e, *it);
++
++  return e;
++}
++
++ExprRef ExprBuilder::createLAnd(std::list<ExprRef> exprs) {
++  assert(!exprs.empty());
++  auto it = exprs.begin();
++
++  // get a first element from the list
++  ExprRef e = *it;
++  it++;
++
++  for (; it != exprs.end(); it++)
++    e = createLAnd(e, *it);
++
++  return e;
++}
++
++ExprRef ExprBuilder::createTrunc(ExprRef e, uint32_t bits) {
++  return createExtract(e, 0, bits);
++}
++
++ExprRef BaseExprBuilder::createRead(uint32_t off, uint32_t size) {
++  static std::vector<ExprRef> cache;
++  if (off >= cache.size())
++    cache.resize(off + 1);
++
++  if (cache[off] == NULL) {
++    cache[off] = std::make_shared<ReadExpr>(off,size);
++  }
++
++  return cache[off];
++}
++
++ExprRef BaseExprBuilder::createExtract(ExprRef e, uint32_t index, uint32_t bits)
++{
++  if (bits == e->bits())
++    return e;
++  ExprRef ref = std::make_shared<ExtractExpr>(e, index, bits);
++  addUses(ref);
++  return ref;
++}
++
++ExprRef
++CacheExprBuilder::findOrInsert(ExprRef new_expr) {
++  if (ExprRef cached = findInCache(new_expr))
++    return cached;
++  RGDPROXY_ASSERT(new_expr != NULL);
++  insertToCache(new_expr);
++  return new_expr;
++}
++
++void CacheExprBuilder::insertToCache(ExprRef e) {
++  cache_.insert(e);
++}
++
++ExprRef CacheExprBuilder::findInCache(ExprRef e) {
++  return cache_.find(e);
++}
++
++ExprRef CommutativeExprBuilder::createSub(ExprRef l, ExprRef r)
++{
++  NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++  ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++  if (nce_l != NULL && ce_r != NULL) {
++    // X - C_0 = -C_0 + X
++    return createAdd(createNeg(ce_r), nce_l);
++  }
++  else
++    return ExprBuilder::createSub(l, r);
++}
++
++ExprRef CommonSimplifyExprBuilder::createConcat(ExprRef l, ExprRef r) {
++  // C(E(e, x, y), E(e, y, z)) => E(e, x, z)
++  if (auto ee_l = castAs<ExtractExpr>(l)) {
++    if (auto ee_r = castAs<ExtractExpr>(r)) {
++      if (ee_l->expr() == ee_r->expr()
++          && ee_r->index() + ee_r->bits() == ee_l->index()) {
++        return createExtract(ee_l->expr(), ee_r->index(), ee_r->bits() + ee_l->bits());
++      }
++    }
++  }
++
++  // C(E(Ext(e), e->bits(), bits), e) == E(Ext(e), 0, e->bits() + bits)
++  if (auto ee_l = castAs<ExtractExpr>(l)) {
++    if (auto ext = castAs<ExtExpr>(ee_l->expr())) {
++      if (ee_l->index() == r->bits()
++          && equalShallowly(*ext->expr(), *r)) {
++        // Here we used equalShallowly
++        // because same ExtractExpr can have different addresses,
++        // but using deep comparison is expensive
++        return createExtract(ee_l->expr(), 0, ee_l->bits() + r->bits());
++      }
++    }
++  }
++
++  return ExprBuilder::createConcat(l, r);
++}
++
++ExprRef CommonSimplifyExprBuilder::createExtract(
++    ExprRef e, uint32_t index, uint32_t bits) {
++  if (auto ce = castAs<ConcatExpr>(e)) {
++    // skips right part
++    if (index >= ce->getRight()->bits())
++      return createExtract(ce->getLeft(), index - ce->getRight()->bits(), bits);
++
++    // skips left part
++    if (index + bits <= ce->getRight()->bits())
++      return createExtract(ce->getRight(), index, bits);
++
++    // E(C(C_0,y)) ==> C(E(C_0), E(y))
++    if (ce->getLeft()->isConstant()) {
++      return createConcat(
++          createExtract(ce->getLeft(), 0, bits - ce->getRight()->bits() + index),
++          createExtract(ce->getRight(), index, ce->getRight()->bits() - index));
++    }
++  }
++  else if (auto ee = castAs<ExtExpr>(e)) {
++    // E(Ext(x), i, b) && len(x) >= i + b == E(x, i, b)
++    if (ee->expr()->bits() >= index + bits)
++      return createExtract(ee->expr(), index, bits);
++
++    // E(ZExt(x), i, b) && len(x) < i == 0
++    if (ee->kind() == ZExt
++        && index >= ee->expr()->bits())
++      return createConstant(0, bits);
++  }
++  else if (auto ee = castAs<ExtractExpr>(e)) {
++    // E(E(x, i1, b1), i2, b2) == E(x, i1 + i2, b2)
++    return createExtract(ee->expr(), ee->index() + index, bits);
++  }
++
++  if (index == 0 && e->bits() == bits)
++    return e;
++  return ExprBuilder::createExtract(e, index, bits);
++}
++
++ExprRef CommonSimplifyExprBuilder::createZExt(
++    ExprRef e, uint32_t bits) {
++  // allow shrinking
++  if (e->bits() > bits)
++    return createExtract(e, 0, bits);
++  if (e->bits() == bits)
++    return e;
++  return ExprBuilder::createZExt(e, bits);
++}
++
++ExprRef CommonSimplifyExprBuilder::createAdd(ExprRef l, ExprRef r)
++{
++  if (isZero(l))
++    return r;
++
++  return ExprBuilder::createAdd(l, r);
++}
++
++ExprRef CommonSimplifyExprBuilder::createMul(ExprRef l, ExprRef r) {
++  NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++  ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++  // 0 * X ==> 0
++  if (isZero(l))
++    return l;
++
++  // 1 * X ==> X
++  if (isOne(l))
++    return r;
++
++  return ExprBuilder::createMul(l, r);
++}
++
++ExprRef CommonSimplifyExprBuilder::simplifyAnd(ExprRef l, ExprRef r) {
++  // l & 0 ==> 0
++  if (isZero(l))
++    return l;
++
++  // l & 11...1b ==> l;
++  if (isAllOnes(l))
++    return r;
++
++  return NULL;
++}
++
++ExprRef CommonSimplifyExprBuilder::createAnd(ExprRef l, ExprRef r)
++{
++  if (ExprRef simplified = simplifyAnd(l, r))
++    return simplified;
++
++  // 0x00ff0000  & 0xaabbccdd = 0x00bb0000
++  if (auto const_l = castAs<ConstantExpr>(l)) {
++    if (auto concat_r = castAs<ConcatExpr>(r)) {
++      ExprRef r_left = concat_r->getLeft();
++      ExprRef r_right = concat_r->getRight();
++      ExprRef l_left = createExtract(l, r_right->bits(), r_left->bits());
++
++      if (ExprRef and_left = simplifyAnd(l_left, r_left)) {
++        return createConcat(
++            and_left,
++            createAnd(
++              createExtract(l, 0,  r_right->bits()),
++              r_right));
++      }
++    }
++  }
++
++  return ExprBuilder::createAnd(l, r);
++}
++
++ExprRef CommonSimplifyExprBuilder::simplifyOr(ExprRef l, ExprRef r) {
++  // 0 | X ==> 0
++  if (isZero(l))
++    return r;
++
++  // 111...1b | X ==> 111...1b
++  if (isAllOnes(l))
++    return l;
++
++  return NULL;
++}
++
++ExprRef CommonSimplifyExprBuilder::createOr(ExprRef l, ExprRef r) {
++  if (ExprRef simplified = simplifyOr(l, r))
++    return simplified;
++
++  if (auto const_l = castAs<ConstantExpr>(l)) {
++    if (auto concat_r = castAs<ConcatExpr>(r)) {
++      ExprRef r_left = concat_r->getLeft();
++      ExprRef r_right = concat_r->getRight();
++      ExprRef l_left = createExtract(l, r_right->bits(), r_left->bits());
++
++      if (ExprRef and_left = simplifyOr(l_left, r_left)) {
++        return createConcat(
++            and_left,
++            createOr(
++              createExtract(l, 0,  r_right->bits()),
++              r_right));
++      }
++    }
++  }
++
++  return ExprBuilder::createOr(l, r);
++}
++
++ExprRef CommonSimplifyExprBuilder::simplifyXor(ExprRef l, ExprRef r) {
++  // 0 ^ X ==> X
++  if (isZero(l))
++    return r;
++
++  return NULL;
++}
++
++ExprRef CommonSimplifyExprBuilder::createXor(ExprRef l, ExprRef r) {
++  if (ExprRef simplified = simplifyXor(l, r))
++    return simplified;
++
++  if (auto const_l = castAs<ConstantExpr>(l)) {
++    if (auto concat_r = castAs<ConcatExpr>(r)) {
++      ExprRef r_left = concat_r->getLeft();
++      ExprRef r_right = concat_r->getRight();
++      ExprRef l_left = createExtract(l, r_right->bits(), r_left->bits());
++
++      if (ExprRef and_left = simplifyXor(l_left, r_left)) {
++        return createConcat(
++            and_left,
++            createXor(
++              createExtract(l, 0,  r_right->bits()),
++              r_right));
++      }
++    }
++  }
++
++  return ExprBuilder::createXor(l, r);
++}
++
++ExprRef CommonSimplifyExprBuilder::createShl(ExprRef l, ExprRef r) {
++  if (isZero(l))
++    return l;
++/*
++  if (ConstantExprRef ce_r = castAs<ConstantExpr>(r)) {
++    ADDRINT rval = ce_r->value().getLimitedValue();
++    if (rval == 0)
++      return l;
++
++    // l << larger_than_l_size == 0
++    if (rval >= l->bits())
++      return createConstant(0, l->bits());
++
++    // from z3: (bvshl x k) -> (concat (extract [n-1-k:0] x) bv0:k)
++    // but byte granuality
++    if (rval % CHAR_BIT == 0) {
++      ExprRef zero = createConstant(0, rval);
++      ExprRef partial = createExtract(l, 0, l->bits() - rval);
++      return createConcat(partial, zero);
++    }
++  }
++*/
++
++  return ExprBuilder::createShl(l, r);
++}
++
++ExprRef CommonSimplifyExprBuilder::createLShr(ExprRef l, ExprRef r) {
++  if (isZero(l))
++    return l;
++/*
++  if (ConstantExprRef ce_r = castAs<ConstantExpr>(r)) {
++    ADDRINT rval = ce_r->value().getLimitedValue();
++    if (rval == 0)
++      return l;
++
++    // l << larger_than_l_size == 0
++    if (rval >= l->bits())
++      return createConstant(0, l->bits());
++
++    // from z3: (bvlshr x k) -> (concat bv0:k (extract [n-1:k] x))
++    // but byte granuality
++    if (rval % CHAR_BIT == 0) {
++      ExprRef zero = createConstant(0, rval);
++      ExprRef partial = createExtract(l, rval, l->bits() - rval);
++      return createConcat(zero, partial);
++    }
++  }
++*/
++
++  return ExprBuilder::createLShr(l, r);
++}
++
++ExprRef CommonSimplifyExprBuilder::createAShr(ExprRef l, ExprRef r) {
++/*
++  if (ConstantExprRef ce_r = castAs<ConstantExpr>(r)) {
++    ADDRINT rval = ce_r->value().getLimitedValue();
++    if (rval == 0)
++      return l;
++  }
++*/
++
++  return ExprBuilder::createAShr(l, r);
++}
++
++ExprRef CommonSimplifyExprBuilder::createEqual(ExprRef l, ExprRef r) {
++  NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++  ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++  if (auto be_l = castAs<BoolExpr>(l))
++    return (be_l->value()) ? r : createLNot(r);
++
++  return ExprBuilder::createEqual(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createDistinct(ExprRef l, ExprRef r) {
++  ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++  ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++/*
++  if (ce_l != NULL && ce_r != NULL) {
++    RGDPROXY_ASSERT(l->bits() == r->bits());
++    return createBool(ce_l->value() != ce_r->value());
++  }
++
++  BoolExprRef be0 = castAs<BoolExpr>(l);
++  BoolExprRef be1 = castAs<BoolExpr>(r);
++
++  if (be0 != NULL && be1 != NULL) {
++    return createBool(be0->value() != be1->value());
++  }
++
++*/
++  return ExprBuilder::createDistinct(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createEqual(ExprRef l, ExprRef r) {
++  ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++  ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++/*
++  if (ce_l != NULL && ce_r != NULL) {
++    RGDPROXY_ASSERT(l->bits() == r->bits());
++    return createBool(ce_l->value() == ce_r->value());
++  }
++
++  BoolExprRef be0 = castAs<BoolExpr>(l);
++  BoolExprRef be1 = castAs<BoolExpr>(r);
++
++  if (be0 != NULL && be1 != NULL)
++    return createBool(be0->value() == be1->value());
++*/
++  return ExprBuilder::createEqual(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createLAnd(ExprRef l, ExprRef r) {
++/*
++  BoolExprRef be0 = castAs<BoolExpr>(l);
++  BoolExprRef be1 = castAs<BoolExpr>(r);
++
++  if (be0 != NULL && be1 != NULL)
++    return createBool(be0->value() && be1->value());
++  else
++*/
++    return ExprBuilder::createLAnd(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createLOr(ExprRef l, ExprRef r) {
++/*
++  BoolExprRef be0 = castAs<BoolExpr>(l);
++  BoolExprRef be1 = castAs<BoolExpr>(r);
++
++  if (be0 != NULL && be1 != NULL)
++    return createBool(be0->value() || be1->value());
++  else
++*/
++    return ExprBuilder::createLOr(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createConcat(ExprRef l, ExprRef r) {
++  // C(l, r) && l == constant && r == constant  => l << r_bits | r
++/*
++  ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++  ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++  if (ce_l != NULL && ce_r != NULL) {
++    uint32_t bits = ce_l->bits() + ce_r->bits();
++    llvm::APInt lval = ce_l->value().zext(bits);
++    llvm::APInt rval = ce_r->value().zext(bits);
++    llvm::APInt res = (lval << ce_r->bits()) | rval;
++    return createConstant(res, bits);
++  }
++  else
++*/
++    return ExprBuilder::createConcat(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createIte(ExprRef expr_cond,
++    ExprRef expr_true, ExprRef expr_false) {
++/*
++  if (auto be = castAs<BoolExpr>(expr_cond)) {
++    if (be->value())
++      return expr_true;
++    else
++      return expr_false;
++  }
++*/
++  return ExprBuilder::createIte(expr_cond, expr_true, expr_false);
++}
++
++ExprRef ConstantFoldingExprBuilder::createExtract(
++    ExprRef e, uint32_t index, uint32_t bits) {
++/*
++  if (ConstantExprRef ce = castAs<ConstantExpr>(e)) {
++    llvm::APInt v = ce->value().lshr(index);
++    v = v.zextOrTrunc(bits);
++    return createConstant(v, bits);
++  }
++  else
++*/
++    return ExprBuilder::createExtract(e, index, bits);
++}
++
++ExprRef ConstantFoldingExprBuilder::createZExt(ExprRef e, uint32_t bits) {
++/*
++  if (ConstantExprRef ce = castAs<ConstantExpr>(e)) {
++    return createConstant(ce->value().zext(bits), bits);
++  }
++  else
++*/
++    return ExprBuilder::createZExt(e, bits);
++}
++
++ExprRef ConstantFoldingExprBuilder::createSExt(ExprRef e, uint32_t bits) {
++/*
++  if (ConstantExprRef ce = castAs<ConstantExpr>(e)) {
++    return createConstant(ce->value().sext(bits), bits);
++  }
++  else
++*/
++    return ExprBuilder::createSExt(e, bits);
++}
++
++ExprRef ConstantFoldingExprBuilder::createNeg(ExprRef e) {
++/*
++  if (ConstantExprRef ce = castAs<ConstantExpr>(e))
++    return createConstant(-ce->value(), ce->bits());
++  else
++*/
++    return ExprBuilder::createNeg(e);
++}
++
++ExprRef ConstantFoldingExprBuilder::createNot(ExprRef e) {
++/*
++  if (ConstantExprRef ce = castAs<ConstantExpr>(e))
++    return createConstant(~ce->value(), ce->bits());
++  else
++*/
++    return ExprBuilder::createNot(e);
++}
++
++ExprRef ConstantFoldingExprBuilder::createLNot(ExprRef e) {
++/*
++  if (BoolExprRef be = castAs<BoolExpr>(e))
++    return createBool(!be->value());
++  else
++*/
++    return ExprBuilder::createLNot(e);
++}
++
++ExprRef SymbolicExprBuilder::createConcat(ExprRef l, ExprRef r) {
++  // C(l, C(x, y)) && l, x == constant => C(l|x, y)
++  if (auto ce = castAs<ConcatExpr>(r)) {
++    ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++    ConstantExprRef ce_x = castAs<ConstantExpr>(ce->getLeft());
++    if (ce_l != NULL && ce_x != NULL)
++      return createConcat(createConcat(ce_l, ce_x), ce->getRight());
++  }
++
++  // C(C(x ,y), z) => C(x, C(y, z))
++  if (auto ce = castAs<ConcatExpr>(l)) {
++    return createConcat(l->getLeft(),
++        createConcat(l->getRight(), r));
++  }
++
++  return ExprBuilder::createConcat(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createExtract(ExprRef op, uint32_t index, uint32_t bits) {
++  // Only byte-wise simplification
++  if (index == 0
++      && bits % 8 == 0
++      && canEvaluateTruncated(op, bits)) {
++      if (ExprRef e = evaluateInDifferentType(this, op, index, bits))
++        return e;
++  }
++  return ExprBuilder::createExtract(op, index, bits);
++}
++
++ExprRef SymbolicExprBuilder::simplifyExclusiveExpr(ExprRef l, ExprRef r) {
++  // From z3
++  // (bvor (concat x #x00) (concat #x00 y)) --> (concat x y)
++  // (bvadd (concat x #x00) (concat #x00 y)) --> (concat x y)
++
++  for (uint32_t i = 0; i < l->bits(); i++)
++    if (!isZeroBit(l, i) && !isZeroBit(r, i))
++      return NULL;
++
++  std::list<ExprRef> exprs;
++  uint32_t i = 0;
++  while (i < l->bits()) {
++    uint32_t prev = i;
++    while (i < l->bits() && isZeroBit(l, i))
++      i++;
++    if (i != prev)
++      exprs.push_front(createExtract(r, prev, i - prev));
++    prev = i;
++    while (i < r->bits() && isZeroBit(r, i))
++      i++;
++    if (i != prev)
++      exprs.push_front(createExtract(l, prev, i - prev));
++  }
++
++  return ExprBuilder::createConcat(exprs);
++}
++
++ExprRef SymbolicExprBuilder::createAdd(ExprRef l, ExprRef r) {
++  if (ExprRef e = simplifyExclusiveExpr(l, r))
++    return e;
++
++  if (NonConstantExprRef nce_r = castAs<NonConstantExpr>(r)) {
++    if (ConstantExprRef ce_l = castAs<ConstantExpr>(l))
++      return createAdd(ce_l, nce_r);
++    else {
++      NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++      RGDPROXY_ASSERT(nce_l != NULL);
++      return createAdd(nce_l, nce_r);
++    }
++  }
++  else
++    return ExprBuilder::createAdd(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createAdd(ConstantExprRef l, NonConstantExprRef r) {
++  switch (r->kind()) {
++    case Add: {
++      // C_0 + (C_1 + X) ==> (C_0 + C_1) + X
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getFirstChild()))
++        return createAdd(createAdd(l, CE), r->getSecondChild());
++      // C_0 + (X + C_1) ==> (C_0 + C_1) + X
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getSecondChild()))
++        return createAdd(createAdd(l, CE), r->getFirstChild());
++      break;
++    }
++
++    case Sub: {
++      // C_0 + (C_1 - X) ==> (C_0 + C1) - X
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getFirstChild()))
++        return createSub(createAdd(l, CE), r->getSecondChild());
++      // C_0 + (X - C_1) ==> (C_0 - C1) + X
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getSecondChild()))
++        return createAdd(createSub(l, CE), r->getFirstChild());
++      break;
++    }
++    default:
++      break;
++  }
++
++  return ExprBuilder::createAdd(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createAdd(NonConstantExprRef l, NonConstantExprRef r) {
++  if (l == r) {
++    // l + l ==> 2 * l
++    ExprRef two = createConstant(2, l->bits());
++    return createMul(two, l);
++  }
++
++  switch (l->kind()) {
++    default: break;
++    case Add:
++    case Sub: {
++      // (X + Y) + Z ==> Z + (X + Y)
++      // Or (X - Y) + Z ==> Z + (X - Y)
++      std::swap(l, r);
++    }
++  }
++
++  switch (r->kind()) {
++    case Add: {
++      // X + (C_0 + Y) ==> C_0 + (X + Y)
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getFirstChild()))
++        return createAdd(CE, createAdd(l, r->getSecondChild()));
++      // X + (Y + C_0) ==> C_0 + (X + Y)
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getSecondChild()))
++        return createAdd(CE, createAdd(l, r->getFirstChild()));
++      break;
++    }
++
++    case Sub: {
++      // X + (C_0 - Y) ==> C_0 + (X - Y)
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getFirstChild()))
++        return createAdd(CE, createSub(l, r->getSecondChild()));
++      // X + (Y - C_0) ==> -C_0 + (X + Y)
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getSecondChild()))
++        return createAdd(createNeg(CE), createAdd(l, r->getFirstChild()));
++      break;
++    }
++    default:
++      break;
++  }
++
++  return ExprBuilder::createAdd(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createSub(ExprRef l, ExprRef r) {
++  if (NonConstantExprRef nce_r = castAs<NonConstantExpr>(r)) {
++    if (ConstantExprRef ce_l = castAs<ConstantExpr>(l))
++      return createSub(ce_l, nce_r);
++    else {
++      NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++      RGDPROXY_ASSERT(nce_l != NULL);
++      return createSub(nce_l, nce_r);
++    }
++  }
++  else
++    return ExprBuilder::createSub(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createSub(ConstantExprRef l, NonConstantExprRef r) {
++  switch (r->kind()) {
++    case Add: {
++      // C_0 - (C_1 + X) ==> (C_0 - C1) - X
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getFirstChild()))
++        return createSub(createSub(l, CE), r->getSecondChild());
++      // C_0 - (X + C_1) ==> (C_0 - C1) - X
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getSecondChild()))
++        return createSub(createSub(l, CE), r->getFirstChild());
++      break;
++    }
++
++    case Sub: {
++      // C_0 - (C_1 - X) ==> (C_0 - C1) + X
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getFirstChild())) {
++        return createAdd(createSub(l, CE), r->getSecondChild());
++      }
++      // C_0 - (X - C_1) ==> (C_0 + C1) - X
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getSecondChild())) {
++        return createSub(createAdd(l, CE), r->getFirstChild());
++      }
++      break;
++    }
++    default:
++      break;
++  }
++
++  return ExprBuilder::createSub(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createSub(
++    NonConstantExprRef l,
++    NonConstantExprRef r) {
++  // X - X ==> 0
++  if (l == r)
++    return createConstant(0, l->bits());
++
++  switch (l->kind()) {
++    default: break;
++    case Add:
++      if (l->getChild(0)->isConstant()) {
++        // (C + Y) - Z ==> C + (Y - Z)
++        return createAdd(l->getChild(0),
++            createSub(l->getChild(1), r));
++      }
++    case Sub: {
++      if (l->getChild(0)->isConstant()) {
++        // (C - Y) - Z ==> C - (Y + Z)
++        return createSub(l->getChild(0),
++            createAdd(l->getChild(1), r));
++      }
++    }
++  }
++
++  switch (r->kind()) {
++    case Add: {
++      // X - (C_0 + Y) ==> -C_0 + (X - Y)
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getFirstChild()))
++        return createAdd(createNeg(CE), createSub(l, r->getSecondChild()));
++      // X - (Y + C_0) ==> -C_0 + (X - Y)
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getSecondChild()))
++        return createAdd(createNeg(CE), createSub(l, r->getFirstChild()));
++      break;
++    }
++
++    case Sub: {
++      // X - (C_0 - Y) ==> -C_0 + (X + Y)
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getFirstChild()))
++        return createAdd(createNeg(CE), createAdd(l, r->getSecondChild()));
++      // X - (Y - C_0) ==> C_0 + (X - Y)
++      if (ConstantExprRef CE = castAs<ConstantExpr>(r->getSecondChild()))
++        return createAdd(CE, createSub(l, r->getFirstChild()));
++      break;
++    }
++    default:
++      break;
++  }
++  return ExprBuilder::createSub(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createMul(ExprRef l, ExprRef r) {
++  if (NonConstantExprRef nce_r = castAs<NonConstantExpr>(r)) {
++    if (ConstantExprRef ce_l = castAs<ConstantExpr>(l))
++      return createMul(ce_l, nce_r);
++  }
++
++  return ExprBuilder::createMul(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createMul(ConstantExprRef l, NonConstantExprRef r) {
++  // C_0 * (C_1 * x) ==> (C_0 * C_1) * x
++  if (auto me = castAs<MulExpr>(r)) {
++    if (ConstantExprRef ce = castAs<ConstantExpr>(r->getLeft())) {
++      return createMul(createMul(l, ce), r->getRight());
++    }
++  }
++
++  // C_0 * (C_1 + x) ==> C_0 * C_1 + C_0 * x
++  if (auto ae = castAs<AddExpr>(r)) {
++    if (ConstantExprRef ce = castAs<ConstantExpr>(r->getLeft())) {
++      return createAdd(createMul(l, ce), createMul(l, r->getRight()));
++    }
++  }
++
++  return ExprBuilder::createMul(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createSDiv(ExprRef l, ExprRef r) {
++  if (NonConstantExprRef nce_l = castAs<NonConstantExpr>(l)) {
++    if (ConstantExprRef ce_r = castAs<ConstantExpr>(r))
++      return createSDiv(nce_l, ce_r);
++  }
++
++  return ExprBuilder::createSDiv(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createSDiv(NonConstantExprRef l, ConstantExprRef r) {
++  // x /s -1 = -x
++  if (r->isAllOnes())
++    return createNeg(l);
++
++  // SExt(x) /s y && x->bits() >= y->getActiveBits() ==> SExt(x /s y)
++  // Only works when y != -1, but already handled by the above statement
++  if (auto sext_l = castAs<SExtExpr>(l)) {
++    ExprRef x = sext_l->expr();
++    if (x->bits() >= r->getActiveBits()) {
++      return createSExt(
++              createSDiv(x,
++                createExtract(r, 0, x->bits())),
++              l->bits());
++    }
++  }
++
++  // TODO: add overflow check
++  // (x / C_0) / C_1 = (x / (C_0 * C_1))
++  if (auto se = castAs<SDivExpr>(l)) {
++    if (ConstantExprRef ce = castAs<ConstantExpr>(l->getRight())) {
++      return createSDiv(l->getLeft(), createMul(ce, r));
++    }
++  }
++  return ExprBuilder::createSDiv(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createUDiv(ExprRef l, ExprRef r) {
++  if (NonConstantExprRef nce_l = castAs<NonConstantExpr>(l)) {
++    if (ConstantExprRef ce_r = castAs<ConstantExpr>(r))
++      return createUDiv(nce_l, ce_r);
++  }
++
++  return ExprBuilder::createUDiv(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createUDiv(NonConstantExprRef l, ConstantExprRef r) {
++  // C(0, x) / y && y->getActiveBits() <= x->bits()
++  // == C(0, x/E(y, 0, x->bits()))
++  if (auto ce = castAs<ConcatExpr>(l)) {
++    ExprRef ce_l = ce->getLeft();
++    ExprRef ce_r = ce->getRight();
++    if (ce_l->isZero()) {
++      if (r->getActiveBits() <= ce_r->bits()) {
++        ExprRef e = createConcat(
++            ce_l,
++            createUDiv(
++              ce_r,
++              createExtract(r, 0, ce_r->bits())));
++        return e;
++      }
++    }
++  }
++
++  // TODO: add overflow check
++  // (x / C_0) / C_1 = (x / (C_0 * C_1))
++  if (auto se = castAs<UDivExpr>(l)) {
++    if (ConstantExprRef ce = castAs<ConstantExpr>(l->getRight())) {
++      return createUDiv(l->getLeft(), createMul(ce, r));
++    }
++  }
++  return ExprBuilder::createUDiv(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createAnd(ExprRef l, ExprRef r) {
++  if (NonConstantExprRef nce_r = castAs<NonConstantExpr>(r)) {
++    if (ConstantExprRef ce_l = castAs<ConstantExpr>(l))
++      return createAnd(ce_l, nce_r);
++    else {
++      NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++      RGDPROXY_ASSERT(nce_l != NULL);
++      return createAnd(nce_l, nce_r);
++    }
++  }
++  else
++    return ExprBuilder::createAnd(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createAnd(ConstantExprRef l, NonConstantExprRef r) {
++  return ExprBuilder::createAnd(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createAnd(NonConstantExprRef l, NonConstantExprRef r) {
++  // A & A  ==> A
++  if (l == r)
++    return l;
++
++  // C(x, y) & C(w, v) ==> C(x & w, y & v)
++  if (auto ce_l = castAs<ConcatExpr>(l)) {
++    if (auto ce_r = castAs<ConcatExpr>(r)) {
++      if (ce_l->getLeft()->bits() == ce_r->getLeft()->bits()) {
++        // right bits are same, because it is binary operation
++        return createConcat(
++            createAnd(l->getLeft(), r->getLeft()),
++            createAnd(l->getRight(), r->getRight()));
++      }
++    }
++  }
++  return ExprBuilder::createAnd(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createOr(ExprRef l, ExprRef r) {
++ if (ExprRef e = simplifyExclusiveExpr(l, r))
++    return e;
++
++  if (NonConstantExprRef nce_r = castAs<NonConstantExpr>(r)) {
++    if (ConstantExprRef ce_l = castAs<ConstantExpr>(l))
++      return createOr(ce_l, nce_r);
++    else {
++      NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++      RGDPROXY_ASSERT(nce_l != NULL);
++      return createOr(nce_l, nce_r);
++    }
++  }
++  else
++    return ExprBuilder::createOr(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createOr(ConstantExprRef l, NonConstantExprRef r) {
++  if (auto ce = castAs<ConcatExpr>(r)) {
++    // C_0 | C(x, y) ==> C(C_0 | x, C_0 | y)
++    // TODO: only for constant case
++    return createConcat(
++        createOr(
++          createExtract(l, ce->getRight()->bits(), ce->getLeft()->bits()),
++          ce->getLeft()),
++        createOr(
++          createExtract(l, 0, ce->getRight()->bits()),
++          ce->getRight()));
++  }
++
++  return ExprBuilder::createOr(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createOr(NonConstantExprRef l, NonConstantExprRef r) {
++  // A | A = A
++  if (l == r)
++    return l;
++
++  // C(x, y) & C(w, v) == C(x | w, y | v)
++  if (auto ce_l = castAs<ConcatExpr>(l)) {
++    if (auto ce_r = castAs<ConcatExpr>(r)) {
++      if (ce_l->getLeft()->bits() == ce_r->getLeft()->bits()) {
++        // right bits are same, because it is binary operation
++        return createConcat(
++            createOr(l->getLeft(), r->getLeft()),
++            createOr(l->getRight(), r->getRight()));
++      }
++    }
++  }
++
++  return ExprBuilder::createOr(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createXor(ExprRef l, ExprRef r) {
++  if (NonConstantExprRef nce_r = castAs<NonConstantExpr>(r)) {
++    if (NonConstantExprRef nce_l = castAs<NonConstantExpr>(l)) {
++      return createXor(nce_l, nce_r);
++    }
++  }
++
++  return ExprBuilder::createXor(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createXor(NonConstantExprRef l, NonConstantExprRef r) {
++  if (l == r)
++    return createConstant(0, l->bits());
++  else
++    return ExprBuilder::createXor(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createEqual(ExprRef l, ExprRef r) {
++  if (l == r)
++    return createTrue();
++
++  return ExprBuilder::createEqual(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createDistinct(ExprRef l, ExprRef r) {
++  return createLNot(createEqual(l, r));
++}
++
++ExprRef SymbolicExprBuilder::createLOr(ExprRef l, ExprRef r) {
++  if (auto BE_L = castAs<BoolExpr>(l))
++    return BE_L->value() ? createTrue() : r;
++
++  if (auto BE_R = castAs<BoolExpr>(r))
++    return BE_R->value() ? createTrue() : l;
++
++  return ExprBuilder::createLOr(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createLAnd(ExprRef l, ExprRef r) {
++  if (auto BE_L = castAs<BoolExpr>(l))
++    return BE_L->value() ? r : createFalse();
++
++  if (auto BE_R = castAs<BoolExpr>(r))
++    return BE_R->value() ? l : createFalse();
++
++  return ExprBuilder::createLAnd(l, r);
++}
++
++ExprRef SymbolicExprBuilder::createLNot(ExprRef e) {
++  if (auto BE = castAs<BoolExpr>(e))
++    return createBool(!BE->value());
++  if (auto NE = castAs<LNotExpr>(e))
++    return NE->expr();
++  return ExprBuilder::createLNot(e);
++}
++
++ExprRef SymbolicExprBuilder::createIte(
++    ExprRef expr_cond,
++    ExprRef expr_true,
++    ExprRef expr_false) {
++  if (auto BE = castAs<BoolExpr>(expr_cond))
++    return BE->value() ? expr_true : expr_false;
++  if (auto NE = castAs<LNotExpr>(expr_cond))
++    return createIte(NE->expr(), expr_false, expr_true);
++  return ExprBuilder::createIte(expr_cond, expr_true, expr_false);
++}
++/*
++ExprBuilder* PruneExprBuilder::create() {
++  ExprBuilder* base = new BaseExprBuilder();
++  ExprBuilder* commu = new CommutativeExprBuilder();
++  ExprBuilder* common = new CommonSimplifyExprBuilder();
++  ExprBuilder* const_folding = new ConstantFoldingExprBuilder();
++  ExprBuilder* symbolic = new SymbolicExprBuilder();
++  ExprBuilder* cache = new CacheExprBuilder();
++  ExprBuilder* fuzz = new PruneExprBuilder();
++
++  // commu -> symbolic -> common -> constant folding -> fuzz -> cache -> base
++  commu->setNext(symbolic);
++  symbolic->setNext(common);
++  common->setNext(const_folding);
++  const_folding->setNext(fuzz);
++  fuzz->setNext(cache);
++  cache->setNext(base);
++  return commu;
++}
++*/
++
++ExprRef ExprBuilder::createBool(bool b)
++{
++	return next_->createBool(b);
++}
++
++ExprRef ExprBuilder::createConstant(uint32_t value, uint32_t bits)
++{
++	return next_->createConstant(value, bits);
++}
++/*
++ExprRef ExprBuilder::createConstant(llvm::APInt value, uint32_t bits)
++{
++	return next_->createConstant(value, bits);
++}
++*/
++
++ExprRef ExprBuilder::createRead(uint32_t off, uint32_t size)
++{
++	return next_->createRead(off,size);
++}
++
++ExprRef ExprBuilder::createConcat(ExprRef l, ExprRef r)
++{
++	return next_->createConcat(l, r);
++}
++
++ExprRef ExprBuilder::createExtract(ExprRef e, uint32_t index, uint32_t bits)
++{
++	return next_->createExtract(e, index, bits);
++}
++
++ExprRef ExprBuilder::createZExt(ExprRef e, uint32_t bits)
++{
++	return next_->createZExt(e, bits);
++}
++
++ExprRef ExprBuilder::createSExt(ExprRef e, uint32_t bits)
++{
++	return next_->createSExt(e, bits);
++}
++
++ExprRef ExprBuilder::createAdd(ExprRef l, ExprRef r)
++{
++	return next_->createAdd(l, r);
++}
++
++ExprRef ExprBuilder::createSub(ExprRef l, ExprRef r)
++{
++	return next_->createSub(l, r);
++}
++
++ExprRef ExprBuilder::createMul(ExprRef l, ExprRef r)
++{
++	return next_->createMul(l, r);
++}
++
++ExprRef ExprBuilder::createUDiv(ExprRef l, ExprRef r)
++{
++	return next_->createUDiv(l, r);
++}
++
++ExprRef ExprBuilder::createSDiv(ExprRef l, ExprRef r)
++{
++	return next_->createSDiv(l, r);
++}
++
++ExprRef ExprBuilder::createURem(ExprRef l, ExprRef r)
++{
++	return next_->createURem(l, r);
++}
++
++ExprRef ExprBuilder::createSRem(ExprRef l, ExprRef r)
++{
++	return next_->createSRem(l, r);
++}
++
++ExprRef ExprBuilder::createNeg(ExprRef e)
++{
++	return next_->createNeg(e);
++}
++
++ExprRef ExprBuilder::createNot(ExprRef e)
++{
++	return next_->createNot(e);
++}
++
++ExprRef ExprBuilder::createAnd(ExprRef l, ExprRef r)
++{
++	return next_->createAnd(l, r);
++}
++
++ExprRef ExprBuilder::createOr(ExprRef l, ExprRef r)
++{
++	return next_->createOr(l, r);
++}
++
++ExprRef ExprBuilder::createXor(ExprRef l, ExprRef r)
++{
++	return next_->createXor(l, r);
++}
++
++ExprRef ExprBuilder::createShl(ExprRef l, ExprRef r)
++{
++	return next_->createShl(l, r);
++}
++
++ExprRef ExprBuilder::createLShr(ExprRef l, ExprRef r)
++{
++	return next_->createLShr(l, r);
++}
++
++ExprRef ExprBuilder::createAShr(ExprRef l, ExprRef r)
++{
++	return next_->createAShr(l, r);
++}
++
++ExprRef ExprBuilder::createEqual(ExprRef l, ExprRef r)
++{
++	return next_->createEqual(l, r);
++}
++
++ExprRef ExprBuilder::createDistinct(ExprRef l, ExprRef r)
++{
++	return next_->createDistinct(l, r);
++}
++
++ExprRef ExprBuilder::createUlt(ExprRef l, ExprRef r)
++{
++	return next_->createUlt(l, r);
++}
++
++ExprRef ExprBuilder::createUle(ExprRef l, ExprRef r)
++{
++	return next_->createUle(l, r);
++}
++
++ExprRef ExprBuilder::createUgt(ExprRef l, ExprRef r)
++{
++	return next_->createUgt(l, r);
++}
++
++ExprRef ExprBuilder::createUge(ExprRef l, ExprRef r)
++{
++	return next_->createUge(l, r);
++}
++
++ExprRef ExprBuilder::createSlt(ExprRef l, ExprRef r)
++{
++	return next_->createSlt(l, r);
++}
++
++ExprRef ExprBuilder::createSle(ExprRef l, ExprRef r)
++{
++	return next_->createSle(l, r);
++}
++
++ExprRef ExprBuilder::createSgt(ExprRef l, ExprRef r)
++{
++	return next_->createSgt(l, r);
++}
++
++ExprRef ExprBuilder::createSge(ExprRef l, ExprRef r)
++{
++	return next_->createSge(l, r);
++}
++
++ExprRef ExprBuilder::createLOr(ExprRef l, ExprRef r)
++{
++	return next_->createLOr(l, r);
++}
++
++ExprRef ExprBuilder::createLAnd(ExprRef l, ExprRef r)
++{
++	return next_->createLAnd(l, r);
++}
++
++ExprRef ExprBuilder::createLNot(ExprRef e)
++{
++	return next_->createLNot(e);
++}
++
++ExprRef ExprBuilder::createIte(ExprRef expr_cond, ExprRef expr_true, ExprRef expr_false)
++{
++	return next_->createIte(expr_cond, expr_true, expr_false);
++}
++
++ExprRef ExprBuilder::createBinaryExpr(Kind kind, ExprRef l, ExprRef r) {
++
++	switch (kind) {
++		case Add:
++			return createAdd(l, r);
++		case Sub:
++			return createSub(l, r);
++		case Mul:
++			return createMul(l, r);
++		case UDiv:
++			return createUDiv(l, r);
++		case SDiv:
++			return createSDiv(l, r);
++		case URem:
++			return createURem(l, r);
++		case SRem:
++			return createSRem(l, r);
++		case And:
++			return createAnd(l, r);
++		case Or:
++			return createOr(l, r);
++		case Xor:
++			return createXor(l, r);
++		case Shl:
++			return createShl(l, r);
++		case LShr:
++			return createLShr(l, r);
++		case AShr:
++			return createAShr(l, r);
++		case Equal:
++			return createEqual(l, r);
++		case Distinct:
++			return createDistinct(l, r);
++		case Ult:
++			return createUlt(l, r);
++		case Ule:
++			return createUle(l, r);
++		case Ugt:
++			return createUgt(l, r);
++		case Uge:
++			return createUge(l, r);
++		case Slt:
++			return createSlt(l, r);
++		case Sle:
++			return createSle(l, r);
++		case Sgt:
++			return createSgt(l, r);
++		case Sge:
++			return createSge(l, r);
++		case LOr:
++			return createLOr(l, r);
++		case LAnd:
++			return createLAnd(l, r);
++		default:
++			//LOG_FATAL("Non-binary expr: " + std::to_string(kind) + "\n");
++			return NULL;
++	}
++}
++
++ExprRef ExprBuilder::createUnaryExpr(Kind kind, ExprRef e) {
++	switch (kind) {		case Not:
++			return createNot(e);
++		case Neg:
++			return createNeg(e);
++		case LNot:
++			return createLNot(e);
++		default:
++			//LOG_FATAL("Non-unary expr: " + std::to_string(kind) + "\n");
++			return NULL;
++	}
++}
++
++ExprRef BaseExprBuilder::createBool(bool b) {
++	ExprRef ref = std::make_shared<BoolExpr>(b);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createConstant(uint32_t value, uint32_t bits) {
++	ExprRef ref = std::make_shared<ConstantExpr>(value, bits);
++	addUses(ref);
++	return ref;
++}
++/*
++ExprRef BaseExprBuilder::createConstant(llvm::APInt value, uint32_t bits) {
++	ExprRef ref = std::make_shared<ConstantExpr>(value, bits);
++	addUses(ref);
++	return ref;
++}
++*/
++
++ExprRef BaseExprBuilder::createConcat(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<ConcatExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createZExt(ExprRef e, uint32_t bits) {
++	ExprRef ref = std::make_shared<ZExtExpr>(e, bits);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createSExt(ExprRef e, uint32_t bits) {
++	ExprRef ref = std::make_shared<SExtExpr>(e, bits);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createAdd(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<AddExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createSub(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<SubExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createMul(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<MulExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createUDiv(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<UDivExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createSDiv(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<SDivExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createURem(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<URemExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createSRem(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<SRemExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createNeg(ExprRef e) {
++	ExprRef ref = std::make_shared<NegExpr>(e);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createNot(ExprRef e) {
++	ExprRef ref = std::make_shared<NotExpr>(e);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createAnd(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<AndExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createOr(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<OrExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createXor(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<XorExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createShl(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<ShlExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createLShr(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<LShrExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createAShr(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<AShrExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createEqual(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<EqualExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createDistinct(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<DistinctExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createUlt(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<UltExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createUle(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<UleExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createUgt(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<UgtExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createUge(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<UgeExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createSlt(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<SltExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createSle(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<SleExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createSgt(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<SgtExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createSge(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<SgeExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createLOr(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<LOrExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createLAnd(ExprRef l, ExprRef r) {
++	ExprRef ref = std::make_shared<LAndExpr>(l, r);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createLNot(ExprRef e) {
++	ExprRef ref = std::make_shared<LNotExpr>(e);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef BaseExprBuilder::createIte(ExprRef expr_cond, ExprRef expr_true, ExprRef expr_false) {
++	ExprRef ref = std::make_shared<IteExpr>(expr_cond, expr_true, expr_false);
++	addUses(ref);
++	return ref;
++}
++
++ExprRef CacheExprBuilder::createConcat(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createConcat(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createExtract(ExprRef e, uint32_t index, uint32_t bits) {
++	ExprRef new_expr = ExprBuilder::createExtract(e, index, bits);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createZExt(ExprRef e, uint32_t bits) {
++	ExprRef new_expr = ExprBuilder::createZExt(e, bits);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createSExt(ExprRef e, uint32_t bits) {
++	ExprRef new_expr = ExprBuilder::createSExt(e, bits);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createAdd(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createAdd(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createSub(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createSub(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createMul(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createMul(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createUDiv(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createUDiv(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createSDiv(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createSDiv(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createURem(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createURem(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createSRem(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createSRem(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createNeg(ExprRef e) {
++	ExprRef new_expr = ExprBuilder::createNeg(e);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createNot(ExprRef e) {
++	ExprRef new_expr = ExprBuilder::createNot(e);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createAnd(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createAnd(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createOr(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createOr(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createXor(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createXor(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createShl(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createShl(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createLShr(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createLShr(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createAShr(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createAShr(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createEqual(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createEqual(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createDistinct(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createDistinct(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createUlt(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createUlt(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createUle(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createUle(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createUgt(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createUgt(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createUge(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createUge(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createSlt(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createSlt(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createSle(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createSle(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createSgt(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createSgt(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createSge(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createSge(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createLOr(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createLOr(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createLAnd(ExprRef l, ExprRef r) {
++	ExprRef new_expr = ExprBuilder::createLAnd(l, r);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createLNot(ExprRef e) {
++	ExprRef new_expr = ExprBuilder::createLNot(e);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CacheExprBuilder::createIte(ExprRef expr_cond, ExprRef expr_true, ExprRef expr_false) {
++	ExprRef new_expr = ExprBuilder::createIte(expr_cond, expr_true, expr_false);
++	return findOrInsert(new_expr);
++}
++
++ExprRef CommutativeExprBuilder::createAdd(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createAdd(ce_r, nce_l);
++
++	return ExprBuilder::createAdd(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createMul(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createMul(ce_r, nce_l);
++
++	return ExprBuilder::createMul(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createAnd(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createAnd(ce_r, nce_l);
++
++	return ExprBuilder::createAnd(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createOr(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createOr(ce_r, nce_l);
++
++	return ExprBuilder::createOr(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createXor(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createXor(ce_r, nce_l);
++
++	return ExprBuilder::createXor(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createEqual(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createEqual(ce_r, nce_l);
++
++	return ExprBuilder::createEqual(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createDistinct(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createDistinct(ce_r, nce_l);
++
++	return ExprBuilder::createDistinct(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createUlt(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createUgt(ce_r, nce_l);
++
++	return ExprBuilder::createUlt(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createUle(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createUge(ce_r, nce_l);
++
++	return ExprBuilder::createUle(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createUgt(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createUlt(ce_r, nce_l);
++
++	return ExprBuilder::createUgt(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createUge(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createUle(ce_r, nce_l);
++
++	return ExprBuilder::createUge(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createSlt(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createSgt(ce_r, nce_l);
++
++	return ExprBuilder::createSlt(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createSle(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createSge(ce_r, nce_l);
++
++	return ExprBuilder::createSle(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createSgt(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createSlt(ce_r, nce_l);
++
++	return ExprBuilder::createSgt(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createSge(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createSle(ce_r, nce_l);
++
++	return ExprBuilder::createSge(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createLAnd(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createLAnd(ce_r, nce_l);
++
++	return ExprBuilder::createLAnd(l, r);
++}
++
++ExprRef CommutativeExprBuilder::createLOr(ExprRef l, ExprRef r) {
++	NonConstantExprRef nce_l = castAs<NonConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (nce_l != NULL && ce_r != NULL)
++		return createLOr(ce_r, nce_l);
++	return ExprBuilder::createLOr(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createAShr(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value().ashr(ce_r->value()), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createAShr(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createAdd(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value() + ce_r->value(), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createAdd(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createAnd(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value() & ce_r->value(), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createAnd(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createLShr(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value().lshr(ce_r->value()), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createLShr(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createMul(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value() * ce_r->value(), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createMul(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createOr(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value() | ce_r->value(), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createOr(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createSDiv(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value().sdiv(ce_r->value()), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createSDiv(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createSRem(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value().srem(ce_r->value()), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createSRem(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createSge(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createBool(ce_l->value().sge(ce_r->value()));
++	}
++	else
++*/
++	return ExprBuilder::createSge(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createSgt(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createBool(ce_l->value().sgt(ce_r->value()));
++	}
++	else
++*/
++	return ExprBuilder::createSgt(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createShl(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value() << ce_r->value(), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createShl(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createSle(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createBool(ce_l->value().sle(ce_r->value()));
++	}
++	else
++*/
++	return ExprBuilder::createSle(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createSlt(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createBool(ce_l->value().slt(ce_r->value()));
++	}
++	else
++*/
++	return ExprBuilder::createSlt(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createSub(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value() - ce_r->value(), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createSub(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createUDiv(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value().udiv(ce_r->value()), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createUDiv(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createURem(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value().urem(ce_r->value()), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createURem(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createUge(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createBool(ce_l->value().uge(ce_r->value()));
++	}
++	else
++*/
++	return ExprBuilder::createUge(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createUgt(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createBool(ce_l->value().ugt(ce_r->value()));
++	}
++	else
++*/
++	return ExprBuilder::createUgt(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createUle(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createBool(ce_l->value().ule(ce_r->value()));
++	}
++	else
++*/
++	return ExprBuilder::createUle(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createUlt(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createBool(ce_l->value().ult(ce_r->value()));
++	}
++	else
++*/
++	return ExprBuilder::createUlt(l, r);
++}
++
++ExprRef ConstantFoldingExprBuilder::createXor(ExprRef l, ExprRef r) {
++/*
++	ConstantExprRef ce_l = castAs<ConstantExpr>(l);
++	ConstantExprRef ce_r = castAs<ConstantExpr>(r);
++
++	if (ce_l != NULL && ce_r != NULL) {
++		RGDPROXY_ASSERT(l->bits() == r->bits());
++		return createConstant(ce_l->value() ^ ce_r->value(), l->bits());
++	}
++	else
++*/
++	return ExprBuilder::createXor(l, r);
++}
++/*
++ExprRef PruneExprBuilder::createZExt(ExprRef e, uint32_t bits) {
++	ExprRef ref = ExprBuilder::createZExt(e, bits);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createSExt(ExprRef e, uint32_t bits) {
++	ExprRef ref = ExprBuilder::createSExt(e, bits);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createAdd(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createAdd(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createSub(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createSub(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createMul(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createMul(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createUDiv(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createUDiv(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createSDiv(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createSDiv(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createURem(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createURem(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createSRem(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createSRem(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createNeg(ExprRef e) {
++	ExprRef ref = ExprBuilder::createNeg(e);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createNot(ExprRef e) {
++	ExprRef ref = ExprBuilder::createNot(e);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createAnd(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createAnd(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createOr(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createOr(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createXor(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createXor(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createShl(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createShl(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createLShr(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createLShr(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createAShr(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createAShr(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createLOr(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createLOr(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createLAnd(ExprRef l, ExprRef r) {
++	ExprRef ref = ExprBuilder::createLAnd(l, r);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createLNot(ExprRef e) {
++	ExprRef ref = ExprBuilder::createLNot(e);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++
++ExprRef PruneExprBuilder::createIte(ExprRef expr_cond, ExprRef expr_true, ExprRef expr_false) {
++	ExprRef ref = ExprBuilder::createIte(expr_cond, expr_true, expr_false);
++	g_call_stack_manager.updateBitmap();
++	if (g_call_stack_manager.isInteresting())
++		return ref;
++	else
++		return ref->evaluate();
++}
++*/
++
++
++
++} // namespace qsym
+diff --git a/llvm_mode/dfsan_rt/dfsan/expr_cache.cpp b/llvm_mode/dfsan_rt/dfsan/expr_cache.cpp
+new file mode 100644
+index 0000000..9b7b169
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/expr_cache.cpp
+@@ -0,0 +1,45 @@
++#include "expr_cache.h"
++
++namespace RGDPROXY {
++  ExprCache::ExprCache() : limit_(kCacheSize) {}
++
++  void ExprCache::insert(WeakExprRef e) {
++    if (set_.insert(e).second)
++      queue_.push(e);
++    shrink();
++  }
++
++  ExprRef ExprCache::find(ExprRef e) {
++    auto it = set_.find(e);
++    if (it != set_.end())
++      return it->lock();
++    else
++      return NULL;
++  }
++
++  void ExprCache::shrink() {
++    if (queue_.size() > limit_) {
++      WeakExprRef item = queue_.front();
++
++      // if item is expired, we cannot find entry using item
++      // so let cleanup() handle
++      if (!item.expired()) {
++        auto it = set_.find(queue_.front());
++        if (it != set_.end())
++          set_.erase(it);
++      }
++      queue_.pop();
++    }
++
++    if (set_.size() > limit_ * 16)
++      cleanup();
++  }
++
++  void ExprCache::cleanup() {
++    for (auto it = set_.begin(); it != set_.end(); ) {
++      auto current = it++;
++      if (current->expired())
++        set_.erase(current);
++    }
++  }
++}
+diff --git a/llvm_mode/dfsan_rt/dfsan/expr_cache.h b/llvm_mode/dfsan_rt/dfsan/expr_cache.h
+new file mode 100644
+index 0000000..585ed44
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/expr_cache.h
+@@ -0,0 +1,47 @@
++#ifndef QSYM_EXPR_CACHE_H_
++#define QSYM_EXPR_CACHE_H_
++
++#include "expr.h"
++#include <queue>
++
++namespace RGDPROXY {
++const size_t kCacheSize = 1024;
++
++struct WeakExprRefHash {
++  XXH32_hash_t operator()(const WeakExprRef e) const {
++    assert(!e.expired());
++    return std::const_pointer_cast<Expr>(e.lock())->hash();
++  }
++};
++
++struct WeakExprRefEqual {
++  bool operator()(const WeakExprRef l,
++      const WeakExprRef r) const {
++    if (l.expired() || r.expired())
++      return false;
++    return equalShallowly(*l.lock(), *r.lock());
++  }
++};
++
++typedef std::unordered_set
++  <WeakExprRef, WeakExprRefHash, WeakExprRefEqual> WeakExprRefSetTy;
++typedef std::queue<WeakExprRef> WeakExprRefQueueTy;
++
++class ExprCache {
++public:
++  ExprCache();
++  void insert(WeakExprRef e);
++  ExprRef find(ExprRef e);
++
++protected:
++  uint32_t limit_;
++  WeakExprRefSetTy set_;
++  WeakExprRefQueueTy queue_;
++
++  void shrink();
++  void cleanup();
++};
++
++}
++
++#endif // QSYM_EXPR_CACHE_H_
+diff --git a/llvm_mode/dfsan_rt/dfsan/expr_evaluate.cpp b/llvm_mode/dfsan_rt/dfsan/expr_evaluate.cpp
+new file mode 100644
+index 0000000..5513f3c
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/expr_evaluate.cpp
+@@ -0,0 +1,73 @@
++#include "expr_builder.h"
++#include "expr.h"
++#include "solver.h"
++
++namespace qsym {
++  // Use ConstantFoldingExprBuilder for evaluation
++  static ExprBuilder* CEB
++    = ConstantFoldingExprBuilder::create();
++
++  ExprRef checkExpr(ExprRef e) {
++    Kind kind = e->kind();
++    QSYM_ASSERT(kind == Constant || kind == Bool);
++    return e;
++  }
++
++  ExprRef Expr::evaluate() {
++    if (evaluation_ == NULL)
++      evaluation_ = evaluateImpl();
++    return evaluation_;
++  }
++
++  ExprRef ConcatExpr::evaluateImpl() {
++    ExprRef c0 = getChild(0)->evaluate();
++    ExprRef c1 = getChild(1)->evaluate();
++    return checkExpr(CEB->createConcat(c0, c1));
++  }
++
++  ExprRef UnaryExpr::evaluateImpl() {
++    ExprRef c0 = getChild(0)->evaluate();
++    return checkExpr(CEB->createUnaryExpr(kind_, c0));
++  }
++
++  ExprRef ReadExpr::evaluateImpl() {
++    return std::make_shared<ConstantExpr>(g_solver->getInput(index_), 8);
++  }
++
++  ExprRef ConstantExpr::evaluateImpl() {
++    return std::make_shared<ConstantExpr>(this->value(), this->bits());
++  }
++
++  ExprRef BoolExpr::evaluateImpl() {
++    return std::make_shared<BoolExpr>(this->value());
++  }
++
++  ExprRef BinaryExpr::evaluateImpl() {
++    ExprRef c0 = getChild(0)->evaluate();
++    ExprRef c1 = getChild(1)->evaluate();
++    return checkExpr(CEB->createBinaryExpr(kind_, c0, c1));
++  }
++
++  ExprRef ExtractExpr::evaluateImpl() {
++    ExprRef c0 = getChild(0)->evaluate();
++    return checkExpr(CEB->createExtract(c0, index_, bits_));
++  }
++
++  ExprRef ZExtExpr::evaluateImpl() {
++    ExprRef c0 = getChild(0)->evaluate();
++    return checkExpr(CEB->createZExt(c0, bits_));
++  }
++
++  ExprRef SExtExpr::evaluateImpl() {
++    ExprRef c0 = getChild(0)->evaluate();
++    return checkExpr(CEB->createSExt(c0, bits_));
++  }
++
++  ExprRef IteExpr::evaluateImpl() {
++    ExprRef c0 = getChild(0)->evaluate();
++    ExprRef c1 = getChild(1)->evaluate();
++    ExprRef c2 = getChild(2)->evaluate();
++    return checkExpr(CEB->createIte(c0, c1, c2));
++  }
++
++} // namespace qsym
+diff --git a/llvm_mode/dfsan_rt/dfsan/logging.cpp b/llvm_mode/dfsan_rt/dfsan/logging.cpp
+new file mode 100644
+index 0000000..42c4260
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/logging.cpp
+@@ -0,0 +1,48 @@
++#include <cstdio>
++//#include <iostream>
++
++#include "logging.h"
++
++namespace RGDPROXY {
++//KNOB<bool> g_opt_debug(KNOB_MODE_WRITEONCE, "pintool",
++ //   "d", "0", "turn on debug mode");
++
++void log(const char* tag, const std::string &msg) {
++  return;
++  //std::string tagged_msg = std::string("[") + tag + "] " + msg;
++  //std::cerr << tagged_msg;
++
++  //LOG(tagged_msg);
++}
++
++bool isDebugMode() {
++ // return g_opt_debug.Value();
++	return true;	
++}
++
++
++void LOG_FATAL(const std::string &msg) {
++  std::string fatal_msg;
++  //if (g_solver)
++  //  fatal_msg = "[" + hexstr(g_solver->last_pc()) + "]: ";
++  fatal_msg += msg;
++  log("FATAL", fatal_msg);
++
++  // since abort() sometimes not working
++  // trigger crash to terminate pin
++  // CRASH();
++  exit(-1);
++}
++
++void LOG_INFO(const std::string &msg) {
++  log("INFO", msg);
++}
++
++void LOG_STAT(const std::string &msg) {
++  log("STAT", msg);
++}
++void LOG_WARN(const std::string &msg) {
++  log("WARN", msg);
++}
++
++}
+diff --git a/llvm_mode/dfsan_rt/dfsan/logging.h b/llvm_mode/dfsan_rt/dfsan/logging.h
+new file mode 100644
+index 0000000..6b1c9b6
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/logging.h
+@@ -0,0 +1,36 @@
++#ifndef QSYM_LOGGING_H_
++#define QSYM_LOGGING_H_
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <cstdarg>
++#include <string>
++#include "compiler.h"
++
++namespace RGDPROXY {
++#define RGDPROXY_UNREACHABLE() \
++  LOG_FATAL(std::string(__FILE__) + ":" \
++            + std::to_string(__LINE__) + ": Unreachable");
++
++#define RGDPROXY_ASSERT(x) \
++  if (!(x)) \
++    LOG_FATAL( \
++        std::string(__FILE__) + ":" \
++        + std::to_string(__LINE__) + ": " #x);
++
++void log(const char* tag, const std::string &msg);
++
++#define LOG_DEBUG(msg) \
++  do { \
++    if (isDebugMode()) \
++      log("DEBUG", msg); \
++  } while(0);
++
++bool isDebugMode();
++void LOG_FATAL(const std::string &msg);
++void LOG_INFO(const std::string &msg);
++void LOG_STAT(const std::string &msg);
++void LOG_WARN(const std::string &msg);
++
++}
++#endif // QSYM_LOGGING_H_
+diff --git a/llvm_mode/dfsan_rt/dfsan/xxhash.cpp b/llvm_mode/dfsan_rt/dfsan/xxhash.cpp
+new file mode 100644
+index 0000000..833b99f
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/xxhash.cpp
+@@ -0,0 +1,888 @@
++/*
++*  xxHash - Fast Hash algorithm
++*  Copyright (C) 2012-2016, Yann Collet
++*
++*  BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
++*
++*  Redistribution and use in source and binary forms, with or without
++*  modification, are permitted provided that the following conditions are
++*  met:
++*
++*  * Redistributions of source code must retain the above copyright
++*  notice, this list of conditions and the following disclaimer.
++*  * Redistributions in binary form must reproduce the above
++*  copyright notice, this list of conditions and the following disclaimer
++*  in the documentation and/or other materials provided with the
++*  distribution.
++*
++*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++*  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++*  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++*  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++*  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++*  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++*  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++*  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++*  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++*  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++*  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++*
++*  You can contact the author at :
++*  - xxHash homepage: http://www.xxhash.com
++*  - xxHash source repository : https://github.com/Cyan4973/xxHash
++*/
++
++
++/* *************************************
++*  Tuning parameters
++***************************************/
++/*!XXH_FORCE_MEMORY_ACCESS :
++ * By default, access to unaligned memory is controlled by `memcpy()`, which is safe and portable.
++ * Unfortunately, on some target/compiler combinations, the generated assembly is sub-optimal.
++ * The below switch allow to select different access method for improved performance.
++ * Method 0 (default) : use `memcpy()`. Safe and portable.
++ * Method 1 : `__packed` statement. It depends on compiler extension (ie, not portable).
++ *            This method is safe if your compiler supports it, and *generally* as fast or faster than `memcpy`.
++ * Method 2 : direct access. This method doesn't depend on compiler but violate C standard.
++ *            It can generate buggy code on targets which do not support unaligned memory accesses.
++ *            But in some circumstances, it's the only known way to get the most performance (ie GCC + ARMv6)
++ * See http://stackoverflow.com/a/32095106/646947 for details.
++ * Prefer these methods in priority order (0 > 1 > 2)
++ */
++#ifndef XXH_FORCE_MEMORY_ACCESS   /* can be defined externally, on command line for example */
++#  if defined(__GNUC__) && ( defined(__ARM_ARCH_6__) || defined(__ARM_ARCH_6J__) || defined(__ARM_ARCH_6K__) || defined(__ARM_ARCH_6Z__) || defined(__ARM_ARCH_6ZK__) || defined(__ARM_ARCH_6T2__) )
++#    define XXH_FORCE_MEMORY_ACCESS 2
++#  elif defined(__INTEL_COMPILER) || \
++  (defined(__GNUC__) && ( defined(__ARM_ARCH_7__) || defined(__ARM_ARCH_7A__) || defined(__ARM_ARCH_7R__) || defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_7S__) ))
++#    define XXH_FORCE_MEMORY_ACCESS 1
++#  endif
++#endif
++
++/*!XXH_ACCEPT_NULL_INPUT_POINTER :
++ * If the input pointer is a null pointer, xxHash default behavior is to trigger a memory access error, since it is a bad pointer.
++ * When this option is enabled, xxHash output for null input pointers will be the same as a null-length input.
++ * By default, this option is disabled. To enable it, uncomment below define :
++ */
++/* #define XXH_ACCEPT_NULL_INPUT_POINTER 1 */
++
++/*!XXH_FORCE_NATIVE_FORMAT :
++ * By default, xxHash library provides endian-independent Hash values, based on little-endian convention.
++ * Results are therefore identical for little-endian and big-endian CPU.
++ * This comes at a performance cost for big-endian CPU, since some swapping is required to emulate little-endian format.
++ * Should endian-independence be of no importance for your application, you may set the #define below to 1,
++ * to improve speed for Big-endian CPU.
++ * This option has no impact on Little_Endian CPU.
++ */
++#ifndef XXH_FORCE_NATIVE_FORMAT   /* can be defined externally */
++#  define XXH_FORCE_NATIVE_FORMAT 0
++#endif
++
++/*!XXH_FORCE_ALIGN_CHECK :
++ * This is a minor performance trick, only useful with lots of very small keys.
++ * It means : check for aligned/unaligned input.
++ * The check costs one initial branch per hash;
++ * set it to 0 when the input is guaranteed to be aligned,
++ * or when alignment doesn't matter for performance.
++ */
++#ifndef XXH_FORCE_ALIGN_CHECK /* can be defined externally */
++#  if defined(__i386) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
++#    define XXH_FORCE_ALIGN_CHECK 0
++#  else
++#    define XXH_FORCE_ALIGN_CHECK 1
++#  endif
++#endif
++
++
++/* *************************************
++*  Includes & Memory related functions
++***************************************/
++/*! Modify the local functions below should you wish to use some other memory routines
++*   for malloc(), free() */
++#include <stdlib.h>
++static void* XXH_malloc(size_t s) { return malloc(s); }
++static void  XXH_free  (void* p)  { free(p); }
++/*! and for memcpy() */
++#include <string.h>
++static void* XXH_memcpy(void* dest, const void* src, size_t size) { return memcpy(dest,src,size); }
++
++#define XXH_STATIC_LINKING_ONLY
++#include "xxhash.h"
++
++
++/* *************************************
++*  Compiler Specific Options
++***************************************/
++#ifdef _MSC_VER    /* Visual Studio */
++#  pragma warning(disable : 4127)      /* disable: C4127: conditional expression is constant */
++#  define FORCE_INLINE static __forceinline
++#else
++#  if defined (__cplusplus) || defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L   /* C99 */
++#    ifdef __GNUC__
++#      define FORCE_INLINE static inline __attribute__((always_inline))
++#    else
++#      define FORCE_INLINE static inline
++#    endif
++#  else
++#    define FORCE_INLINE static
++#  endif /* __STDC_VERSION__ */
++#endif
++
++
++/* *************************************
++*  Basic Types
++***************************************/
++#ifndef MEM_MODULE
++# if !defined (__VMS) && (defined (__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */) )
++#   include <stdint.h>
++    typedef uint8_t  BYTE;
++    typedef uint16_t U16;
++    typedef uint32_t U32;
++# else
++    typedef unsigned char      BYTE;
++    typedef unsigned short     U16;
++    typedef unsigned int       U32;
++# endif
++#endif
++
++#if (defined(XXH_FORCE_MEMORY_ACCESS) && (XXH_FORCE_MEMORY_ACCESS==2))
++
++/* Force direct memory access. Only works on CPU which support unaligned memory access in hardware */
++static U32 XXH_read32(const void* memPtr) { return *(const U32*) memPtr; }
++
++#elif (defined(XXH_FORCE_MEMORY_ACCESS) && (XXH_FORCE_MEMORY_ACCESS==1))
++
++/* __pack instructions are safer, but compiler specific, hence potentially problematic for some compilers */
++/* currently only defined for gcc and icc */
++typedef union { U32 u32; } __attribute__((packed)) unalign;
++static U32 XXH_read32(const void* ptr) { return ((const unalign*)ptr)->u32; }
++
++#else
++
++/* portable and safe solution. Generally efficient.
++ * see : http://stackoverflow.com/a/32095106/646947
++ */
++static U32 XXH_read32(const void* memPtr)
++{
++    U32 val;
++    memcpy(&val, memPtr, sizeof(val));
++    return val;
++}
++
++#endif   /* XXH_FORCE_DIRECT_MEMORY_ACCESS */
++
++
++/* ****************************************
++*  Compiler-specific Functions and Macros
++******************************************/
++#define XXH_GCC_VERSION (__GNUC__ * 100 + __GNUC_MINOR__)
++
++/* Note : although _rotl exists for minGW (GCC under windows), performance seems poor */
++#if defined(_MSC_VER)
++#  define XXH_rotl32(x,r) _rotl(x,r)
++#  define XXH_rotl64(x,r) _rotl64(x,r)
++#else
++#  define XXH_rotl32(x,r) ((x << r) | (x >> (32 - r)))
++#  define XXH_rotl64(x,r) ((x << r) | (x >> (64 - r)))
++#endif
++
++#if defined(_MSC_VER)     /* Visual Studio */
++#  define XXH_swap32 _byteswap_ulong
++#elif XXH_GCC_VERSION >= 403
++#  define XXH_swap32 __builtin_bswap32
++#else
++static U32 XXH_swap32 (U32 x)
++{
++    return  ((x << 24) & 0xff000000 ) |
++            ((x <<  8) & 0x00ff0000 ) |
++            ((x >>  8) & 0x0000ff00 ) |
++            ((x >> 24) & 0x000000ff );
++}
++#endif
++
++
++/* *************************************
++*  Architecture Macros
++***************************************/
++typedef enum { XXH_bigEndian=0, XXH_littleEndian=1 } XXH_endianess;
++
++/* XXH_CPU_LITTLE_ENDIAN can be defined externally, for example on the compiler command line */
++#ifndef XXH_CPU_LITTLE_ENDIAN
++    static const int g_one = 1;
++#   define XXH_CPU_LITTLE_ENDIAN   (*(const char*)(&g_one))
++#endif
++
++
++/* ***************************
++*  Memory reads
++*****************************/
++typedef enum { XXH_aligned, XXH_unaligned } XXH_alignment;
++
++FORCE_INLINE U32 XXH_readLE32_align(const void* ptr, XXH_endianess endian, XXH_alignment align)
++{
++    if (align==XXH_unaligned)
++        return endian==XXH_littleEndian ? XXH_read32(ptr) : XXH_swap32(XXH_read32(ptr));
++    else
++        return endian==XXH_littleEndian ? *(const U32*)ptr : XXH_swap32(*(const U32*)ptr);
++}
++
++FORCE_INLINE U32 XXH_readLE32(const void* ptr, XXH_endianess endian)
++{
++    return XXH_readLE32_align(ptr, endian, XXH_unaligned);
++}
++
++static U32 XXH_readBE32(const void* ptr)
++{
++    return XXH_CPU_LITTLE_ENDIAN ? XXH_swap32(XXH_read32(ptr)) : XXH_read32(ptr);
++}
++
++
++/* *************************************
++*  Macros
++***************************************/
++#define XXH_STATIC_ASSERT(c)   { enum { XXH_static_assert = 1/(int)(!!(c)) }; }    /* use only *after* variable declarations */
++XXH_PUBLIC_API unsigned XXH_versionNumber (void) { return XXH_VERSION_NUMBER; }
++
++
++/* *******************************************************************
++*  32-bits hash functions
++*********************************************************************/
++static const U32 PRIME32_1 = 2654435761U;
++static const U32 PRIME32_2 = 2246822519U;
++static const U32 PRIME32_3 = 3266489917U;
++static const U32 PRIME32_4 =  668265263U;
++static const U32 PRIME32_5 =  374761393U;
++
++static U32 XXH32_round(U32 seed, U32 input)
++{
++    seed += input * PRIME32_2;
++    seed  = XXH_rotl32(seed, 13);
++    seed *= PRIME32_1;
++    return seed;
++}
++
++FORCE_INLINE U32 XXH32_endian_align(const void* input, size_t len, U32 seed, XXH_endianess endian, XXH_alignment align)
++{
++    const BYTE* p = (const BYTE*)input;
++    const BYTE* bEnd = p + len;
++    U32 h32;
++#define XXH_get32bits(p) XXH_readLE32_align(p, endian, align)
++
++#ifdef XXH_ACCEPT_NULL_INPUT_POINTER
++    if (p==NULL) {
++        len=0;
++        bEnd=p=(const BYTE*)(size_t)16;
++    }
++#endif
++
++    if (len>=16) {
++        const BYTE* const limit = bEnd - 16;
++        U32 v1 = seed + PRIME32_1 + PRIME32_2;
++        U32 v2 = seed + PRIME32_2;
++        U32 v3 = seed + 0;
++        U32 v4 = seed - PRIME32_1;
++
++        do {
++            v1 = XXH32_round(v1, XXH_get32bits(p)); p+=4;
++            v2 = XXH32_round(v2, XXH_get32bits(p)); p+=4;
++            v3 = XXH32_round(v3, XXH_get32bits(p)); p+=4;
++            v4 = XXH32_round(v4, XXH_get32bits(p)); p+=4;
++        } while (p<=limit);
++
++        h32 = XXH_rotl32(v1, 1) + XXH_rotl32(v2, 7) + XXH_rotl32(v3, 12) + XXH_rotl32(v4, 18);
++    } else {
++        h32  = seed + PRIME32_5;
++    }
++
++    h32 += (U32) len;
++
++    while (p+4<=bEnd) {
++        h32 += XXH_get32bits(p) * PRIME32_3;
++        h32  = XXH_rotl32(h32, 17) * PRIME32_4 ;
++        p+=4;
++    }
++
++    while (p<bEnd) {
++        h32 += (*p) * PRIME32_5;
++        h32 = XXH_rotl32(h32, 11) * PRIME32_1 ;
++        p++;
++    }
++
++    h32 ^= h32 >> 15;
++    h32 *= PRIME32_2;
++    h32 ^= h32 >> 13;
++    h32 *= PRIME32_3;
++    h32 ^= h32 >> 16;
++
++    return h32;
++}
++
++
++XXH_PUBLIC_API unsigned int XXH32 (const void* input, size_t len, unsigned int seed)
++{
++#if 0
++    /* Simple version, good for code maintenance, but unfortunately slow for small inputs */
++    XXH32_state_t state;
++    XXH32_reset(&state, seed);
++    XXH32_update(&state, input, len);
++    return XXH32_digest(&state);
++#else
++    XXH_endianess endian_detected = (XXH_endianess)XXH_CPU_LITTLE_ENDIAN;
++
++    if (XXH_FORCE_ALIGN_CHECK) {
++        if ((((size_t)input) & 3) == 0) {   /* Input is 4-bytes aligned, leverage the speed benefit */
++            if ((endian_detected==XXH_littleEndian) || XXH_FORCE_NATIVE_FORMAT)
++                return XXH32_endian_align(input, len, seed, XXH_littleEndian, XXH_aligned);
++            else
++                return XXH32_endian_align(input, len, seed, XXH_bigEndian, XXH_aligned);
++    }   }
++
++    if ((endian_detected==XXH_littleEndian) || XXH_FORCE_NATIVE_FORMAT)
++        return XXH32_endian_align(input, len, seed, XXH_littleEndian, XXH_unaligned);
++    else
++        return XXH32_endian_align(input, len, seed, XXH_bigEndian, XXH_unaligned);
++#endif
++}
++
++
++
++/*======   Hash streaming   ======*/
++
++XXH_PUBLIC_API XXH32_state_t* XXH32_createState(void)
++{
++    return (XXH32_state_t*)XXH_malloc(sizeof(XXH32_state_t));
++}
++XXH_PUBLIC_API XXH_errorcode XXH32_freeState(XXH32_state_t* statePtr)
++{
++    XXH_free(statePtr);
++    return XXH_OK;
++}
++
++XXH_PUBLIC_API void XXH32_copyState(XXH32_state_t* dstState, const XXH32_state_t* srcState)
++{
++    memcpy(dstState, srcState, sizeof(*dstState));
++}
++
++XXH_PUBLIC_API XXH_errorcode XXH32_reset(XXH32_state_t* statePtr, unsigned int seed)
++{
++    XXH32_state_t state;   /* using a local state to memcpy() in order to avoid strict-aliasing warnings */
++    memset(&state, 0, sizeof(state)-4);   /* do not write into reserved, for future removal */
++    state.v1 = seed + PRIME32_1 + PRIME32_2;
++    state.v2 = seed + PRIME32_2;
++    state.v3 = seed + 0;
++    state.v4 = seed - PRIME32_1;
++    memcpy(statePtr, &state, sizeof(state));
++    return XXH_OK;
++}
++
++
++FORCE_INLINE XXH_errorcode XXH32_update_endian (XXH32_state_t* state, const void* input, size_t len, XXH_endianess endian)
++{
++    const BYTE* p = (const BYTE*)input;
++    const BYTE* const bEnd = p + len;
++
++#ifdef XXH_ACCEPT_NULL_INPUT_POINTER
++    if (input==NULL) return XXH_ERROR;
++#endif
++
++    state->total_len_32 += (unsigned)len;
++    state->large_len |= (len>=16) | (state->total_len_32>=16);
++
++    if (state->memsize + len < 16)  {   /* fill in tmp buffer */
++        XXH_memcpy((BYTE*)(state->mem32) + state->memsize, input, len);
++        state->memsize += (unsigned)len;
++        return XXH_OK;
++    }
++
++    if (state->memsize) {   /* some data left from previous update */
++        XXH_memcpy((BYTE*)(state->mem32) + state->memsize, input, 16-state->memsize);
++        {   const U32* p32 = state->mem32;
++            state->v1 = XXH32_round(state->v1, XXH_readLE32(p32, endian)); p32++;
++            state->v2 = XXH32_round(state->v2, XXH_readLE32(p32, endian)); p32++;
++            state->v3 = XXH32_round(state->v3, XXH_readLE32(p32, endian)); p32++;
++            state->v4 = XXH32_round(state->v4, XXH_readLE32(p32, endian));
++        }
++        p += 16-state->memsize;
++        state->memsize = 0;
++    }
++
++    if (p <= bEnd-16) {
++        const BYTE* const limit = bEnd - 16;
++        U32 v1 = state->v1;
++        U32 v2 = state->v2;
++        U32 v3 = state->v3;
++        U32 v4 = state->v4;
++
++        do {
++            v1 = XXH32_round(v1, XXH_readLE32(p, endian)); p+=4;
++            v2 = XXH32_round(v2, XXH_readLE32(p, endian)); p+=4;
++            v3 = XXH32_round(v3, XXH_readLE32(p, endian)); p+=4;
++            v4 = XXH32_round(v4, XXH_readLE32(p, endian)); p+=4;
++        } while (p<=limit);
++
++        state->v1 = v1;
++        state->v2 = v2;
++        state->v3 = v3;
++        state->v4 = v4;
++    }
++
++    if (p < bEnd) {
++        XXH_memcpy(state->mem32, p, (size_t)(bEnd-p));
++        state->memsize = (unsigned)(bEnd-p);
++    }
++
++    return XXH_OK;
++}
++
++XXH_PUBLIC_API XXH_errorcode XXH32_update (XXH32_state_t* state_in, const void* input, size_t len)
++{
++    XXH_endianess endian_detected = (XXH_endianess)XXH_CPU_LITTLE_ENDIAN;
++
++    if ((endian_detected==XXH_littleEndian) || XXH_FORCE_NATIVE_FORMAT)
++        return XXH32_update_endian(state_in, input, len, XXH_littleEndian);
++    else
++        return XXH32_update_endian(state_in, input, len, XXH_bigEndian);
++}
++
++
++
++FORCE_INLINE U32 XXH32_digest_endian (const XXH32_state_t* state, XXH_endianess endian)
++{
++    const BYTE * p = (const BYTE*)state->mem32;
++    const BYTE* const bEnd = (const BYTE*)(state->mem32) + state->memsize;
++    U32 h32;
++
++    if (state->large_len) {
++        h32 = XXH_rotl32(state->v1, 1) + XXH_rotl32(state->v2, 7) + XXH_rotl32(state->v3, 12) + XXH_rotl32(state->v4, 18);
++    } else {
++        h32 = state->v3 /* == seed */ + PRIME32_5;
++    }
++
++    h32 += state->total_len_32;
++
++    while (p+4<=bEnd) {
++        h32 += XXH_readLE32(p, endian) * PRIME32_3;
++        h32  = XXH_rotl32(h32, 17) * PRIME32_4;
++        p+=4;
++    }
++
++    while (p<bEnd) {
++        h32 += (*p) * PRIME32_5;
++        h32  = XXH_rotl32(h32, 11) * PRIME32_1;
++        p++;
++    }
++
++    h32 ^= h32 >> 15;
++    h32 *= PRIME32_2;
++    h32 ^= h32 >> 13;
++    h32 *= PRIME32_3;
++    h32 ^= h32 >> 16;
++
++    return h32;
++}
++
++
++XXH_PUBLIC_API unsigned int XXH32_digest (const XXH32_state_t* state_in)
++{
++    XXH_endianess endian_detected = (XXH_endianess)XXH_CPU_LITTLE_ENDIAN;
++
++    if ((endian_detected==XXH_littleEndian) || XXH_FORCE_NATIVE_FORMAT)
++        return XXH32_digest_endian(state_in, XXH_littleEndian);
++    else
++        return XXH32_digest_endian(state_in, XXH_bigEndian);
++}
++
++
++/*======   Canonical representation   ======*/
++
++/*! Default XXH result types are basic unsigned 32 and 64 bits.
++*   The canonical representation follows human-readable write convention, aka big-endian (large digits first).
++*   These functions allow transformation of hash result into and from its canonical format.
++*   This way, hash values can be written into a file or buffer, and remain comparable across different systems and programs.
++*/
++
++XXH_PUBLIC_API void XXH32_canonicalFromHash(XXH32_canonical_t* dst, XXH32_hash_t hash)
++{
++    XXH_STATIC_ASSERT(sizeof(XXH32_canonical_t) == sizeof(XXH32_hash_t));
++    if (XXH_CPU_LITTLE_ENDIAN) hash = XXH_swap32(hash);
++    memcpy(dst, &hash, sizeof(*dst));
++}
++
++XXH_PUBLIC_API XXH32_hash_t XXH32_hashFromCanonical(const XXH32_canonical_t* src)
++{
++    return XXH_readBE32(src);
++}
++
++
++#ifndef XXH_NO_LONG_LONG
++
++/* *******************************************************************
++*  64-bits hash functions
++*********************************************************************/
++
++/*======   Memory access   ======*/
++
++#ifndef MEM_MODULE
++# define MEM_MODULE
++# if !defined (__VMS) && (defined (__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */) )
++#   include <stdint.h>
++    typedef uint64_t U64;
++# else
++    typedef unsigned long long U64;   /* if your compiler doesn't support unsigned long long, replace by another 64-bit type here. Note that xxhash.h will also need to be updated. */
++# endif
++#endif
++
++
++#if (defined(XXH_FORCE_MEMORY_ACCESS) && (XXH_FORCE_MEMORY_ACCESS==2))
++
++/* Force direct memory access. Only works on CPU which support unaligned memory access in hardware */
++static U64 XXH_read64(const void* memPtr) { return *(const U64*) memPtr; }
++
++#elif (defined(XXH_FORCE_MEMORY_ACCESS) && (XXH_FORCE_MEMORY_ACCESS==1))
++
++/* __pack instructions are safer, but compiler specific, hence potentially problematic for some compilers */
++/* currently only defined for gcc and icc */
++typedef union { U32 u32; U64 u64; } __attribute__((packed)) unalign64;
++static U64 XXH_read64(const void* ptr) { return ((const unalign64*)ptr)->u64; }
++
++#else
++
++/* portable and safe solution. Generally efficient.
++ * see : http://stackoverflow.com/a/32095106/646947
++ */
++
++static U64 XXH_read64(const void* memPtr)
++{
++    U64 val;
++    memcpy(&val, memPtr, sizeof(val));
++    return val;
++}
++
++#endif   /* XXH_FORCE_DIRECT_MEMORY_ACCESS */
++
++#if defined(_MSC_VER)     /* Visual Studio */
++#  define XXH_swap64 _byteswap_uint64
++#elif XXH_GCC_VERSION >= 403
++#  define XXH_swap64 __builtin_bswap64
++#else
++static U64 XXH_swap64 (U64 x)
++{
++    return  ((x << 56) & 0xff00000000000000ULL) |
++            ((x << 40) & 0x00ff000000000000ULL) |
++            ((x << 24) & 0x0000ff0000000000ULL) |
++            ((x << 8)  & 0x000000ff00000000ULL) |
++            ((x >> 8)  & 0x00000000ff000000ULL) |
++            ((x >> 24) & 0x0000000000ff0000ULL) |
++            ((x >> 40) & 0x000000000000ff00ULL) |
++            ((x >> 56) & 0x00000000000000ffULL);
++}
++#endif
++
++FORCE_INLINE U64 XXH_readLE64_align(const void* ptr, XXH_endianess endian, XXH_alignment align)
++{
++    if (align==XXH_unaligned)
++        return endian==XXH_littleEndian ? XXH_read64(ptr) : XXH_swap64(XXH_read64(ptr));
++    else
++        return endian==XXH_littleEndian ? *(const U64*)ptr : XXH_swap64(*(const U64*)ptr);
++}
++
++FORCE_INLINE U64 XXH_readLE64(const void* ptr, XXH_endianess endian)
++{
++    return XXH_readLE64_align(ptr, endian, XXH_unaligned);
++}
++
++static U64 XXH_readBE64(const void* ptr)
++{
++    return XXH_CPU_LITTLE_ENDIAN ? XXH_swap64(XXH_read64(ptr)) : XXH_read64(ptr);
++}
++
++
++/*======   xxh64   ======*/
++
++static const U64 PRIME64_1 = 11400714785074694791ULL;
++static const U64 PRIME64_2 = 14029467366897019727ULL;
++static const U64 PRIME64_3 =  1609587929392839161ULL;
++static const U64 PRIME64_4 =  9650029242287828579ULL;
++static const U64 PRIME64_5 =  2870177450012600261ULL;
++
++static U64 XXH64_round(U64 acc, U64 input)
++{
++    acc += input * PRIME64_2;
++    acc  = XXH_rotl64(acc, 31);
++    acc *= PRIME64_1;
++    return acc;
++}
++
++static U64 XXH64_mergeRound(U64 acc, U64 val)
++{
++    val  = XXH64_round(0, val);
++    acc ^= val;
++    acc  = acc * PRIME64_1 + PRIME64_4;
++    return acc;
++}
++
++FORCE_INLINE U64 XXH64_endian_align(const void* input, size_t len, U64 seed, XXH_endianess endian, XXH_alignment align)
++{
++    const BYTE* p = (const BYTE*)input;
++    const BYTE* bEnd = p + len;
++    U64 h64;
++#define XXH_get64bits(p) XXH_readLE64_align(p, endian, align)
++
++#ifdef XXH_ACCEPT_NULL_INPUT_POINTER
++    if (p==NULL) {
++        len=0;
++        bEnd=p=(const BYTE*)(size_t)32;
++    }
++#endif
++
++    if (len>=32) {
++        const BYTE* const limit = bEnd - 32;
++        U64 v1 = seed + PRIME64_1 + PRIME64_2;
++        U64 v2 = seed + PRIME64_2;
++        U64 v3 = seed + 0;
++        U64 v4 = seed - PRIME64_1;
++
++        do {
++            v1 = XXH64_round(v1, XXH_get64bits(p)); p+=8;
++            v2 = XXH64_round(v2, XXH_get64bits(p)); p+=8;
++            v3 = XXH64_round(v3, XXH_get64bits(p)); p+=8;
++            v4 = XXH64_round(v4, XXH_get64bits(p)); p+=8;
++        } while (p<=limit);
++
++        h64 = XXH_rotl64(v1, 1) + XXH_rotl64(v2, 7) + XXH_rotl64(v3, 12) + XXH_rotl64(v4, 18);
++        h64 = XXH64_mergeRound(h64, v1);
++        h64 = XXH64_mergeRound(h64, v2);
++        h64 = XXH64_mergeRound(h64, v3);
++        h64 = XXH64_mergeRound(h64, v4);
++
++    } else {
++        h64  = seed + PRIME64_5;
++    }
++
++    h64 += (U64) len;
++
++    while (p+8<=bEnd) {
++        U64 const k1 = XXH64_round(0, XXH_get64bits(p));
++        h64 ^= k1;
++        h64  = XXH_rotl64(h64,27) * PRIME64_1 + PRIME64_4;
++        p+=8;
++    }
++
++    if (p+4<=bEnd) {
++        h64 ^= (U64)(XXH_get32bits(p)) * PRIME64_1;
++        h64 = XXH_rotl64(h64, 23) * PRIME64_2 + PRIME64_3;
++        p+=4;
++    }
++
++    while (p<bEnd) {
++        h64 ^= (*p) * PRIME64_5;
++        h64 = XXH_rotl64(h64, 11) * PRIME64_1;
++        p++;
++    }
++
++    h64 ^= h64 >> 33;
++    h64 *= PRIME64_2;
++    h64 ^= h64 >> 29;
++    h64 *= PRIME64_3;
++    h64 ^= h64 >> 32;
++
++    return h64;
++}
++
++
++XXH_PUBLIC_API unsigned long long XXH64 (const void* input, size_t len, unsigned long long seed)
++{
++#if 0
++    /* Simple version, good for code maintenance, but unfortunately slow for small inputs */
++    XXH64_state_t state;
++    XXH64_reset(&state, seed);
++    XXH64_update(&state, input, len);
++    return XXH64_digest(&state);
++#else
++    XXH_endianess endian_detected = (XXH_endianess)XXH_CPU_LITTLE_ENDIAN;
++
++    if (XXH_FORCE_ALIGN_CHECK) {
++        if ((((size_t)input) & 7)==0) {  /* Input is aligned, let's leverage the speed advantage */
++            if ((endian_detected==XXH_littleEndian) || XXH_FORCE_NATIVE_FORMAT)
++                return XXH64_endian_align(input, len, seed, XXH_littleEndian, XXH_aligned);
++            else
++                return XXH64_endian_align(input, len, seed, XXH_bigEndian, XXH_aligned);
++    }   }
++
++    if ((endian_detected==XXH_littleEndian) || XXH_FORCE_NATIVE_FORMAT)
++        return XXH64_endian_align(input, len, seed, XXH_littleEndian, XXH_unaligned);
++    else
++        return XXH64_endian_align(input, len, seed, XXH_bigEndian, XXH_unaligned);
++#endif
++}
++
++/*======   Hash Streaming   ======*/
++
++XXH_PUBLIC_API XXH64_state_t* XXH64_createState(void)
++{
++    return (XXH64_state_t*)XXH_malloc(sizeof(XXH64_state_t));
++}
++XXH_PUBLIC_API XXH_errorcode XXH64_freeState(XXH64_state_t* statePtr)
++{
++    XXH_free(statePtr);
++    return XXH_OK;
++}
++
++XXH_PUBLIC_API void XXH64_copyState(XXH64_state_t* dstState, const XXH64_state_t* srcState)
++{
++    memcpy(dstState, srcState, sizeof(*dstState));
++}
++
++XXH_PUBLIC_API XXH_errorcode XXH64_reset(XXH64_state_t* statePtr, unsigned long long seed)
++{
++    XXH64_state_t state;   /* using a local state to memcpy() in order to avoid strict-aliasing warnings */
++    memset(&state, 0, sizeof(state)-8);   /* do not write into reserved, for future removal */
++    state.v1 = seed + PRIME64_1 + PRIME64_2;
++    state.v2 = seed + PRIME64_2;
++    state.v3 = seed + 0;
++    state.v4 = seed - PRIME64_1;
++    memcpy(statePtr, &state, sizeof(state));
++    return XXH_OK;
++}
++
++FORCE_INLINE XXH_errorcode XXH64_update_endian (XXH64_state_t* state, const void* input, size_t len, XXH_endianess endian)
++{
++    const BYTE* p = (const BYTE*)input;
++    const BYTE* const bEnd = p + len;
++
++#ifdef XXH_ACCEPT_NULL_INPUT_POINTER
++    if (input==NULL) return XXH_ERROR;
++#endif
++
++    state->total_len += len;
++
++    if (state->memsize + len < 32) {  /* fill in tmp buffer */
++        XXH_memcpy(((BYTE*)state->mem64) + state->memsize, input, len);
++        state->memsize += (U32)len;
++        return XXH_OK;
++    }
++
++    if (state->memsize) {   /* tmp buffer is full */
++        XXH_memcpy(((BYTE*)state->mem64) + state->memsize, input, 32-state->memsize);
++        state->v1 = XXH64_round(state->v1, XXH_readLE64(state->mem64+0, endian));
++        state->v2 = XXH64_round(state->v2, XXH_readLE64(state->mem64+1, endian));
++        state->v3 = XXH64_round(state->v3, XXH_readLE64(state->mem64+2, endian));
++        state->v4 = XXH64_round(state->v4, XXH_readLE64(state->mem64+3, endian));
++        p += 32-state->memsize;
++        state->memsize = 0;
++    }
++
++    if (p+32 <= bEnd) {
++        const BYTE* const limit = bEnd - 32;
++        U64 v1 = state->v1;
++        U64 v2 = state->v2;
++        U64 v3 = state->v3;
++        U64 v4 = state->v4;
++
++        do {
++            v1 = XXH64_round(v1, XXH_readLE64(p, endian)); p+=8;
++            v2 = XXH64_round(v2, XXH_readLE64(p, endian)); p+=8;
++            v3 = XXH64_round(v3, XXH_readLE64(p, endian)); p+=8;
++            v4 = XXH64_round(v4, XXH_readLE64(p, endian)); p+=8;
++        } while (p<=limit);
++
++        state->v1 = v1;
++        state->v2 = v2;
++        state->v3 = v3;
++        state->v4 = v4;
++    }
++
++    if (p < bEnd) {
++        XXH_memcpy(state->mem64, p, (size_t)(bEnd-p));
++        state->memsize = (unsigned)(bEnd-p);
++    }
++
++    return XXH_OK;
++}
++
++XXH_PUBLIC_API XXH_errorcode XXH64_update (XXH64_state_t* state_in, const void* input, size_t len)
++{
++    XXH_endianess endian_detected = (XXH_endianess)XXH_CPU_LITTLE_ENDIAN;
++
++    if ((endian_detected==XXH_littleEndian) || XXH_FORCE_NATIVE_FORMAT)
++        return XXH64_update_endian(state_in, input, len, XXH_littleEndian);
++    else
++        return XXH64_update_endian(state_in, input, len, XXH_bigEndian);
++}
++
++FORCE_INLINE U64 XXH64_digest_endian (const XXH64_state_t* state, XXH_endianess endian)
++{
++    const BYTE * p = (const BYTE*)state->mem64;
++    const BYTE* const bEnd = (const BYTE*)state->mem64 + state->memsize;
++    U64 h64;
++
++    if (state->total_len >= 32) {
++        U64 const v1 = state->v1;
++        U64 const v2 = state->v2;
++        U64 const v3 = state->v3;
++        U64 const v4 = state->v4;
++
++        h64 = XXH_rotl64(v1, 1) + XXH_rotl64(v2, 7) + XXH_rotl64(v3, 12) + XXH_rotl64(v4, 18);
++        h64 = XXH64_mergeRound(h64, v1);
++        h64 = XXH64_mergeRound(h64, v2);
++        h64 = XXH64_mergeRound(h64, v3);
++        h64 = XXH64_mergeRound(h64, v4);
++    } else {
++        h64  = state->v3 + PRIME64_5;
++    }
++
++    h64 += (U64) state->total_len;
++
++    while (p+8<=bEnd) {
++        U64 const k1 = XXH64_round(0, XXH_readLE64(p, endian));
++        h64 ^= k1;
++        h64  = XXH_rotl64(h64,27) * PRIME64_1 + PRIME64_4;
++        p+=8;
++    }
++
++    if (p+4<=bEnd) {
++        h64 ^= (U64)(XXH_readLE32(p, endian)) * PRIME64_1;
++        h64  = XXH_rotl64(h64, 23) * PRIME64_2 + PRIME64_3;
++        p+=4;
++    }
++
++    while (p<bEnd) {
++        h64 ^= (*p) * PRIME64_5;
++        h64  = XXH_rotl64(h64, 11) * PRIME64_1;
++        p++;
++    }
++
++    h64 ^= h64 >> 33;
++    h64 *= PRIME64_2;
++    h64 ^= h64 >> 29;
++    h64 *= PRIME64_3;
++    h64 ^= h64 >> 32;
++
++    return h64;
++}
++
++XXH_PUBLIC_API unsigned long long XXH64_digest (const XXH64_state_t* state_in)
++{
++    XXH_endianess endian_detected = (XXH_endianess)XXH_CPU_LITTLE_ENDIAN;
++
++    if ((endian_detected==XXH_littleEndian) || XXH_FORCE_NATIVE_FORMAT)
++        return XXH64_digest_endian(state_in, XXH_littleEndian);
++    else
++        return XXH64_digest_endian(state_in, XXH_bigEndian);
++}
++
++
++/*====== Canonical representation   ======*/
++
++XXH_PUBLIC_API void XXH64_canonicalFromHash(XXH64_canonical_t* dst, XXH64_hash_t hash)
++{
++    XXH_STATIC_ASSERT(sizeof(XXH64_canonical_t) == sizeof(XXH64_hash_t));
++    if (XXH_CPU_LITTLE_ENDIAN) hash = XXH_swap64(hash);
++    memcpy(dst, &hash, sizeof(*dst));
++}
++
++XXH_PUBLIC_API XXH64_hash_t XXH64_hashFromCanonical(const XXH64_canonical_t* src)
++{
++    return XXH_readBE64(src);
++}
++
++#endif  /* XXH_NO_LONG_LONG */
+diff --git a/llvm_mode/dfsan_rt/dfsan/xxhash.h b/llvm_mode/dfsan_rt/dfsan/xxhash.h
+new file mode 100644
+index 0000000..9d831e0
+--- /dev/null
++++ b/llvm_mode/dfsan_rt/dfsan/xxhash.h
+@@ -0,0 +1,293 @@
++/*
++   xxHash - Extremely Fast Hash algorithm
++   Header File
++   Copyright (C) 2012-2016, Yann Collet.
++
++   BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
++
++   Redistribution and use in source and binary forms, with or without
++   modification, are permitted provided that the following conditions are
++   met:
++
++       * Redistributions of source code must retain the above copyright
++   notice, this list of conditions and the following disclaimer.
++       * Redistributions in binary form must reproduce the above
++   copyright notice, this list of conditions and the following disclaimer
++   in the documentation and/or other materials provided with the
++   distribution.
++
++   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++   OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++   You can contact the author at :
++   - xxHash source repository : https://github.com/Cyan4973/xxHash
++*/
++
++/* Notice extracted from xxHash homepage :
++
++xxHash is an extremely fast Hash algorithm, running at RAM speed limits.
++It also successfully passes all tests from the SMHasher suite.
++
++Comparison (single thread, Windows Seven 32 bits, using SMHasher on a Core 2 Duo @3GHz)
++
++Name            Speed       Q.Score   Author
++xxHash          5.4 GB/s     10
++CrapWow         3.2 GB/s      2       Andrew
++MumurHash 3a    2.7 GB/s     10       Austin Appleby
++SpookyHash      2.0 GB/s     10       Bob Jenkins
++SBox            1.4 GB/s      9       Bret Mulvey
++Lookup3         1.2 GB/s      9       Bob Jenkins
++SuperFastHash   1.2 GB/s      1       Paul Hsieh
++CityHash64      1.05 GB/s    10       Pike & Alakuijala
++FNV             0.55 GB/s     5       Fowler, Noll, Vo
++CRC32           0.43 GB/s     9
++MD5-32          0.33 GB/s    10       Ronald L. Rivest
++SHA1-32         0.28 GB/s    10
++
++Q.Score is a measure of quality of the hash function.
++It depends on successfully passing SMHasher test set.
++10 is a perfect score.
++
++A 64-bits version, named XXH64, is available since r35.
++It offers much better speed, but for 64-bits applications only.
++Name     Speed on 64 bits    Speed on 32 bits
++XXH64       13.8 GB/s            1.9 GB/s
++XXH32        6.8 GB/s            6.0 GB/s
++*/
++
++#ifndef XXHASH_H_5627135585666179
++#define XXHASH_H_5627135585666179 1
++
++#if defined (__cplusplus)
++extern "C" {
++#endif
++
++
++/* ****************************
++*  Definitions
++******************************/
++#include <stddef.h>   /* size_t */
++typedef enum { XXH_OK=0, XXH_ERROR } XXH_errorcode;
++
++
++/* ****************************
++*  API modifier
++******************************/
++/** XXH_PRIVATE_API
++*   This is useful to include xxhash functions in `static` mode
++*   in order to inline them, and remove their symbol from the public list.
++*   Methodology :
++*     #define XXH_PRIVATE_API
++*     #include "xxhash.h"
++*   `xxhash.c` is automatically included.
++*   It's not useful to compile and link it as a separate module.
++*/
++#ifdef XXH_PRIVATE_API
++#  ifndef XXH_STATIC_LINKING_ONLY
++#    define XXH_STATIC_LINKING_ONLY
++#  endif
++#  if defined(__GNUC__)
++#    define XXH_PUBLIC_API static __inline __attribute__((unused))
++#  elif defined (__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */)
++#    define XXH_PUBLIC_API static inline
++#  elif defined(_MSC_VER)
++#    define XXH_PUBLIC_API static __inline
++#  else
++#    define XXH_PUBLIC_API static   /* this version may generate warnings for unused static functions; disable the relevant warning */
++#  endif
++#else
++#  define XXH_PUBLIC_API   /* do nothing */
++#endif /* XXH_PRIVATE_API */
++
++/*!XXH_NAMESPACE, aka Namespace Emulation :
++
++If you want to include _and expose_ xxHash functions from within your own library,
++but also want to avoid symbol collisions with other libraries which may also include xxHash,
++
++you can use XXH_NAMESPACE, to automatically prefix any public symbol from xxhash library
++with the value of XXH_NAMESPACE (therefore, avoid NULL and numeric values).
++
++Note that no change is required within the calling program as long as it includes `xxhash.h` :
++regular symbol name will be automatically translated by this header.
++*/
++#ifdef XXH_NAMESPACE
++#  define XXH_CAT(A,B) A##B
++#  define XXH_NAME2(A,B) XXH_CAT(A,B)
++#  define XXH_versionNumber XXH_NAME2(XXH_NAMESPACE, XXH_versionNumber)
++#  define XXH32 XXH_NAME2(XXH_NAMESPACE, XXH32)
++#  define XXH32_createState XXH_NAME2(XXH_NAMESPACE, XXH32_createState)
++#  define XXH32_freeState XXH_NAME2(XXH_NAMESPACE, XXH32_freeState)
++#  define XXH32_reset XXH_NAME2(XXH_NAMESPACE, XXH32_reset)
++#  define XXH32_update XXH_NAME2(XXH_NAMESPACE, XXH32_update)
++#  define XXH32_digest XXH_NAME2(XXH_NAMESPACE, XXH32_digest)
++#  define XXH32_copyState XXH_NAME2(XXH_NAMESPACE, XXH32_copyState)
++#  define XXH32_canonicalFromHash XXH_NAME2(XXH_NAMESPACE, XXH32_canonicalFromHash)
++#  define XXH32_hashFromCanonical XXH_NAME2(XXH_NAMESPACE, XXH32_hashFromCanonical)
++#  define XXH64 XXH_NAME2(XXH_NAMESPACE, XXH64)
++#  define XXH64_createState XXH_NAME2(XXH_NAMESPACE, XXH64_createState)
++#  define XXH64_freeState XXH_NAME2(XXH_NAMESPACE, XXH64_freeState)
++#  define XXH64_reset XXH_NAME2(XXH_NAMESPACE, XXH64_reset)
++#  define XXH64_update XXH_NAME2(XXH_NAMESPACE, XXH64_update)
++#  define XXH64_digest XXH_NAME2(XXH_NAMESPACE, XXH64_digest)
++#  define XXH64_copyState XXH_NAME2(XXH_NAMESPACE, XXH64_copyState)
++#  define XXH64_canonicalFromHash XXH_NAME2(XXH_NAMESPACE, XXH64_canonicalFromHash)
++#  define XXH64_hashFromCanonical XXH_NAME2(XXH_NAMESPACE, XXH64_hashFromCanonical)
++#endif
++
++
++/* *************************************
++*  Version
++***************************************/
++#define XXH_VERSION_MAJOR    0
++#define XXH_VERSION_MINOR    6
++#define XXH_VERSION_RELEASE  2
++#define XXH_VERSION_NUMBER  (XXH_VERSION_MAJOR *100*100 + XXH_VERSION_MINOR *100 + XXH_VERSION_RELEASE)
++XXH_PUBLIC_API unsigned XXH_versionNumber (void);
++
++
++/*-**********************************************************************
++*  32-bits hash
++************************************************************************/
++typedef unsigned int XXH32_hash_t;
++
++/*! XXH32() :
++    Calculate the 32-bits hash of sequence "length" bytes stored at memory address "input".
++    The memory between input & input+length must be valid (allocated and read-accessible).
++    "seed" can be used to alter the result predictably.
++    Speed on Core 2 Duo @ 3 GHz (single thread, SMHasher benchmark) : 5.4 GB/s */
++XXH_PUBLIC_API XXH32_hash_t XXH32 (const void* input, size_t length, unsigned int seed);
++
++/*======   Streaming   ======*/
++typedef struct XXH32_state_s XXH32_state_t;   /* incomplete type */
++XXH_PUBLIC_API XXH32_state_t* XXH32_createState(void);
++XXH_PUBLIC_API XXH_errorcode  XXH32_freeState(XXH32_state_t* statePtr);
++XXH_PUBLIC_API void XXH32_copyState(XXH32_state_t* dst_state, const XXH32_state_t* src_state);
++
++XXH_PUBLIC_API XXH_errorcode XXH32_reset  (XXH32_state_t* statePtr, unsigned int seed);
++XXH_PUBLIC_API XXH_errorcode XXH32_update (XXH32_state_t* statePtr, const void* input, size_t length);
++XXH_PUBLIC_API XXH32_hash_t  XXH32_digest (const XXH32_state_t* statePtr);
++
++/*
++These functions generate the xxHash of an input provided in multiple segments.
++Note that, for small input, they are slower than single-call functions, due to state management.
++For small input, prefer `XXH32()` and `XXH64()` .
++
++XXH state must first be allocated, using XXH*_createState() .
++
++Start a new hash by initializing state with a seed, using XXH*_reset().
++
++Then, feed the hash state by calling XXH*_update() as many times as necessary.
++Obviously, input must be allocated and read accessible.
++The function returns an error code, with 0 meaning OK, and any other value meaning there is an error.
++
++Finally, a hash value can be produced anytime, by using XXH*_digest().
++This function returns the nn-bits hash as an int or long long.
++
++It's still possible to continue inserting input into the hash state after a digest,
++and generate some new hashes later on, by calling again XXH*_digest().
++
++When done, free XXH state space if it was allocated dynamically.
++*/
++
++/*======   Canonical representation   ======*/
++
++typedef struct { unsigned char digest[4]; } XXH32_canonical_t;
++XXH_PUBLIC_API void XXH32_canonicalFromHash(XXH32_canonical_t* dst, XXH32_hash_t hash);
++XXH_PUBLIC_API XXH32_hash_t XXH32_hashFromCanonical(const XXH32_canonical_t* src);
++
++/* Default result type for XXH functions are primitive unsigned 32 and 64 bits.
++*  The canonical representation uses human-readable write convention, aka big-endian (large digits first).
++*  These functions allow transformation of hash result into and from its canonical format.
++*  This way, hash values can be written into a file / memory, and remain comparable on different systems and programs.
++*/
++
++
++#ifndef XXH_NO_LONG_LONG
++/*-**********************************************************************
++*  64-bits hash
++************************************************************************/
++typedef unsigned long long XXH64_hash_t;
++
++/*! XXH64() :
++    Calculate the 64-bits hash of sequence of length "len" stored at memory address "input".
++    "seed" can be used to alter the result predictably.
++    This function runs faster on 64-bits systems, but slower on 32-bits systems (see benchmark).
++*/
++XXH_PUBLIC_API XXH64_hash_t XXH64 (const void* input, size_t length, unsigned long long seed);
++
++/*======   Streaming   ======*/
++typedef struct XXH64_state_s XXH64_state_t;   /* incomplete type */
++XXH_PUBLIC_API XXH64_state_t* XXH64_createState(void);
++XXH_PUBLIC_API XXH_errorcode  XXH64_freeState(XXH64_state_t* statePtr);
++XXH_PUBLIC_API void XXH64_copyState(XXH64_state_t* dst_state, const XXH64_state_t* src_state);
++
++XXH_PUBLIC_API XXH_errorcode XXH64_reset  (XXH64_state_t* statePtr, unsigned long long seed);
++XXH_PUBLIC_API XXH_errorcode XXH64_update (XXH64_state_t* statePtr, const void* input, size_t length);
++XXH_PUBLIC_API XXH64_hash_t  XXH64_digest (const XXH64_state_t* statePtr);
++
++/*======   Canonical representation   ======*/
++typedef struct { unsigned char digest[8]; } XXH64_canonical_t;
++XXH_PUBLIC_API void XXH64_canonicalFromHash(XXH64_canonical_t* dst, XXH64_hash_t hash);
++XXH_PUBLIC_API XXH64_hash_t XXH64_hashFromCanonical(const XXH64_canonical_t* src);
++#endif  /* XXH_NO_LONG_LONG */
++
++
++#ifdef XXH_STATIC_LINKING_ONLY
++
++/* ================================================================================================
++   This section contains definitions which are not guaranteed to remain stable.
++   They may change in future versions, becoming incompatible with a different version of the library.
++   They shall only be used with static linking.
++   Never use these definitions in association with dynamic linking !
++=================================================================================================== */
++
++/* These definitions are only meant to make possible
++   static allocation of XXH state, on stack or in a struct for example.
++   Never use members directly. */
++
++struct XXH32_state_s {
++   unsigned total_len_32;
++   unsigned large_len;
++   unsigned v1;
++   unsigned v2;
++   unsigned v3;
++   unsigned v4;
++   unsigned mem32[4];   /* buffer defined as U32 for alignment */
++   unsigned memsize;
++   unsigned reserved;   /* never read nor write, will be removed in a future version */
++};   /* typedef'd to XXH32_state_t */
++
++#ifndef XXH_NO_LONG_LONG   /* remove 64-bits support */
++struct XXH64_state_s {
++   unsigned long long total_len;
++   unsigned long long v1;
++   unsigned long long v2;
++   unsigned long long v3;
++   unsigned long long v4;
++   unsigned long long mem64[4];   /* buffer defined as U64 for alignment */
++   unsigned memsize;
++   unsigned reserved[2];          /* never read nor write, will be removed in a future version */
++};   /* typedef'd to XXH64_state_t */
++#endif
++
++#ifdef XXH_PRIVATE_API
++#  include "xxhash.c"   /* include xxhash function bodies as `static`, for inlining */
++#endif
++
++#endif /* XXH_STATIC_LINKING_ONLY */
++
++
++#if defined (__cplusplus)
++}
++#endif
++
++#endif /* XXHASH_H_5627135585666179 */

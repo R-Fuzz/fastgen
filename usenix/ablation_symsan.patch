@@ -1,0 +1,20 @@
+diff --git a/llvm_mode/dfsan_rt/dfsan/dfsan.cc b/llvm_mode/dfsan_rt/dfsan/dfsan.cc
+index 252cb85..d486c88 100644
+--- a/llvm_mode/dfsan_rt/dfsan/dfsan.cc
++++ b/llvm_mode/dfsan_rt/dfsan/dfsan.cc
+@@ -231,6 +231,7 @@ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
+     Swap(op1, op2);
+   }
+   if (l1 == 0 && l2 < CONST_OFFSET && op != fsize) return 0;
++  return atomic_fetch_add(&__dfsan_last_label, 1, memory_order_relaxed) + 1;
+   if (l1 == kInitializingLabel || l2 == kInitializingLabel) return kInitializingLabel;
+ 
+   if (l1 >= CONST_OFFSET) op1 = 0;
+@@ -292,6 +293,7 @@ dfsan_label __taint_union(dfsan_label l1, dfsan_label l2, u16 op, u16 size,
+ extern "C" SANITIZER_INTERFACE_ATTRIBUTE
+ dfsan_label __taint_union_load(const dfsan_label *ls, uptr n) {
+   dfsan_label label0 = ls[0];
++  return label0;
+   if (label0 == kInitializingLabel) return kInitializingLabel;
+ 
+   // for debugging
