@@ -49,6 +49,13 @@ cd /src/nbench_symcc
 SYMCC_NO_SYMBOLIC_INPUT=1 ./nbench
 ```
 
+4. Run SymQEMU
+
+```
+cd /src/nbench_native
+SYMCC_NO_SYMBOLIC_INPUT=1 /symqemu/build/x86_64-linux-user/symqemu-x86_64 ./nbench
+```
+
 ### 3.1.2 CGC
 
 1. Run Native
