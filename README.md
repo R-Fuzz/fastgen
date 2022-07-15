@@ -213,7 +213,7 @@ cd /src/build-programs-symcc
 ./run_symcc_mem.sh /out/real_seeds/objdump_reduced objdump -D
 ```
 
-## 3.3 Code coverage
+## 3.3 Code coverage (runnning with solving)
 
 Re-enable SymCC's solving
 
@@ -252,10 +252,10 @@ cd /src/build-programs-symcc
 
 2. Run SymSan
 
-Patch SymSan with CE testing
+Patch SymSan
 
 ```
-cd /symsan && patch -p1 < /src/symsan_cov.patch
+cd /symsan && git reset && patch -p1 < /src/symsan_cov.patch
 ./build/build.sh
 cp target/release/fastgen /src/build-programs
 ```
@@ -264,7 +264,7 @@ Run objdump (560 is the number of inputs, see paper's Table 3 for all other prog
 
 ```
 cd /src/build-programs
-./fuzzer.sh 560 objdump -D
+./fuzzer.sh 560 objdump -D &> objdump.log
 ```
 
 
