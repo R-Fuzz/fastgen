@@ -267,6 +267,29 @@ cd /src/build-programs
 ./fuzzer.sh 560 objdump -D &> objdump.log
 ```
 
+Other programs
+
+```
+./fuzzer.sh 604 readelf -a &> readelf.log
+./fuzzer.sh 249 nm -C &> nm.log
+./fuzzer.sh 207 size &> size.log
+./fuzzer.sh 1952 xml &> xml.log
+./fuzzer.sh 770 proj &> proj.log
+./fuzzer.sh 526 vorbis &> vorbis.log
+./fuzzer.sh 1073 re2 &> re2.log
+./fuzzer.sh 548 woff2 &> woff2.log
+./fuzzer.sh 218 libpng &> libpng.log
+./fuzzer.sh 846 libjpeg &> libjpeg.log
+./fuzzer.sh 157 lcms &> lcms.log
+./fuzzer.sh 4789 freetype &> freetype.log
+./fuzzer.sh 2955 harfbuzz &> harfbuzz.log
+./fuzzer.sh 450 json &> json.log
+./fuzzer.sh 268 openthread &> openthread.log
+./fuzzer.sh 1577 openssl &> openssl.log
+./fuzzer.sh 491 dtls &> dtls.log
+./fuzzer.sh 5253 sqlite &> sqlite.log
+./fuzzer.sh 1343 curl &> curl.log
+```
 
 
 ## 3.4 End-to-end fuzzing
