@@ -4,7 +4,7 @@ def get_score(bin_name):
   symcc_bucket= [0] * 65536
   symsan_bucket= [0] * 65536
   #pathlist = Path("trace_symcc_nolinear_" + bin_name).rglob('*')
-  pathlist = Path("trace_symqemu_" + bin_name).rglob('*')
+  pathlist = Path(bin_name + "_symcc_trace").rglob('*')
   for path in pathlist:
     path_in_str = str(path)
     fp=open(path_in_str)
@@ -14,7 +14,7 @@ def get_score(bin_name):
       #print(int(lineitems[0]))
       symcc_bucket[int(lineitems[0])] = symcc_bucket[int(lineitems[0])]+ 1
 
-  pathlist = Path("trace_symsan_qsym_" + bin_name).rglob('*')
+  pathlist = Path(bin_name + "_symsan_trace").rglob('*')
   for path in pathlist:
     path_in_str = str(path)
     fp=open(path_in_str)
@@ -51,7 +51,7 @@ t = [ [0.0]*17 for i in range(6)]
 symccbetter=0
 symsanbetter=0
 print(t)
-fp=open("finallist")
+fp=open("/src/cgc_list")
 lines=fp.readlines()
 count = 0
 for line in lines:
