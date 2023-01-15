@@ -65,8 +65,19 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
     return None;
   }
 
-
-  debug!("{} = (l1:{}, l2:{}, op:{}, size:{}, op1:{}, op2:{})", label,info.l1,info.l2,info.op,info.size,info.op1,info.op2);
+  let brw_l1 = std::ptr::addr_of!(info.l1);
+  let val_l1 = unsafe { brw_l1.read_unaligned() };
+  let brw_l2 = std::ptr::addr_of!(info.l2);
+  let val_l2 = unsafe { brw_l2.read_unaligned() };
+  let brw_op = std::ptr::addr_of!(info.op);
+  let val_op = unsafe { brw_op.read_unaligned() };
+  let brw_size = std::ptr::addr_of!(info.size);
+  let val_size = unsafe { brw_size.read_unaligned() };
+  let brw_op1 = std::ptr::addr_of!(info.op1);
+  let val_op1 = unsafe { brw_op1.read_unaligned() };
+  let brw_op2 = std::ptr::addr_of!(info.op2);
+  let val_op2 = unsafe { brw_op2.read_unaligned() };
+  debug!("{} = (l1:{}, l2:{}, op:{}, size:{}, op1:{}, op2:{})", label,val_l1,val_l2,val_op,val_size,val_op1,val_op2);
   if expr_cache.contains_key(&label) {
     return Some(expr_cache[&label].clone())
   }
@@ -102,15 +113,15 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                        let base = node.as_bool().unwrap().ite(&ast::BV::from_i64(ctx,1,1), 
                            &ast::BV::from_i64(ctx,0,1));
                        let ret = z3::ast::Dynamic::from(base.zero_ext(info.size as u32 - 1));
-                       cache.insert(label, cache[&info.l1].clone());
+                       cache.insert(label, cache[&val_l1].clone());
                        expr_cache.insert(label, ret.clone());
                        return Some(ret);
                      },
                        z3::SortKind::BV => { 
                          let base = node.as_bv().unwrap();
-                         cache.insert(label, cache[&info.l1].clone());
+                         cache.insert(label, cache[&val_l1].clone());
                          let ret = z3::ast::Dynamic::from(base.zero_ext(info.size as u32 - base.get_size()));
-                         cache.insert(label, cache[&info.l1].clone());
+                         cache.insert(label, cache[&val_l1].clone());
                          expr_cache.insert(label, ret.clone());
                          return Some(ret);
                        },
@@ -126,10 +137,10 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                  if  info.l2 == 0 {
                    return None;
                  }
-                 let raw_left = if info.l1 != 0 { serialize(info.l1, ctx, table, cache, expr_cache, fmemcmp_data) 
+                 let raw_left = if info.l1 != 0 { serialize(info.l1, ctx, table, cache, expr_cache, fmemcmp_data)
                  } else {
-                   if !fmemcmp_data.contains_key(&info.l2) { None } else {
-                     read_concrete(ctx,&fmemcmp_data[&info.l2])
+                   if !fmemcmp_data.contains_key(&val_l2) { None } else {
+                     read_concrete(ctx,&fmemcmp_data[&val_l2])
                    }
                  };
                  let raw_right = serialize(info.l2, ctx, table, cache, expr_cache, fmemcmp_data);
@@ -140,12 +151,12 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                    let ret = z3::ast::Dynamic::from(base);
                    let mut merged = HashSet::new();
                    if info.l1 >= CONST_OFFSET {
-                     for &v in &cache[&info.l1] {
+                     for &v in &cache[&val_l1] {
                        merged.insert(v);
                      }
                    }
                    if info.l2 >= CONST_OFFSET {
-                     for &v in &cache[&info.l2] {
+                     for &v in &cache[&val_l2] {
                        merged.insert(v);
                      }
                    }
@@ -165,14 +176,14 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                        let base = node.as_bool().unwrap().ite(&ast::BV::from_i64(ctx,1,1), 
                            &ast::BV::from_i64(ctx,0,1));
                        let ret = z3::ast::Dynamic::from(base.sign_ext(info.size as u32 - 1));
-                       cache.insert(label, cache[&info.l1].clone());
+                       cache.insert(label, cache[&val_l1].clone());
                        expr_cache.insert(label, ret.clone());
                        return Some(ret);
                      },
                        z3::SortKind::BV => { 
                          let base = node.as_bv().unwrap();
                          let ret = z3::ast::Dynamic::from(base.sign_ext(info.size as u32 - base.get_size()));
-                         cache.insert(label, cache[&info.l1].clone());
+                         cache.insert(label, cache[&val_l1].clone());
                          expr_cache.insert(label, ret.clone());
                          return Some(ret);
                        },
@@ -187,7 +198,7 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                  if let Some(node) = rawnode {
                    let base = node.as_bv().unwrap();
                    let ret = z3::ast::Dynamic::from(base.extract(info.size as u32 - 1, 0));
-                   cache.insert(label, cache[&info.l1].clone());
+                   cache.insert(label, cache[&val_l1].clone());
                    expr_cache.insert(label, ret.clone());
                    return Some(ret);
                  } else {
@@ -199,7 +210,7 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                  if let Some(node) = rawnode {
                    let base = node.as_bv().unwrap();
                    let ret = z3::ast::Dynamic::from(base.extract(info.op2 as u32 + info.size as u32 - 1, info.op2 as u32));
-                   cache.insert(label, cache[&info.l1].clone());
+                   cache.insert(label, cache[&val_l1].clone());
                    expr_cache.insert(label, ret.clone());
                    return Some(ret);
                  } else {
@@ -215,7 +226,7 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                      // Only handle LNot
                      if node.sort_kind() == z3::SortKind::Bool {
                        let ret = z3::ast::Dynamic::from(node.as_bool().unwrap().not());
-                       cache.insert(label, cache[&info.l2].clone());
+                       cache.insert(label, cache[&val_l2].clone());
                        expr_cache.insert(label, ret.clone());
                        return Some(ret);
                      } else {
@@ -233,7 +244,7 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
                    let rawnode = serialize(info.l2, ctx, table, cache, expr_cache, fmemcmp_data);
                    if let Some(node) = rawnode {
                      let ret = z3::ast::Dynamic::from(-node.as_bv().unwrap());
-                     cache.insert(label, cache[&info.l2].clone());
+                     cache.insert(label, cache[&val_l2].clone());
                      expr_cache.insert(label, ret.clone());
                      return Some(ret);
                    } else {
@@ -286,12 +297,13 @@ pub fn serialize<'a>(label: u32, ctx: &'a Context, table: &UnionTable,
   //TODO merge cache
   let mut merged = HashSet::new();
   if info.l1 >= CONST_OFFSET {
-    for &v in &cache[&info.l1] {
+    //fix issue #82523 see https://github.com/rust-lang/rust/issues/82523
+    for &v in &cache[&val_l1] {
       merged.insert(v);
     }
   }
   if info.l2 >= CONST_OFFSET {
-    for &v in &cache[&info.l2] {
+    for &v in &cache[&val_l2] {
       merged.insert(v);
     }
   }
